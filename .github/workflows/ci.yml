@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: ["main"]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Go
+        if: ${{ hashFiles('go.mod') != '' }}
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Setup golangci-lint
+        if: ${{ hashFiles('go.mod') != '' }}
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+      - name: Run format check
+        if: ${{ hashFiles('go.mod') != '' }}
+        run: |
+          unformatted=$(gofmt -s -l . | wc -l | tr -d ' ')
+          if [ "$unformatted" != "0" ]; then
+            echo "Found unformatted Go files"
+            gofmt -s -l .
+            exit 1
+          fi
+
+      - name: Run lint
+        if: ${{ hashFiles('go.mod') != '' }}
+        run: golangci-lint run
+
+      - name: Run tests
+        if: ${{ hashFiles('go.mod') != '' }}
+        run: go test ./...
+
+      - name: Placeholder status (no Go module yet)
+        if: ${{ hashFiles('go.mod') == '' }}
+        run: echo "No go.mod yet; CI validation steps are ready and will activate after scaffold."

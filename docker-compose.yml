@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: epub-translator:local
+    env_file:
+      - .env.local
+    volumes:
+      - ./runs:/app/runs
+      - ./books:/app/books
+      - ./data:/app/data
+    command: ["run", "--input", "/app/books/source.epub", "--output-dir", "/app/runs", "--source-lang", "en", "--target-lang", "fr"]

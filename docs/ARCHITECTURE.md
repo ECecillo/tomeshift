@@ -3,12 +3,36 @@
 ## 1. Purpose
 Build a cost-efficient system that translates EPUB books from English to French while preserving formatting and structure, and minimizing paid LLM token usage.
 
+Planning note:
+- Milestone delivery plans are maintained in `docs/milestones/`.
+- This document keeps architecture decisions and system design references.
+
+Implementation policy:
+- Prefer Go standard library first.
+- Introduce third-party packages only when stdlib is insufficient for required behavior or operational needs.
+- Approved dependency policy and rationale live in `docs/DEPENDENCIES.md`.
+
+Configuration policy:
+- Runtime config is loaded from environment variables into typed structs using `github.com/kelseyhightower/envconfig`.
+- Defaults and required settings are declared in config struct tags.
+- `.env` overrides are applied by sourcing a selected `.env` file in the shell before running commands.
+- `.env` files are trusted local files and must only contain `KEY=VALUE` assignments for app configuration.
+- Command orchestration uses `just`/`Justfile` recipes.
+
 ## Glossary
 - DRM(Digital rights management): technology used to protect digital documents from direct access or modification.
 - EPUB: standard file format used to store content such as book.
 - LLM(Large Language Model): a program trained on a large amount of data and capable of generating content.
 - TM(Translation Memory): A cache of already covered sentences, words our program would already translate.
 - NMT(Neural Machine Translation): Specific machine learning type, exclusively used and trained for translation. ([more infos](https://blog.pangeanic.com/fr/quelle-est-la-meilleure-solution-pour-mon-cas-dutilisation-la-traduction-nmt-neuronale-ou-llm-notre-livre-blanc))
+- Ruby (EPUB/XHTML markup): annotation markup used to attach pronunciation/reading text to base text (commonly East Asian typography).
+  - Example:
+    ```xml
+    <ruby>漢<rt>かん</rt></ruby>
+    ```
+  - Impact in this project:
+    - If ruby tags are altered incorrectly, text rendering can break in readers.
+    - V1 policy is to preserve ruby markup structure as-is (no ruby-specific rewriting logic).
 
 ## 2. Scope
 - Input: DRM-free `.epub` files in English.
@@ -21,6 +45,20 @@ Build a cost-efficient system that translates EPUB books from English to French 
 - Real-time web app editor.
 - Fully autonomous literary-quality translation with no human review.
 - Translation of DRM-protected content.
+
+## 3.1 V1 Scope Profile (Narrowed)
+- Translation path: `TM exact match -> NMT -> EPUB rebuild`.
+- LLM post-editing is disabled in V1 by default and implemented later in Phase 3.
+- Segmentation is paragraph-level in V1 (sentence-aware chunk merging deferred).
+- TM supports exact hash matches only in V1 (fuzzy matching deferred).
+- QA gate in V1 is limited to placeholder integrity, structural integrity, and `epubcheck` pass.
+
+## 3.2 Unsupported in V1
+- EPUBs requiring OCR or image-to-text extraction.
+- Complex layout-sensitive content where exact rendering parity is required (advanced tables, MathML-heavy docs, SVG text flow).
+- Interactive EPUB features (embedded scripts/forms/media overlays).
+- Automatic literary tone rewriting beyond glossary/style constraints.
+- Multi-user SaaS workflows (auth, teams, shared projects).
 
 ## 4. Core Constraints
 
@@ -54,11 +92,11 @@ config:
 ---
 flowchart LR
     A["EPUB Ingest"] --> B["Extract + Parse XHTML"]
-    B --> C["Segment (paragraph/sentence)"]
+    B --> C["Segment (paragraph in V1)"]
     C --> D["Normalize + Hash"]
     D --> E["TM/Cache Lookup"]
     E --> F["Translation Router"]
-    F --> G["Local/cheap NMT path (default)"] & H["LLM post-edit path (selective)"]
+    F --> G["Local/cheap NMT path (default in V1)"] & H["LLM post-edit path (Phase 3)"]
     G --> I["Glossary + Style Enforcement"]
     H --> I
     I --> J["QA Validation<br>(text + markup + consistency)"]
@@ -77,7 +115,6 @@ Responsibilities:
 Recommended Go packages:
 - `archive/zip` + `encoding/xml` (stdlib) for EPUB packaging and OPF/container parsing.
 - `golang.org/x/net/html` for robust XHTML/HTML node parsing and traversal.
-- Optional: `github.com/beevik/etree` for XML-heavy transformation flows.
 
 Output artifact:
 - Ordered list of translation units with IDs:
@@ -85,19 +122,19 @@ Output artifact:
 
 ### 6.2 Segmentation and Normalization
 Responsibilities:
-- Split text into sentence-aware chunks, then merge to target token budget.
+- Split text into paragraph-level segments for V1.
 - Normalize whitespace/quotes for stable hashing.
 - Preserve placeholders for inline tags before translation.
 
 Design rules:
-- Target chunk size: ~80-350 words (configurable).
-- Attach limited context window (previous/next sentence) when needed.
+- Target chunk size: one XHTML paragraph-like node per segment in V1.
+- Sentence-aware chunking and context windows are Phase 2+.
 - Generate stable `segment_hash = sha256(normalized_source_text)`.
 
 ### 6.3 Translation Memory (TM) and Cache
 Responsibilities:
 - Reuse prior translations by exact hash match.
-- Support optional fuzzy match for near-duplicates.
+- Fuzzy match support is deferred to Phase 2+.
 
 Storage:
 - SQLite (V1) with optional PostgreSQL migration later.
@@ -111,21 +148,19 @@ Suggested tables:
 Responsibilities:
 - Route each segment to the cheapest acceptable path.
 
-Routing policy (default):
+Routing policy (V1 default):
 1. Exact TM hit -> reuse.
 2. Else local/cheap NMT translation.
-3. Evaluate confidence/quality heuristics.
-4. Escalate only flagged segments to LLM post-edit.
+3. Apply minimal glossary checks for locked proper nouns and QA checks.
 
-Escalation triggers examples:
-- Very long or nested dialogue.
-- Idiomatic phrases detected.
-- High named-entity density with glossary conflicts.
-- Heuristic low confidence from MT quality estimator.
+Phase 3 routing extension:
+- Evaluate confidence/quality heuristics.
+- Escalate only flagged segments to LLM post-edit.
 
 ### 6.5 LLM Post-Edit Service (Selective)
 Responsibilities:
 - Improve fluency and style while preserving meaning and placeholders.
+- Not active in V1.
 
 Prompt constraints:
 - Must preserve placeholder tokens exactly.
@@ -140,6 +175,7 @@ Operational guardrails:
 Responsibilities:
 - Enforce canonical translation for proper nouns/terms.
 - Apply consistent register (e.g., neutral modern literary French).
+- V1 scope: locked proper noun enforcement only (exact mappings).
 
 Implementation pattern:
 - Pre-translation: annotate terms/placeholders.
@@ -168,9 +204,11 @@ Responsibilities:
 2. System parses and segments content.
 3. TM/cache lookup resolves reusable segments.
 4. Router sends unresolved segments to local/cheap MT.
-5. Flagged subset goes to LLM post-edit.
-6. QA pipeline validates text and structure.
-7. System rebuilds EPUB and emits run report.
+5. QA pipeline validates text and structure.
+6. System rebuilds EPUB and emits run report.
+
+Phase 3 extension:
+- Flagged subset goes to LLM post-edit before QA.
 
 Run report fields:
 - Total segments
@@ -184,9 +222,11 @@ Run report fields:
 
 ### 8.1 Cost Levers
 - Increase TM hit rate over time (largest long-term savings).
-- Tune escalation threshold to limit LLM usage.
 - Keep chunk size small enough to avoid unnecessary context tokens.
 - Use batch API modes when available.
+
+Phase 3+:
+- Tune escalation threshold to limit LLM usage.
 
 ### 8.2 Budget Guardrails
 - Per-book budget cap (hard stop).
@@ -199,7 +239,9 @@ Run report fields:
 ### 9.1 V1 Local CLI (Recommended)
 - Go CLI for single-machine runs.
 - SQLite for TM.
-- Local model runtime (or low-cost API) plus optional LLM API key.
+- Default NMT provider: one HTTP adapter (`EPUB_TRANSLATOR_NMT_PROVIDER=http`) targeting `EPUB_TRANSLATOR_NMT_ENDPOINT`.
+- Optional LLM API key is ignored in V1 because LLM path is disabled by default.
+- Local container workflow supported via Docker image + `docker-compose` for reproducible host setup.
 
 Pros:
 - Low complexity, high privacy, fast iteration.
@@ -231,42 +273,7 @@ Pros:
 - Regression tests: chapter-level snapshots for consistency.
 - Cost tests: synthetic run to verify budget guardrails trigger correctly.
 
-## 13. Phased Implementation Plan
-
-### Phase 1: Core MVP
-- EPUB parser + segmenter
-- Local/cheap MT path
-- EPUB rebuild + validation
-- Basic CLI
-
-Exit criteria:
-- Produces valid translated EPUB end-to-end on sample novels.
-
-### Phase 2: Cost Optimization
-- TM/cache persistence
-- Glossary support
-- Run reporting
-
-Exit criteria:
-- Demonstrable cost reduction on repeated runs/books.
-
-### Phase 3: Quality Optimization
-- Selective LLM post-edit
-- Confidence-based routing
-- Advanced QA checks
-
-Exit criteria:
-- Improved quality with bounded cost increase.
-
-### Phase 4: Production Hardening
-- Worker queue
-- Observability dashboards
-- Failure recovery and resumable runs
-
-Exit criteria:
-- Stable multi-book throughput with predictable SLA and spend.
-
-## 14. Key Risks and Mitigations
+## 13. Key Risks and Mitigations
 - Risk: Broken EPUB formatting after translation.
   - Mitigation: placeholder tokenization + strict structural QA + epubcheck gate.
 - Risk: Cost spikes from over-escalation to LLM.
@@ -276,16 +283,87 @@ Exit criteria:
 - Risk: Low literary quality in nuanced passages.
   - Mitigation: selective LLM post-edit and optional human review workflow.
 
-## 15. Suggested Initial Tech Stack
+## 14. Suggested Initial Tech Stack
 - Language: Go
-- Parsing: `archive/zip`, `encoding/xml`, `golang.org/x/net/html`
-- Storage: SQLite (V1) via `modernc.org/sqlite` (pure Go) or `github.com/mattn/go-sqlite3` (CGO)
-- CLI: `cobra` (optional)
+- Parsing: `archive/zip`, `encoding/xml` (stdlib), `golang.org/x/net/html` (only external parser dependency)
+- Storage: SQLite (V1) via `modernc.org/sqlite` (pure Go, required external DB driver)
+- Configuration: `github.com/kelseyhightower/envconfig` (env -> typed struct with defaults)
+- CLI: stdlib `flag` in V1 (`cobra` only if command surface grows significantly)
+- Logging: `go.uber.org/zap` for structured logging (approved exception to stdlib-first policy)
+- Command runner: `just` with project `Justfile`
 - QA/validation: `epubcheck` integration
-- Optional local MT runtime: Marian/NLLB-compatible pipeline exposed via local service
+- Default NMT integration: HTTP endpoint adapter (local service or remote API)
 
-## 16. Definition of Done (Per Book Run)
+## 15. Definition of Done (Per Book Run)
 - Valid EPUB generated and opens in common readers.
 - No critical QA failures (tag loss, missing chapters, broken nav).
 - Cost report generated with segment-level accounting.
-- Glossary compliance above configured threshold.
+- Locked glossary term compliance = 100% (V1 hard requirement).
+- `epubcheck` exits successfully.
+- Placeholder restoration success rate >= 99.5%.
+- Untranslated-segment ratio <= 0.5% (excluding configured no-translate blocks).
+
+## 16. Data Schemas (V1)
+
+### 16.1 Translation Unit Schema
+```json
+{
+  "schema_version": 1,
+  "run_id": "20260307-123456",
+  "book_id": "book-slug",
+  "chapter_id": "ch_0001",
+  "segment_id": "ch_0001_p_0012",
+  "node_path": "/html/body/section[1]/p[12]",
+  "source_text": "Source paragraph text",
+  "normalized_source_text": "Source paragraph text",
+  "segment_hash": "sha256:...",
+  "placeholders": ["<x id=\"1\"/>"],
+  "translation_engine": "nmt-http",
+  "target_text": "Texte traduit",
+  "status": "translated"
+}
+```
+
+### 16.2 TM Table Schema
+```sql
+CREATE TABLE IF NOT EXISTS segments (
+  source_hash TEXT PRIMARY KEY,
+  source_text TEXT NOT NULL,
+  target_text TEXT NOT NULL,
+  source_lang TEXT NOT NULL,
+  target_lang TEXT NOT NULL,
+  engine TEXT NOT NULL,
+  quality_score REAL,
+  schema_version INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL
+);
+```
+
+### 16.3 Run Report Schema
+```json
+{
+  "schema_version": 1,
+  "run_id": "20260307-123456",
+  "book_id": "book-slug",
+  "started_at": "2026-03-07T12:34:56Z",
+  "ended_at": "2026-03-07T12:40:10Z",
+  "total_segments": 4210,
+  "tm_hits": 1388,
+  "tm_hit_ratio": 0.3297,
+  "nmt_segments": 2822,
+  "llm_segments": 0,
+  "estimated_cost_usd": 0.0,
+  "actual_cost_usd": 0.0,
+  "qa": {
+    "epubcheck_passed": true,
+    "placeholder_restore_ratio": 0.998,
+    "missing_spine_docs": 0,
+    "warnings": 3,
+    "errors": 0
+  }
+}
+```
+
+## 17. Planning Documents
+- Milestone delivery plans: `docs/milestones/`
+- RFCs (implementation details, infra options, and cost projections): `docs/rfcs/`
