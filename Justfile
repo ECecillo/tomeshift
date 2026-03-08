@@ -72,6 +72,21 @@ test:
     set +a
     go test ./...
 
+# Run all local fuzz tests across packages (not part of CI).
+fuzz fuzz_time="10s":
+    pkgs=$(go list ./...); \
+    ran=0; \
+    for pkg in $pkgs; do \
+      if go test "$pkg" -list '^Fuzz' | rg -q '^Fuzz'; then \
+        echo "fuzzing $pkg"; \
+        go test "$pkg" -run=^$ -fuzz=. -fuzztime={{fuzz_time}}; \
+        ran=1; \
+      fi; \
+    done; \
+    if [ $ran -eq 0 ]; then \
+      echo "no fuzz tests found"; \
+    fi
+
 # Full local validation.
 check: fmt lint test
 

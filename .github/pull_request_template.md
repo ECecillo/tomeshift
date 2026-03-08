@@ -10,6 +10,7 @@
 - [ ] `just fmt`
 - [ ] `just lint`
 - [ ] `just test`
+- [ ] `just fuzz <fuzz_time>` (runs all local fuzz tests; not required in CI)
 - [ ] `just check`
 
 # Risk and Rollback

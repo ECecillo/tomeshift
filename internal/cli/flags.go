@@ -1,0 +1,81 @@
+package cli
+
+import (
+	"flag"
+	"fmt"
+	"io"
+)
+
+type RunCommand struct {
+	// Input is the source EPUB path provided by --input, used by the run
+	// pipeline as the file to parse and translate.
+	Input string
+	// OutputDir is the path provided by --output-dir, used as the base
+	// location for run artifacts (translated EPUB and reports).
+	OutputDir string
+	// SourceLang is provided by --source-lang, used to enforce supported
+	// V1 language routing before translation starts.
+	SourceLang string
+	// TargetLang is provided by --target-lang, used to enforce supported
+	// V1 language routing before translation starts.
+	TargetLang string
+	// Glossary is an optional path from --glossary, used to load run-level
+	// term overrides when glossary checks are enabled.
+	Glossary string
+	// RunID is an optional override from --run-id, used to control artifact
+	// directory naming and run traceability.
+	RunID string
+	// Resume is set by --resume, used to request continuation from a prior
+	// run state instead of starting from scratch.
+	Resume bool
+}
+
+// ParseRunArgs parses and validates flags for `epub-translator run`, producing a
+// normalized RunCommand that downstream execution uses as the run contract.
+func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
+	fs := flag.NewFlagSet("run", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+
+	var cmd RunCommand
+	fs.StringVar(&cmd.Input, "input", "", "input EPUB file path (required)")
+	fs.StringVar(&cmd.OutputDir, "output-dir", "", "output directory path (required)")
+	fs.StringVar(&cmd.SourceLang, "source-lang", "", "source language code (required, V1=en)")
+	fs.StringVar(&cmd.TargetLang, "target-lang", "", "target language code (required, V1=fr)")
+	fs.StringVar(&cmd.Glossary, "glossary", "", "optional glossary file path")
+	fs.StringVar(&cmd.RunID, "run-id", "", "optional run ID override")
+	fs.BoolVar(&cmd.Resume, "resume", false, "resume a previous run")
+
+	if err := fs.Parse(args); err != nil {
+		return RunCommand{}, fmt.Errorf("unable to parse cli flags, err: %w", err)
+	}
+	if fs.NArg() > 0 {
+		return RunCommand{}, fmt.Errorf("unable to parse cli flags: positional args %v, err: %w", fs.Args(), ErrUnexpectedPositionalArgs)
+	}
+	if cmd.Input == "" {
+		return RunCommand{}, ErrInputRequired
+	}
+	if cmd.OutputDir == "" {
+		return RunCommand{}, ErrOutputDirRequired
+	}
+	if cmd.SourceLang == "" {
+		return RunCommand{}, ErrSourceLangRequired
+	}
+	if cmd.TargetLang == "" {
+		return RunCommand{}, ErrTargetLangRequired
+	}
+	if cmd.SourceLang != "en" {
+		return RunCommand{}, fmt.Errorf("unable to validate run args: source-lang %q is not supported in V1, err: %w", cmd.SourceLang, ErrUnsupportedSourceLang)
+	}
+	if cmd.TargetLang != "fr" {
+		return RunCommand{}, fmt.Errorf("unable to validate run args: target-lang %q is not supported in V1, err: %w", cmd.TargetLang, ErrUnsupportedTargetLang)
+	}
+
+	return cmd, nil
+}
+
+// PrintRootUsage writes root help text to guide users toward the supported V1
+// command surface and required run flags.
+func PrintRootUsage(w io.Writer) {
+	_, _ = fmt.Fprintln(w, "Usage:")
+	_, _ = fmt.Fprintln(w, "  epub-translator run --input <file.epub> --output-dir <dir> --source-lang en --target-lang fr [--glossary <file>] [--run-id <id>] [--resume]")
+}

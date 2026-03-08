@@ -63,6 +63,7 @@ just down
 ## Test
 ```bash
 just test
+just fuzz
 ```
 
 ## Code Validation
@@ -70,9 +71,12 @@ just test
 just preflight
 just fmt
 just lint
+just fuzz
 just ci-local
 just check
 ```
+
+`just fuzz` runs all local fuzz tests across packages and is intentionally not included in CI to keep pipeline runtime predictable.
 
 ## CI and PR Workflow
 - GitHub Actions workflow: `.github/workflows/ci.yml`
