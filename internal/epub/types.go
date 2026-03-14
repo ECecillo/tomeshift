@@ -16,8 +16,19 @@ type Book struct {
 	Resources map[string][]byte         // Non-XHTML files
 }
 
-type (
-	Manifest      struct{}
-	SpineItem     struct{}
-	XHTMLDocument struct{}
-)
+type Manifest struct {
+	Items map[string]ManifestItem
+}
+
+type ManifestItem struct {
+	ID         string
+	Href       string
+	MediaType  string
+	Properties []string
+}
+
+type SpineItem struct {
+	IDRef string
+}
+
+type XHTMLDocument struct{}
