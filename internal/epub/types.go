@@ -1,7 +1,5 @@
 package epub
 
-import "context"
-
 type RawEPUB struct {
 	Mimetype   []byte
 	Container  []byte // META-INF/container.xml
@@ -22,11 +20,4 @@ type (
 	Manifest      struct{}
 	SpineItem     struct{}
 	XHTMLDocument struct{}
-	ZipExtractor  struct{}
 )
-
-func (z ZipExtractor) Extract(ctx context.Context, path string) (*RawEPUB, error) {
-	return nil, nil
-}
-
-var _ Extractor = new(ZipExtractor)
