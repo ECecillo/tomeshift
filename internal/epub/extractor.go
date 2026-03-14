@@ -18,7 +18,9 @@ func (z ZipExtractor) Extract(_ context.Context, path string) (*RawEPUB, error) 
 	if err != nil {
 		return nil, fmt.Errorf("unable to open epub archive %q, err: %w", path, ErrInvalidZipFile)
 	}
-	defer r.Close()
+	defer func() {
+		_ = r.Close()
+	}()
 
 	rawEPUB := &RawEPUB{
 		Files: make(map[string][]byte, len(r.File)),
