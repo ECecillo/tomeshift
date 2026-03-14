@@ -119,8 +119,11 @@ func TestEpubExtraction(t *testing.T) {
 			require.NoError(t, err)
 			require.NotNil(t, content, "content should not be nil for a valid epub")
 			require.Equal(t, string(content.Mimetype), validEPUBEntries["mimetype"], "mimetype does not match expected output")
+			require.Equal(t, []byte(validEPUBEntries["META-INF/container.xml"]), content.Container, "container.xml bytes do not match expected output")
 			require.Contains(t, content.Files, "META-INF/container.xml", "container.xml should be present in extracted files")
 			require.Contains(t, content.Files, "OEBPS/content.opf", "content.opf should be present in extracted files")
+			require.Equal(t, []byte(validEPUBEntries["META-INF/container.xml"]), content.Files["META-INF/container.xml"], "container.xml file bytes do not match expected output")
+			require.Equal(t, []byte(validEPUBEntries["OEBPS/content.opf"]), content.Files["OEBPS/content.opf"], "content.opf file bytes do not match expected output")
 		})
 	}
 }
@@ -142,18 +145,27 @@ func writeTestEPUB(t *testing.T, entries map[string]string) string {
 
 	zipWriter := zip.NewWriter(file)
 
+	mimetype, ok := entries["mimetype"]
+	if ok {
+		header := &zip.FileHeader{
+			Name:   "mimetype",
+			Method: zip.Store,
+		}
+		writer, createErr := zipWriter.CreateHeader(header)
+		require.NoError(t, createErr)
+
+		_, writeErr := writer.Write([]byte(mimetype))
+		require.NoError(t, writeErr)
+	}
+
 	for name, content := range entries {
+		if name == "mimetype" {
+			continue
+		}
+
 		var writer io.Writer
 
-		if name == "mimetype" {
-			header := &zip.FileHeader{
-				Name:   name,
-				Method: zip.Store,
-			}
-			writer, err = zipWriter.CreateHeader(header)
-		} else {
-			writer, err = zipWriter.Create(name)
-		}
+		writer, err = zipWriter.Create(name)
 		require.NoError(t, err)
 
 		_, err = writer.Write([]byte(content))
