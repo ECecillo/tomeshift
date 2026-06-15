@@ -1,0 +1,21 @@
+# syntax=docker/dockerfile:1
+# Local-only NMT dev server (dictionary EN→FR). Not a production engine; in
+# production point EPUB_TRANSLATOR_NMT_ENDPOINT at a real engine instead.
+
+FROM golang:1.26-alpine AS builder
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/nmt-devserver ./cmd/nmt-devserver
+
+FROM alpine:3.21
+RUN adduser -D -u 10002 nmtuser
+WORKDIR /app
+COPY --from=builder /out/nmt-devserver /usr/local/bin/nmt-devserver
+USER nmtuser
+EXPOSE 8081
+
+ENTRYPOINT ["/usr/local/bin/nmt-devserver"]
