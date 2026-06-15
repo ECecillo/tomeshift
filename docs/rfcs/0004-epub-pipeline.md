@@ -361,3 +361,4 @@ See `docs/implementation/epub-pipeline.md` for the detailed TDD-driven implement
 ## Decision Log
 
 - 2026-03-08: Status set to `proposed` (initial proposal).
+- 2026-06-14: Option B implemented across `internal/{epub,segment,tm,translate,qa,glossary,pipeline}` and wired into the `run` command with integration tests on 3 fixtures. Recomposer signature evolved to `Recompose(ctx, raw *RawEPUB, book *Book, outputPath)` so it has both the original archive bytes and the mutated content docs. Placeholder strategy: inline child elements are opaque `<x id="N"/>` tokens (deterministic restoration, guaranteed valid markup). Open question resolved: placeholder IDs are per-segment.

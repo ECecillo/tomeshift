@@ -182,3 +182,13 @@ Before committing:
 - Architecture and constraints: `docs/ARCHITECTURE.md`
 - Milestone execution plan: `docs/milestones/M1-core-mvp.md`
 - Dependency policy: `docs/DEPENDENCIES.md`
+
+# Dev Journal
+
+At the end of every development session, update `docs/journal.html` with a new `<div class="session">` entry containing:
+- Date and session title
+- What was done (done items)
+- What remains to do (todo items)
+- The immediate next step
+
+The journal is the source of truth for resuming work across sessions. Do not duplicate milestone details already in `docs/milestones/` — the journal adds the temporal dimension (when, in what order).

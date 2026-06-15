@@ -1,6 +1,6 @@
 # M1 - Core MVP
 
-- Status: `planned`
+- Status: `done` (real end-to-end run validated by epubcheck v5.1.0: 0 errors / 0 warnings, 2026-06-15)
 - Target window: End of march 2026
 - Owner: ECecillo
 

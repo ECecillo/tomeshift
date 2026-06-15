@@ -23,6 +23,65 @@ just preflight
 just run ./books/source.epub ./runs
 ```
 
+### Self-hosted local NMT (no external service)
+The default `EPUB_TRANSLATOR_NMT_ENDPOINT` points at a bundled local NMT dev
+server so the pipeline runs end-to-end with no external dependency. Start it in
+another terminal:
+```bash
+just nmt-dev        # serves the dev NMT on :8081 (dictionary EN→FR)
+```
+This dev server is for local development only — it does dictionary-based,
+word-level substitution and preserves placeholder tokens. With Docker, `just up`
+starts the `nmt` service and the `app` together automatically.
+
+### Quality estimation with COMET-QE (self-hosted)
+The pipeline can score each NMT draft (reference-free) and escalate only the
+weakest segments to the LLM. It expects a COMET scoring service with this
+contract:
+```
+POST <COMET_ENDPOINT>
+  { "samples": [ {"src": "...", "mt": "...", "ref": "..."} ] }   # ref optional (QE)
+→ { "scores": [0.83, ...] }
+```
+A minimal CometKiwi (reference-free) service:
+```python
+# pip install "unbabel-comet>=2.2" fastapi uvicorn
+from comet import download_model, load_from_checkpoint
+from fastapi import FastAPI
+model = load_from_checkpoint(download_model("Unbabel/wmt22-cometkiwi-da"))
+app = FastAPI()
+@app.post("/score")
+async def score(body: dict):
+    data = [{"src": s["src"], "mt": s["mt"]} for s in body["samples"]]
+    out = model.predict(data, batch_size=8, gpus=0)
+    return {"scores": out.scores}
+```
+Enable it:
+```bash
+EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score
+EPUB_TRANSLATOR_ESCALATE_BELOW_SCORE=0.80   # escalate drafts scoring below this
+```
+The per-book average score lands in `report.json` (`avg_quality_score`) and
+`metrics.json` (`translation_quality_score`).
+
+### Real translations with LibreTranslate (self-hosted)
+For actual EN→FR translation, run a real local engine. LibreTranslate is the
+simplest to self-host:
+```bash
+# Docker (first start downloads the en→fr model):
+docker compose --profile real-nmt up libretranslate
+# or standalone:
+docker run -ti -p 5000:5000 libretranslate/libretranslate --load-only en,fr
+```
+Then point the app at it:
+```bash
+EPUB_TRANSLATOR_NMT_PROVIDER=libretranslate
+EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:5000/translate
+```
+The adapter sends `format=html`, so inline placeholder tokens survive
+translation. Heavier engines (OPUS-MT, NLLB-200) can be used behind the same
+`libretranslate`-compatible contract or by adding a small adapter.
+
 ## Docker Local Run
 Prepare local folders and input file:
 ```bash
