@@ -29,6 +29,10 @@ run input output_dir:
       --source-lang en \
       --target-lang fr
 
+# Run the self-hosted local NMT dev server (dictionary EN→FR) in the foreground.
+nmt-dev:
+    go run ./cmd/nmt-devserver
+
 # Build app container image.
 docker-build:
     docker build -t epub-translator:local .

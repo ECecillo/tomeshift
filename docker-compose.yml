@@ -1,4 +1,38 @@
 services:
+  # Local-only self-hosted NMT. Lets the full pipeline run end-to-end with no
+  # external translation service. Swap for a real engine in production by
+  # pointing EPUB_TRANSLATOR_NMT_ENDPOINT elsewhere.
+  nmt:
+    build:
+      context: .
+      dockerfile: Dockerfile.nmt
+    image: epub-translator-nmt:local
+    environment:
+      - NMT_DEVSERVER_ADDR=:8081
+    expose:
+      - "8081"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
+
+  # Real self-hosted NMT (LibreTranslate / Argos, EN→FR). Enable with the
+  # "real-nmt" profile: `docker compose --profile real-nmt up`. First start
+  # downloads the en→fr model. Point the app at it via NMT_PROVIDER=libretranslate.
+  libretranslate:
+    image: libretranslate/libretranslate:latest
+    profiles: ["real-nmt"]
+    environment:
+      - LT_LOAD_ONLY=en,fr
+    expose:
+      - "5000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5000/languages"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
   app:
     build:
       context: .
@@ -6,6 +40,16 @@ services:
     image: epub-translator:local
     env_file:
       - .env.local
+    environment:
+      # Override the endpoint to the in-network dev NMT so `just up` is
+      # self-contained regardless of .env.local. For real translations, switch
+      # to the libretranslate service (see README) by setting:
+      #   EPUB_TRANSLATOR_NMT_PROVIDER=libretranslate
+      #   EPUB_TRANSLATOR_NMT_ENDPOINT=http://libretranslate:5000/translate
+      - EPUB_TRANSLATOR_NMT_ENDPOINT=http://nmt:8081/translate
+    depends_on:
+      nmt:
+        condition: service_healthy
     volumes:
       - ./runs:/app/runs
       - ./books:/app/books
