@@ -13,4 +13,8 @@ const (
 	QAFailed = 5
 	// RebuildValidationFailed indicates EPUB rebuild/validation failure.
 	RebuildValidationFailed = 6
+	// BudgetExceeded indicates the run was aborted by a budget guardrail.
+	BudgetExceeded = 7
+	// Aborted indicates the run was interrupted (signal) or timed out.
+	Aborted = 8
 )

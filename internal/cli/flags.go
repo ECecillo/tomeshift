@@ -78,4 +78,8 @@ func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 func PrintRootUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage:")
 	_, _ = fmt.Fprintln(w, "  epub-translator run --input <file.epub> --output-dir <dir> --source-lang en --target-lang fr [--glossary <file>] [--run-id <id>] [--resume]")
+	_, _ = fmt.Fprintln(w, "  epub-translator estimate --input <file.epub> [--escalation-rate 0.15]")
+	_, _ = fmt.Fprintln(w, "  epub-translator batch --input-dir <dir> --output-dir <dir> [--glossary <file>]")
+	_, _ = fmt.Fprintln(w, "  epub-translator eval --candidate <out.epub> --reference <human-fr.epub>")
+	_, _ = fmt.Fprintln(w, "  epub-translator glossary-suggest --input <file.epub> [--min-count 3] [--out glossary.json]")
 }
