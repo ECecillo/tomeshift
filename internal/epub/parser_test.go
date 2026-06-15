@@ -31,9 +31,10 @@ func TestOPFParser_Parse(t *testing.T) {
 					Manifest: Manifest{
 						Items: map[string]ManifestItem{
 							"chap1": {
-								ID:        "chap1",
-								Href:      "chapter1.xhtml",
-								MediaType: "application/xhtml+xml",
+								ID:         "chap1",
+								Href:       "chapter1.xhtml",
+								MediaType:  "application/xhtml+xml",
+								Properties: []string{},
 							},
 						},
 					},
@@ -136,6 +137,7 @@ func TestOPFParser_Parse(t *testing.T) {
 			require.Equal(t, tt.expected.book.Path, book.Path)
 			require.Equal(t, tt.expected.book.Manifest.Items, book.Manifest.Items)
 			require.Equal(t, tt.expected.spine, book.Spine)
+			require.NotNil(t, book.Contents)
 		})
 	}
 }

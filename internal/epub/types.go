@@ -1,5 +1,7 @@
 package epub
 
+import "golang.org/x/net/html"
+
 type RawEPUB struct {
 	Mimetype   []byte
 	Container  []byte // META-INF/container.xml
@@ -31,4 +33,20 @@ type SpineItem struct {
 	IDRef string
 }
 
-type XHTMLDocument struct{}
+// XHTMLDocument holds a parsed spine document. Root is the live html.Node tree
+// used for both content extraction and recomposition: mutating a ContentNode's
+// Node and re-rendering Root yields the translated document.
+type XHTMLDocument struct {
+	Raw   []byte
+	Root  *html.Node
+	Nodes []*ContentNode
+}
+
+// ContentNode is a translatable element extracted from an XHTML document. Node
+// points into the document's live tree so translated text can be written back
+// in place before recomposition.
+type ContentNode struct {
+	NodePath string     // XPath-like stable path, e.g. "/html[1]/body[1]/p[2]"
+	Text     string     // Inner text content, whitespace-trimmed
+	Node     *html.Node // Reference into XHTMLDocument.Root for recomposition
+}
