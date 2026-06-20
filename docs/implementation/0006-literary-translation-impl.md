@@ -324,8 +324,11 @@ needed (Anthropic / OpenAI / DeepSeek) and the `estimate` dry-run first.
 **DoD/Commit:** `feat(cli): provider bake-off harness` + `docs: bake-off + accounts`.
 
 **Reviewer checklist:** no real API in CI; bake-off is opt-in and budget-gated;
-README states which account each provider needs and the free-tier note for
-DeepSeek; `estimate` runnable before any spend.
+README states which account each provider needs (verify current pricing/free
+credits on each provider's own page — do not assert a free tier from secondary
+sources); `estimate` runnable before any spend. **Primary/default provider:
+Anthropic** (the account we have credit on); OpenAI/DeepSeek are optional
+bake-off comparators added only if the user opens those accounts.
 
 ---
 
