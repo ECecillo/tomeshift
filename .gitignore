@@ -1,1 +1,16 @@
+# Local environment overrides
 /.env.local
+
+# Input books (may be copyrighted; never commit)
+/books/
+
+# Runtime artifacts and local data
+/runs/
+/data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+
+# Built binaries
+/epub-translator
+/nmt-devserver
