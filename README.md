@@ -23,6 +23,29 @@ just preflight
 just run ./books/source.epub ./runs
 ```
 
+### Literary mode with a series bible
+Seed or refresh the series bible first:
+```bash
+epub-translator style-profile --input ./books/volume-01.epub --series my-series --samples 3
+```
+
+Then run the sequential literary pipeline:
+```bash
+epub-translator run \
+  --input ./books/volume-01.epub \
+  --output-dir ./runs \
+  --source-lang en \
+  --target-lang fr \
+  --mode literary \
+  --series my-series
+```
+
+Literary mode still uses NMT/translation memory for drafts, then calls the
+configured chat model with the persisted bible, glossary, and adjacent chapter
+context. Configure `EPUB_TRANSLATOR_NARRATIVE_PATH`,
+`EPUB_TRANSLATOR_LLM_CHAT_PROVIDER`, `EPUB_TRANSLATOR_LLM_BASE_URL`,
+`EPUB_TRANSLATOR_LLM_MODEL`, and `EPUB_TRANSLATOR_LLM_API_KEY`.
+
 ### Self-hosted local NMT (no external service)
 The default `EPUB_TRANSLATOR_NMT_ENDPOINT` points at a bundled local NMT dev
 server so the pipeline runs end-to-end with no external dependency. Start it in
