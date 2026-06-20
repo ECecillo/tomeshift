@@ -21,3 +21,4 @@ RFCs are proposal documents used to discuss options and implementation details b
 - [0003 - LLM Escalation Strategy](./0003-llm-escalation-strategy.md)
 - [0004 - EPUB Parse/Segment/Recompose Pipeline](./0004-epub-pipeline.md)
 - [0005 - TM Storage Evolution (SQLite → PostgreSQL) and Fuzzy TM Spike](./0005-tm-storage-evolution.md)
+- [0006 - Faithful Multi-Volume Literary Translation via Persistent Narrative Memory](./0006-faithful-multivolume-translation.md)
