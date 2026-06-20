@@ -35,7 +35,27 @@ func TestParseRunArgs(t *testing.T) {
 				TargetLang: "fr",
 				Glossary:   "glossary.csv",
 				RunID:      "run-001",
+				Mode:       "nmt",
 				Resume:     true,
+			},
+		},
+		{
+			name: "literary mode",
+			args: []string{
+				"--input", "book.epub",
+				"--output-dir", "./runs",
+				"--source-lang", "en",
+				"--target-lang", "fr",
+				"--mode", "literary",
+				"--series", "series-a",
+			},
+			want: RunCommand{
+				Input:      "book.epub",
+				OutputDir:  "./runs",
+				SourceLang: "en",
+				TargetLang: "fr",
+				Mode:       "literary",
+				Series:     "series-a",
 			},
 		},
 		{
@@ -80,6 +100,17 @@ func TestParseRunArgs(t *testing.T) {
 			args:            []string{"--input", "book.epub", "--output-dir", "./runs", "--source-lang", "en", "--target-lang", "de"},
 			wantErr:         ErrUnsupportedTargetLang,
 			wantErrContains: "unable to validate run args",
+		},
+		{
+			name:            "unsupported mode",
+			args:            []string{"--input", "book.epub", "--output-dir", "./runs", "--source-lang", "en", "--target-lang", "fr", "--mode", "fast"},
+			wantErr:         ErrUnsupportedMode,
+			wantErrContains: "unable to validate run args",
+		},
+		{
+			name:    "literary missing series",
+			args:    []string{"--input", "book.epub", "--output-dir", "./runs", "--source-lang", "en", "--target-lang", "fr", "--mode", "literary"},
+			wantErr: ErrSeriesRequired,
 		},
 	}
 

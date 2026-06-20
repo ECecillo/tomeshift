@@ -6,6 +6,11 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/qa"
 )
 
+const (
+	ModeNMT      = "nmt"
+	ModeLiterary = "literary"
+)
+
 // RunConfig is the input contract for a single translation run.
 type RunConfig struct {
 	InputPath  string
@@ -14,6 +19,8 @@ type RunConfig struct {
 	TargetLang string
 	RunID      string
 	BookID     string
+	Mode       string
+	SeriesID   string
 	// Resume requests continuation using the persistent TM cache; already
 	// translated segments become TM hits rather than new provider calls.
 	Resume bool
@@ -24,6 +31,9 @@ type RunResult struct {
 	SchemaVersion         int       `json:"schema_version"`
 	RunID                 string    `json:"run_id"`
 	BookID                string    `json:"book_id"`
+	Mode                  string    `json:"mode"`
+	SeriesID              string    `json:"series_id,omitempty"`
+	BibleVersion          int       `json:"bible_version,omitempty"`
 	StartedAt             time.Time `json:"started_at"`
 	EndedAt               time.Time `json:"ended_at"`
 	TotalSegments         int       `json:"total_segments"`

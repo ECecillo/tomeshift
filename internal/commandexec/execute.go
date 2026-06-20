@@ -20,6 +20,7 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/eval"
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 	"github.com/ECecillo/ebooks-translator/internal/glossary"
+	"github.com/ECecillo/ebooks-translator/internal/literary"
 	"github.com/ECecillo/ebooks-translator/internal/llm"
 	"github.com/ECecillo/ebooks-translator/internal/narrative"
 	"github.com/ECecillo/ebooks-translator/internal/pipeline"
@@ -230,6 +231,26 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg RuntimeConfig
 		postEditor = llm.NewHTTPPostEditor(cfg.LLMEndpoint, cfg.LLMAPIKey)
 	}
 
+	var narrativeStore narrative.Store
+	var narrativeProfiler *narrative.Profiler
+	var literaryTranslator *literary.Translator
+	if cmd.Mode == pipeline.ModeLiterary {
+		narrativeStore, err = narrative.NewSQLiteStore(runtimeNarrativePath(cfg))
+		if err != nil {
+			writef(stderr, "unable to open narrative store: %v\n", err)
+			return exitcode.InvalidInputConfig
+		}
+		defer func() { _ = narrativeStore.Close() }()
+
+		chatClient := llm.NewChatClient(cfg.LLMChatProvider, cfg.LLMBaseURL, cfg.LLMAPIKey)
+		narrativeProfiler = &narrative.Profiler{Chat: chatClient, Model: cfg.LLMModel}
+		literaryTranslator = &literary.Translator{
+			Chat:     chatClient,
+			Model:    cfg.LLMModel,
+			Glossary: gloss,
+		}
+	}
+
 	orch := &pipeline.Orchestrator{
 		Extractor:          epub.ZipExtractor{},
 		Parser:             epub.OPFParser{},
@@ -240,6 +261,9 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg RuntimeConfig
 		EPUBCheck:          qa.EPUBChecker{Binary: cfg.EPUBCheckBin, JarPath: cfg.EPUBCheckJar},
 		Glossary:           gloss,
 		PostEditor:         postEditor,
+		LiteraryTranslator: literaryTranslator,
+		NarrativeStore:     narrativeStore,
+		NarrativeProfiler:  narrativeProfiler,
 		EscalateMinChars:   cfg.LLMEscalateMinChars,
 		QualityEstimator:   cfg.qualityEstimator(),
 		EscalateBelowScore: cfg.EscalateBelowScore,
@@ -266,6 +290,8 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg RuntimeConfig
 		TargetLang: cmd.TargetLang,
 		RunID:      runID,
 		BookID:     bookIDFromPath(cmd.Input),
+		Mode:       cmd.Mode,
+		SeriesID:   cmd.Series,
 		Resume:     cmd.Resume,
 	})
 	if err != nil {
@@ -526,12 +552,7 @@ func runEval(stdout, stderr io.Writer, cmd cli.EvalCommand) int {
 
 // runStyleProfile seeds or refreshes a series bible from an EPUB sample set.
 func runStyleProfile(stdout, stderr io.Writer, cmd cli.StyleProfileCommand, cfg RuntimeConfig) int {
-	path := cfg.NarrativePath
-	if path == "" {
-		path = "./narrative.sqlite"
-	}
-
-	store, err := narrative.NewSQLiteStore(path)
+	store, err := narrative.NewSQLiteStore(runtimeNarrativePath(cfg))
 	if err != nil {
 		writef(stderr, "unable to open narrative store: %v\n", err)
 		return exitcode.InvalidInputConfig
@@ -578,6 +599,13 @@ func runStyleProfile(stdout, stderr io.Writer, cmd cli.StyleProfileCommand, cfg 
 	writef(stdout, "style-profile %s saved: version %d, %d samples, %d characters, %d address rules\n",
 		cmd.Series, saved.Version, len(samples), len(saved.Characters), len(saved.Address))
 	return exitcode.Success
+}
+
+func runtimeNarrativePath(cfg RuntimeConfig) string {
+	if cfg.NarrativePath == "" {
+		return "./narrative.sqlite"
+	}
+	return cfg.NarrativePath
 }
 
 // runSuggest scans an EPUB for recurring proper-noun candidates and prints them

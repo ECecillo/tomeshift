@@ -25,6 +25,10 @@ type RunCommand struct {
 	// RunID is an optional override from --run-id, used to control artifact
 	// directory naming and run traceability.
 	RunID string
+	// Mode selects the translation pipeline mode: nmt (default) or literary.
+	Mode string
+	// Series identifies the narrative bible for literary mode.
+	Series string
 	// Resume is set by --resume, used to request continuation from a prior
 	// run state instead of starting from scratch.
 	Resume bool
@@ -43,6 +47,8 @@ func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 	fs.StringVar(&cmd.TargetLang, "target-lang", "", "target language code (required, V1=fr)")
 	fs.StringVar(&cmd.Glossary, "glossary", "", "optional glossary file path")
 	fs.StringVar(&cmd.RunID, "run-id", "", "optional run ID override")
+	fs.StringVar(&cmd.Mode, "mode", "nmt", "translation mode: nmt or literary")
+	fs.StringVar(&cmd.Series, "series", "", "series identifier for literary mode")
 	fs.BoolVar(&cmd.Resume, "resume", false, "resume a previous run")
 
 	if err := fs.Parse(args); err != nil {
@@ -69,6 +75,15 @@ func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 	if cmd.TargetLang != "fr" {
 		return RunCommand{}, fmt.Errorf("unable to validate run args: target-lang %q is not supported in V1, err: %w", cmd.TargetLang, ErrUnsupportedTargetLang)
 	}
+	if cmd.Mode == "" {
+		cmd.Mode = "nmt"
+	}
+	if cmd.Mode != "nmt" && cmd.Mode != "literary" {
+		return RunCommand{}, fmt.Errorf("unable to validate run args: mode %q is not supported, err: %w", cmd.Mode, ErrUnsupportedMode)
+	}
+	if cmd.Mode == "literary" && cmd.Series == "" {
+		return RunCommand{}, ErrSeriesRequired
+	}
 
 	return cmd, nil
 }
@@ -77,7 +92,7 @@ func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 // command surface and required run flags.
 func PrintRootUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage:")
-	_, _ = fmt.Fprintln(w, "  epub-translator run --input <file.epub> --output-dir <dir> --source-lang en --target-lang fr [--glossary <file>] [--run-id <id>] [--resume]")
+	_, _ = fmt.Fprintln(w, "  epub-translator run --input <file.epub> --output-dir <dir> --source-lang en --target-lang fr [--mode nmt|literary] [--series <id>] [--glossary <file>] [--run-id <id>] [--resume]")
 	_, _ = fmt.Fprintln(w, "  epub-translator estimate --input <file.epub> [--escalation-rate 0.15]")
 	_, _ = fmt.Fprintln(w, "  epub-translator batch --input-dir <dir> --output-dir <dir> [--glossary <file>]")
 	_, _ = fmt.Fprintln(w, "  epub-translator eval --candidate <out.epub> --reference <human-fr.epub>")

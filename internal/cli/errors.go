@@ -10,6 +10,7 @@ var (
 	ErrTargetLangRequired       = errors.New("--target-lang is required")
 	ErrUnsupportedSourceLang    = errors.New("unsupported --source-lang")
 	ErrUnsupportedTargetLang    = errors.New("unsupported --target-lang")
+	ErrUnsupportedMode          = errors.New("unsupported --mode")
 	ErrEscalationRateRange      = errors.New("--escalation-rate must be between 0 and 1")
 	ErrInputDirRequired         = errors.New("--input-dir is required")
 	ErrCandidateRequired        = errors.New("--candidate is required")
