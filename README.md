@@ -188,6 +188,7 @@ just check
 - CI runs format check, lint, and tests automatically once `go.mod` exists.
 
 ## Notes
+- **End-to-end translation guide (FR): [`docs/guide-traduction.md`](docs/guide-traduction.md)** — setup, LLM providers, literary mode, series bible, cost, eval.
 - Runtime config is env-only via `github.com/kelseyhightower/envconfig`.
 - `Justfile` recipes source `.env.local` before running commands.
 - Architecture decisions live in `docs/ARCHITECTURE.md`.
