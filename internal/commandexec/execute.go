@@ -68,6 +68,7 @@ type RuntimeConfig struct {
 	LLMChatProvider      string
 	LLMBaseURL           string
 	LLMModel             string
+	LLMCachePath         string
 	LLMEscalateMinChars  int
 	CostLLMPerSegmentUSD float64
 	// LLM token pricing for the `estimate` cost projection.
@@ -101,6 +102,18 @@ func (c RuntimeConfig) qualityEstimator() pipeline.QualityEstimator {
 		return nil
 	}
 	return eval.NewCometClient(c.CometEndpoint, c.CometAPIKey)
+}
+
+// newCachedChatClient builds the configured chat client wrapped in the SQLite
+// LLM cache, so re-running over the same chapter reuses prior completions at no
+// provider cost. The caller must invoke the returned closer.
+func (c RuntimeConfig) newCachedChatClient() (llm.ChatClient, func() error, error) {
+	inner := llm.NewChatClient(c.LLMChatProvider, c.LLMBaseURL, c.LLMAPIKey)
+	cache, err := llm.NewSQLiteCache(c.LLMCachePath)
+	if err != nil {
+		return nil, nil, fmt.Errorf("unable to open llm cache, err: %w", err)
+	}
+	return &llm.CachedChatClient{Inner: inner, Cache: cache}, cache.Close, nil
 }
 
 // ConfigLoader loads runtime configuration for command execution. It is
@@ -242,10 +255,16 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg RuntimeConfig
 		}
 		defer func() { _ = narrativeStore.Close() }()
 
-		chatClient := llm.NewChatClient(cfg.LLMChatProvider, cfg.LLMBaseURL, cfg.LLMAPIKey)
-		narrativeProfiler = &narrative.Profiler{Chat: chatClient, Model: cfg.LLMModel}
+		cachedChatClient, closeCache, err := cfg.newCachedChatClient()
+		if err != nil {
+			writef(stderr, "%v\n", err)
+			return exitcode.InvalidInputConfig
+		}
+		defer func() { _ = closeCache() }()
+
+		narrativeProfiler = &narrative.Profiler{Chat: cachedChatClient, Model: cfg.LLMModel}
 		literaryTranslator = &literary.Translator{
-			Chat:     chatClient,
+			Chat:     cachedChatClient,
 			Model:    cfg.LLMModel,
 			Glossary: gloss,
 		}
@@ -570,8 +589,15 @@ func runStyleProfile(stdout, stderr io.Writer, cmd cli.StyleProfileCommand, cfg 
 		return exitCodeForError(err)
 	}
 
+	cachedChatClient, closeCache, err := cfg.newCachedChatClient()
+	if err != nil {
+		writef(stderr, "%v\n", err)
+		return exitcode.InvalidInputConfig
+	}
+	defer func() { _ = closeCache() }()
+
 	profiler := narrative.Profiler{
-		Chat:  llm.NewChatClient(cfg.LLMChatProvider, cfg.LLMBaseURL, cfg.LLMAPIKey),
+		Chat:  cachedChatClient,
 		Model: cfg.LLMModel,
 	}
 	bible, err := profiler.Seed(ctx, samples)

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const defaultHTTPTimeout = 60 * time.Second
+const defaultHTTPTimeout = 5 * time.Minute
 
 // placeholderPattern matches both inline (<x id="N"/>) and glossary (<g id="N"/>)
 // tokens, which a post-edit must preserve exactly.

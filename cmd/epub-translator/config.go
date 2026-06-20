@@ -14,7 +14,7 @@ type Config struct {
 	RunOutputDir         string  `split_words:"true" default:"./runs"`
 	NMTProvider          string  `split_words:"true" default:"http"`
 	NMTEndpoint          string  `split_words:"true" required:"true"`
-	NMTAPIKey            string  `split_words:"true"`
+	NMTAPIKey            string  `envconfig:"NMT_API_KEY"`
 	TMPath               string  `split_words:"true" default:"./tm.sqlite"`
 	NarrativePath        string  `split_words:"true" default:"./narrative.sqlite"`
 	NMTMaxAttempts       int     `split_words:"true" default:"3"`
@@ -25,14 +25,15 @@ type Config struct {
 	LLMEnabled           bool    `split_words:"true" default:"false"`
 	LLMProvider          string  `split_words:"true"`
 	LLMEndpoint          string  `split_words:"true"`
-	LLMAPIKey            string  `split_words:"true"`
+	LLMAPIKey            string  `envconfig:"LLM_API_KEY"`
 	LLMChatProvider      string  `split_words:"true" default:"openai"`
 	LLMBaseURL           string  `envconfig:"LLM_BASE_URL"`
 	LLMModel             string  `split_words:"true"`
+	LLMCachePath         string  `split_words:"true" default:"./llm_cache.sqlite"`
 	LLMEscalateMinChars  int     `split_words:"true" default:"240"`
 	CostLLMPerSegmentUSD float64 `envconfig:"COST_LLM_PER_SEGMENT_USD" default:"0"`
 	CometEndpoint        string  `split_words:"true"`
-	CometAPIKey          string  `split_words:"true"`
+	CometAPIKey          string  `envconfig:"COMET_API_KEY"`
 	EscalateBelowScore   float64 `split_words:"true" default:"0"`
 	DailyBudgetUSD       float64 `split_words:"true" default:"5.00"`
 	MonthlyBudgetUSD     float64 `split_words:"true" default:"50.00"`

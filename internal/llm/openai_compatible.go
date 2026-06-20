@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"time"
 )
 
 // Chat provider identifiers accepted by NewChatClient.
@@ -87,7 +86,7 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, req ChatRequest) (Cha
 
 	client := c.Client
 	if client == nil {
-		client = &http.Client{Timeout: 60 * time.Second}
+		client = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 
 	resp, err := client.Do(httpReq)

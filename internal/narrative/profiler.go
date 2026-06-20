@@ -96,6 +96,12 @@ func (p Profiler) maxTokens() int {
 }
 
 func decodeBible(raw string) (Bible, error) {
+	first := strings.Index(raw, "{")
+	last := strings.LastIndex(raw, "}")
+	if first != -1 && last != -1 && last >= first {
+		raw = raw[first : last+1]
+	}
+
 	dec := json.NewDecoder(strings.NewReader(raw))
 	dec.DisallowUnknownFields()
 
@@ -148,7 +154,9 @@ func seedUserPrompt(samples []string) string {
 }
 
 const updateSystemPrompt = `You update an existing French literary translation series bible.
-Return the complete updated bible as strict JSON only. Preserve existing facts unless the chapter clearly changes them.`
+Return the complete updated bible as strict JSON only, matching this shape:
+{"series_id":"","style_guide":"","characters":[{"name":"","register":"","notes":"","sample_fr":[]}],"address":[{"from":"","to":"","form":"tu","history":[{"at_chapter":"","note":""}]}],"summaries":[{"chapter_id":"","summary":""}],"version":0}
+Preserve existing facts unless the chapter clearly changes them. Do not include markdown or commentary.`
 
 func updateUserPrompt(bibleJSON, chapterID, sourceText, targetText string) string {
 	return fmt.Sprintf(`CURRENT_BIBLE_JSON:

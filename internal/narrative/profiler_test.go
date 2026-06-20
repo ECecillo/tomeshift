@@ -75,6 +75,24 @@ func TestProfiler_UpdateAppendsSummaryAndAddressChange(t *testing.T) {
 	require.Contains(t, chat.req.Messages[1].Content, "Alice pardonna Bruno.")
 }
 
+func TestProfiler_JSONWrappedInText(t *testing.T) {
+	t.Parallel()
+
+	chat := &stubChat{reply: "Here is the result:\n```json\n" + `{
+		"series_id":"series-b",
+		"style_guide":"Use polished contemporary French.",
+		"characters":[],
+		"address":[],
+		"summaries":[],
+		"version":0
+	}` + "\n```\nPreserve existing facts."}
+	profiler := narrative.Profiler{Chat: chat, Model: "model-a"}
+
+	got, err := profiler.Seed(t.Context(), []string{"sample"})
+	require.NoError(t, err)
+	require.Equal(t, "series-b", got.SeriesID)
+}
+
 func TestProfiler_MalformedJSON(t *testing.T) {
 	t.Parallel()
 
