@@ -9,7 +9,10 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/llm"
 )
 
-const defaultProfilerMaxTokens = 2000
+// defaultProfilerMaxTokens must fit a full series bible (style guide + many
+// characters + address rules + summaries) from a large sample set; 2000 was too
+// small and truncated the JSON.
+const defaultProfilerMaxTokens = 16000
 
 // Profiler seeds and updates a series bible from book/chapter prose through a
 // provider-agnostic chat client.
