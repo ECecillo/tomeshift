@@ -1,6 +1,9 @@
 package llm
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // ChatMessage is a single turn in a chat-completion request.
 // Role is one of "system", "user", or "assistant".
@@ -14,6 +17,11 @@ type ChatRequest struct {
 	Model     string
 	Messages  []ChatMessage
 	MaxTokens int // 0 = provider default
+	// JSONSchema, when set, requests a structured JSON response conforming to
+	// the schema (Anthropic output_config / OpenAI response_format). This makes
+	// the provider emit well-formed JSON regardless of content, avoiding the
+	// escaping fragility of free-form JSON-in-prose.
+	JSONSchema json.RawMessage
 }
 
 // ChatResponse is the assistant reply plus token accounting for the cost model.

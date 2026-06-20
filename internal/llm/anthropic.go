@@ -35,10 +35,20 @@ type anthropicMessage struct {
 }
 
 type anthropicRequest struct {
-	Model     string                 `json:"model"`
-	MaxTokens int                    `json:"max_tokens"`
-	System    []anthropicSystemBlock `json:"system,omitempty"`
-	Messages  []anthropicMessage     `json:"messages"`
+	Model        string                 `json:"model"`
+	MaxTokens    int                    `json:"max_tokens"`
+	System       []anthropicSystemBlock `json:"system,omitempty"`
+	Messages     []anthropicMessage     `json:"messages"`
+	OutputConfig *anthropicOutputConfig `json:"output_config,omitempty"`
+}
+
+type anthropicOutputConfig struct {
+	Format anthropicOutputFormat `json:"format"`
+}
+
+type anthropicOutputFormat struct {
+	Type   string          `json:"type"` // "json_schema"
+	Schema json.RawMessage `json:"schema"`
 }
 
 type anthropicResponse struct {
@@ -97,6 +107,11 @@ func (c *AnthropicClient) Chat(ctx context.Context, req ChatRequest) (ChatRespon
 	}
 
 	body := anthropicRequest{Model: req.Model, MaxTokens: maxTokens, Messages: msgs}
+	if len(req.JSONSchema) > 0 {
+		body.OutputConfig = &anthropicOutputConfig{
+			Format: anthropicOutputFormat{Type: "json_schema", Schema: req.JSONSchema},
+		}
+	}
 	if len(sysParts) > 0 {
 		body.System = []anthropicSystemBlock{{
 			Type:         "text",

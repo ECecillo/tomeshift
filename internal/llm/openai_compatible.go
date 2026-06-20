@@ -18,9 +18,20 @@ const (
 )
 
 type openAIChatRequest struct {
-	Model     string        `json:"model"`
-	Messages  []ChatMessage `json:"messages"`
-	MaxTokens int           `json:"max_tokens,omitempty"`
+	Model          string             `json:"model"`
+	Messages       []ChatMessage      `json:"messages"`
+	MaxTokens      int                `json:"max_tokens,omitempty"`
+	ResponseFormat *openAIResponseFmt `json:"response_format,omitempty"`
+}
+
+type openAIResponseFmt struct {
+	Type       string          `json:"type"` // "json_schema"
+	JSONSchema openAISchemaDef `json:"json_schema"`
+}
+
+type openAISchemaDef struct {
+	Name   string          `json:"name"`
+	Schema json.RawMessage `json:"schema"`
 }
 
 type openAIChatResponse struct {
@@ -70,7 +81,15 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, req ChatRequest) (Cha
 		return ChatResponse{}, ErrEmptyBaseURL
 	}
 
-	payload, err := json.Marshal(openAIChatRequest(req))
+	body := openAIChatRequest{Model: req.Model, Messages: req.Messages, MaxTokens: req.MaxTokens}
+	if len(req.JSONSchema) > 0 {
+		body.ResponseFormat = &openAIResponseFmt{
+			Type:       "json_schema",
+			JSONSchema: openAISchemaDef{Name: "response", Schema: req.JSONSchema},
+		}
+	}
+
+	payload, err := json.Marshal(body)
 	if err != nil {
 		return ChatResponse{}, fmt.Errorf("unable to marshal chat request, err: %w", err)
 	}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"regexp"
 	"sort"
 	"strings"
@@ -16,9 +15,15 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/segment"
 )
 
-const defaultMaxTokens = 4000
+// defaultMaxTokens must comfortably fit a whole chapter's JSON output; a full
+// light-novel chapter is ~50 segments / several thousand output tokens.
+const defaultMaxTokens = 16000
 
 var inlineTokenPattern = regexp.MustCompile(`<x id="(\d+)"\s*/?>(?:\s*</x>)?`)
+
+// responseSchema constrains the chat model to well-formed JSON, sidestepping
+// the escaping fragility of free-form JSON-in-prose for literary output.
+var responseSchema = json.RawMessage(`{"type":"object","properties":{"segments":{"type":"array","items":{"type":"object","properties":{"id":{"type":"string"},"target_text":{"type":"string"}},"required":["id","target_text"],"additionalProperties":false}}},"required":["segments"],"additionalProperties":false}`)
 
 // Translator translates a chapter with series-bible and optional glossary
 // context through a provider-agnostic chat client.
@@ -73,9 +78,10 @@ func (t *Translator) TranslateChapter(
 	}
 
 	resp, err := t.Chat.Chat(ctx, llm.ChatRequest{
-		Model:     t.Model,
-		MaxTokens: t.maxTokens(),
-		Messages:  composeMessages(bible, t.glossaryTerms(), string(payload), prevCtx, nextCtx),
+		Model:      t.Model,
+		MaxTokens:  t.maxTokens(),
+		Messages:   composeMessages(bible, t.glossaryTerms(), string(payload), prevCtx, nextCtx),
+		JSONSchema: responseSchema,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("unable to translate literary chapter %s, err: %w", chapterID, err)
@@ -169,20 +175,52 @@ func (t *Translator) glossaryTerms() []glossary.Term {
 }
 
 func decodeResponse(raw string) (responseBody, error) {
-	dec := json.NewDecoder(strings.NewReader(raw))
-	dec.DisallowUnknownFields()
-
+	// Models often wrap the JSON in prose or a ```json code fence, or append a
+	// note after it. Isolate the first balanced JSON object and decode leniently
+	// (unknown extra fields are ignored).
 	var out responseBody
-	if err := dec.Decode(&out); err != nil {
-		return responseBody{}, fmt.Errorf("unable to decode literary response JSON, err: %w", err)
-	}
-	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		return responseBody{}, fmt.Errorf("unable to decode literary response JSON, err: %w", err)
+	if err := json.Unmarshal([]byte(extractJSONObject(raw)), &out); err != nil {
+		return responseBody{}, fmt.Errorf("unable to decode literary response JSON (len=%d), err: %w", len(raw), err)
 	}
 	if len(out.Segments) == 0 {
 		return responseBody{}, ErrEmptyResponse
 	}
 	return out, nil
+}
+
+// extractJSONObject returns the first balanced {...} object in raw, ignoring
+// braces inside JSON strings. It tolerates code fences and trailing prose.
+func extractJSONObject(raw string) string {
+	start := strings.Index(raw, "{")
+	if start == -1 {
+		return raw
+	}
+	depth, inStr, esc := 0, false, false
+	for i := start; i < len(raw); i++ {
+		c := raw[i]
+		if inStr {
+			switch {
+			case esc:
+				esc = false
+			case c == '\\':
+				esc = true
+			case c == '"':
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			if depth--; depth == 0 {
+				return raw[start : i+1]
+			}
+		}
+	}
+	return raw[start:]
 }
 
 func fallbackText(seg segment.Segment) string {
