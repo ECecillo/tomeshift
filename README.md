@@ -52,8 +52,10 @@ so prompts (and the Anthropic prompt cache on the system prefix) stay stable and
 re-runs are reproducible/free (served from the SQLite LLM cache). Pass
 `--update-bible` to let the bible evolve chapter-by-chapter within the run
 (better intra-volume consistency, but re-runs re-translate). Recommended series
-workflow: `style-profile` once per volume to seed/refresh the bible, then `run`
-frozen. The Anthropic adapter sets a `cache_control` breakpoint on the bible/style
+workflow: `style-profile` once to seed the bible, then `run` frozen; for later
+volumes, reuse the same `--series` (the bible carries over) and enrich it with
+`style-profile --merge` (adds new characters/terms/address rules without
+overwriting prior volumes — without `--merge`, style-profile replaces the bible). The Anthropic adapter sets a `cache_control` breakpoint on the bible/style
 prefix; cache read/creation tokens are reported in `report.json` and
 `metrics.json` (`translation_llm_cache_read_tokens`, etc.).
 

@@ -608,6 +608,19 @@ func runStyleProfile(stdout, stderr io.Writer, cmd cli.StyleProfileCommand, cfg 
 	}
 	bible.SeriesID = cmd.Series
 
+	// --merge enriches the existing series bible (e.g. seeding from a later
+	// volume) instead of overwriting it.
+	if cmd.Merge {
+		existing, found, loadErr := store.Load(ctx, cmd.Series)
+		if loadErr != nil {
+			writef(stderr, "unable to load existing bible for merge: %v\n", loadErr)
+			return exitcode.InvalidInputConfig
+		}
+		if found {
+			bible = narrative.MergeBibles(existing, bible)
+		}
+	}
+
 	if err := store.Save(ctx, bible); err != nil {
 		writef(stderr, "unable to save style profile: %v\n", err)
 		return exitcode.InvalidInputConfig

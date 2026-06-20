@@ -11,6 +11,9 @@ type StyleProfileCommand struct {
 	Input   string
 	Series  string
 	Samples int
+	// Merge enriches an existing series bible instead of overwriting it (use
+	// when seeding from a later volume).
+	Merge bool
 }
 
 // ParseStyleProfileArgs parses flags for `epub-translator style-profile`.
@@ -22,6 +25,7 @@ func ParseStyleProfileArgs(args []string, stderr io.Writer) (StyleProfileCommand
 	fs.StringVar(&cmd.Input, "input", "", "input EPUB file path (required)")
 	fs.StringVar(&cmd.Series, "series", "", "series identifier (required)")
 	fs.IntVar(&cmd.Samples, "samples", 3, "number of spine documents to sample")
+	fs.BoolVar(&cmd.Merge, "merge", false, "enrich the existing series bible instead of overwriting (for later volumes)")
 
 	if err := fs.Parse(args); err != nil {
 		return StyleProfileCommand{}, fmt.Errorf("unable to parse cli flags, err: %w", err)
