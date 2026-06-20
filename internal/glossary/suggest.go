@@ -13,6 +13,36 @@ type Candidate struct {
 	Count int    `json:"count"`
 }
 
+// nonProperWords are common English words that are frequently capitalized
+// (sentence starts, pronouns, titles) yet are not proper nouns. They are
+// filtered from single candidates and trimmed from the edges of phrase runs so
+// the suggestion list stays focused on real names.
+var nonProperWords = map[string]bool{
+	"i": true, "it": true, "as": true, "if": true, "while": true, "but": true,
+	"not": true, "well": true, "and": true, "or": true, "so": true, "then": true,
+	"when": true, "why": true, "how": true, "what": true, "where": true, "who": true,
+	"which": true, "the": true, "a": true, "an": true, "this": true, "that": true,
+	"these": true, "those": true, "he": true, "she": true, "they": true, "we": true,
+	"you": true, "his": true, "her": true, "their": true, "our": true, "my": true,
+	"your": true, "its": true, "to": true, "of": true, "in": true, "on": true,
+	"at": true, "by": true, "for": true, "with": true, "mr": true, "mrs": true,
+	"ms": true, "mister": true, "yes": true, "no": true, "oh": true,
+}
+
+func isNonProper(w string) bool { return nonProperWords[strings.ToLower(w)] }
+
+// trimNonProper drops leading and trailing non-proper words from a capitalized
+// run (interior words are kept, e.g. "Old Man Bram").
+func trimNonProper(run []string) []string {
+	for len(run) > 0 && isNonProper(run[0]) {
+		run = run[1:]
+	}
+	for len(run) > 0 && isNonProper(run[len(run)-1]) {
+		run = run[:len(run)-1]
+	}
+	return run
+}
+
 // Suggest scans text for proper-noun candidates: words capitalized mid-sentence
 // (i.e. not merely sentence-initial) and runs of consecutive capitalized words
 // (e.g. "New York"). Candidates occurring at least minCount times are returned,
@@ -28,8 +58,10 @@ func Suggest(text string, minCount int) []Candidate {
 	single := map[string]int{}
 	for i, w := range words {
 		// Count a capitalized word only when it is NOT sentence-initial, since
-		// proper nouns are capitalized regardless of position.
-		if capitalized[i] && !sentenceInitial(words, i) {
+		// proper nouns are capitalized regardless of position. Skip single
+		// letters (e.g. "I") and common non-proper words.
+		if capitalized[i] && !sentenceInitial(words, i) &&
+			utf8.RuneCountInString(w) >= 2 && !isNonProper(w) {
 			single[w]++
 		}
 	}
@@ -44,7 +76,12 @@ func Suggest(text string, minCount int) []Candidate {
 			j++
 		}
 		if j > i { // a run of 2+ capitalized words
-			phrases[strings.Join(words[i:j+1], " ")]++
+			// Trim leading/trailing function words ("As Kai" -> "Kai");
+			// only keep runs that still hold 2+ words (single survivors are
+			// already counted above).
+			if run := trimNonProper(words[i : j+1]); len(run) >= 2 {
+				phrases[strings.Join(run, " ")]++
+			}
 		}
 		i = j
 	}

@@ -47,6 +47,40 @@ func TestSuggest_RespectsMinCount(t *testing.T) {
 	require.NotContains(t, got, "Carol")
 }
 
+func TestSuggest_FiltersFunctionWords(t *testing.T) {
+	t.Parallel()
+
+	// "I" and "It" are capitalized mid-sentence but are not proper nouns.
+	text := "Then I saw Kai. So I knew Kai. It told Kai it was over. I and It."
+	got := candidateMap(Suggest(text, 2))
+
+	require.Contains(t, got, "Kai")
+	require.NotContains(t, got, "I")
+	require.NotContains(t, got, "It")
+}
+
+func TestSuggest_TrimsFunctionWordsFromPhrases(t *testing.T) {
+	t.Parallel()
+
+	// "As Kai" / "But Kai" should reduce to the single name, not survive
+	// as multi-word phrases.
+	text := "x As Kai ran. y But Kai fell. z As Kai cried."
+	got := candidateMap(Suggest(text, 2))
+
+	require.Contains(t, got, "Kai")
+	require.NotContains(t, got, "As Kai")
+	require.NotContains(t, got, "But Kai")
+}
+
+func TestSuggest_KeepsInteriorWords(t *testing.T) {
+	t.Parallel()
+
+	// Interior function-ish words must be preserved in a genuine phrase.
+	text := "x Old Man Bram spoke. y Old Man Bram laughed. z Old Man Bram left."
+	got := candidateMap(Suggest(text, 2))
+	require.Contains(t, got, "Old Man Bram")
+}
+
 func TestSuggestTerms_Skeleton(t *testing.T) {
 	t.Parallel()
 
