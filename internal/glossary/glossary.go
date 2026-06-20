@@ -113,6 +113,16 @@ func (g *Glossary) Apply(text string, subs map[string]string) string {
 	return text
 }
 
+// Terms returns the locked glossary terms in matching order.
+func (g *Glossary) Terms() []Term {
+	if g == nil {
+		return nil
+	}
+	terms := make([]Term, len(g.locked))
+	copy(terms, g.locked)
+	return terms
+}
+
 // Violations counts locked terms present in source whose canonical target term
 // is absent from the (post-enforcement) target. It is a safety-net QA metric;
 // with Protect/Apply it should always be zero.
