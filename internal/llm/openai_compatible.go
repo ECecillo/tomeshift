@@ -46,7 +46,9 @@ type OpenAICompatibleClient struct {
 // OpenAI-compatible adapter with a different base URL.
 func NewChatClient(provider, baseURL, apiKey string) ChatClient {
 	switch provider {
-	case ChatProviderDeepSeek, ChatProviderOpenAICompatible, "":
+	case ChatProviderAnthropic:
+		return NewAnthropicClient(baseURL, apiKey)
+	case ChatProviderOpenAI, ChatProviderDeepSeek, ChatProviderOpenAICompatible, "":
 		return NewOpenAICompatibleClient(baseURL, apiKey)
 	default:
 		return NewOpenAICompatibleClient(baseURL, apiKey)
