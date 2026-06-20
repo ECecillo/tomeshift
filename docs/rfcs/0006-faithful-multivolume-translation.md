@@ -220,6 +220,11 @@ control. Keep V1 NMT mode as the cheap path; literary mode is opt-in
 
 ## Implementation Plan
 
+> Step-by-step, TDD, executor-ready plan:
+> `docs/implementation/0006-literary-translation-impl.md` (7 phases, with Go
+> signatures, RED tests, per-phase commit messages and reviewer checklists).
+> The summary below is the shape; that document is the build order.
+
 1. `internal/narrative`: bible schema (SQLite, series-scoped, versioned) +
    types + load/save + address-matrix with evolution log.
 2. `style-profile` command: seed the bible from vol.1 samples.
