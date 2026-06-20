@@ -100,6 +100,15 @@ EPUB_TRANSLATOR_ESCALATE_BELOW_SCORE=0.80   # escalate drafts scoring below this
 The per-book average score lands in `report.json` (`avg_quality_score`) and
 `metrics.json` (`translation_quality_score`).
 
+To score an **already-translated** run reference-free (no human reference needed
+— ideal when your only reference is a different edition, e.g. web-novel vs light
+novel), point `eval` at its `segments.jsonl` with a COMET service running:
+```bash
+EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
+  epub-translator eval --segments runs/<run-id>/segments.jsonl
+# → COMET-QE avg = 0.xx (min ... over N segments); writes qe-eval-report.json
+```
+
 ### Real translations with LibreTranslate (self-hosted)
 For actual EN→FR translation, run a real local engine. LibreTranslate is the
 simplest to self-host:
