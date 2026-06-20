@@ -55,9 +55,11 @@ func TestAnthropicClient_ChatSendsHeadersAndCacheControl(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "Bonjour", resp.Text)
-	// Total prompt tokens = input + cache_read + cache_creation = 17.
-	require.Equal(t, 17, resp.InputTokens)
+	// Uncached input reported separately from cache read/creation.
+	require.Equal(t, 10, resp.InputTokens)
 	require.Equal(t, 3, resp.OutputTokens)
+	require.Equal(t, 5, resp.CacheReadInputTokens)
+	require.Equal(t, 2, resp.CacheCreationInputTokens)
 
 	require.Equal(t, "secret-key", gotKey)
 	require.NotEmpty(t, gotVersion, "anthropic-version header must be set")

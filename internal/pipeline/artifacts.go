@@ -66,6 +66,12 @@ func writeMetrics(path string, result *RunResult) error {
 	if result.QualityScoredSegments > 0 {
 		metrics["translation_quality_score"] = result.AvgQualityScore
 	}
+	if result.LLMInputTokens+result.LLMCacheReadTokens+result.LLMCacheCreationTokens > 0 {
+		metrics["translation_llm_input_tokens"] = float64(result.LLMInputTokens)
+		metrics["translation_llm_output_tokens"] = float64(result.LLMOutputTokens)
+		metrics["translation_llm_cache_read_tokens"] = float64(result.LLMCacheReadTokens)
+		metrics["translation_llm_cache_creation_tokens"] = float64(result.LLMCacheCreationTokens)
+	}
 
 	data, err := json.MarshalIndent(metrics, "", "  ")
 	if err != nil {

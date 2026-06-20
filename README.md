@@ -43,8 +43,19 @@ epub-translator run \
 Literary mode still uses NMT/translation memory for drafts, then calls the
 configured chat model with the persisted bible, glossary, and adjacent chapter
 context. Configure `EPUB_TRANSLATOR_NARRATIVE_PATH`,
-`EPUB_TRANSLATOR_LLM_CHAT_PROVIDER`, `EPUB_TRANSLATOR_LLM_BASE_URL`,
-`EPUB_TRANSLATOR_LLM_MODEL`, and `EPUB_TRANSLATOR_LLM_API_KEY`.
+`EPUB_TRANSLATOR_LLM_CHAT_PROVIDER` (`anthropic` | `openai` | `deepseek`),
+`EPUB_TRANSLATOR_LLM_BASE_URL`, `EPUB_TRANSLATOR_LLM_MODEL`, and
+`EPUB_TRANSLATOR_LLM_API_KEY`.
+
+By default the bible is **frozen for the run**: every chapter sees the same bible,
+so prompts (and the Anthropic prompt cache on the system prefix) stay stable and
+re-runs are reproducible/free (served from the SQLite LLM cache). Pass
+`--update-bible` to let the bible evolve chapter-by-chapter within the run
+(better intra-volume consistency, but re-runs re-translate). Recommended series
+workflow: `style-profile` once per volume to seed/refresh the bible, then `run`
+frozen. The Anthropic adapter sets a `cache_control` breakpoint on the bible/style
+prefix; cache read/creation tokens are reported in `report.json` and
+`metrics.json` (`translation_llm_cache_read_tokens`, etc.).
 
 ### Self-hosted local NMT (no external service)
 The default `EPUB_TRANSLATOR_NMT_ENDPOINT` points at a bundled local NMT dev

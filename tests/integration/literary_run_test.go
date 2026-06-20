@@ -110,6 +110,7 @@ func TestRun_LiteraryModeEndToEnd(t *testing.T) {
 		"--run-id", "lit",
 		"--mode", "literary",
 		"--series", "series-a",
+		"--update-bible", // this test asserts cross-chapter bible accumulation
 	}, &stdout, &stderr, loader)
 
 	require.Equal(t, exitcode.Success, code, "stderr: %s", stderr.String())

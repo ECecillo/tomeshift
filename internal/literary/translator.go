@@ -55,8 +55,19 @@ type segmentState struct {
 	subs   map[string]string
 }
 
-// TranslateChapter returns a translated copy of segs. The current TargetText on
-// each input segment is treated as the safe NMT draft fallback.
+// Usage aggregates token accounting for a chapter's LLM call. CacheRead and
+// CacheCreation expose prompt-cache activity so callers can verify caching and
+// price reads at the cache rate.
+type Usage struct {
+	InputTokens         int
+	OutputTokens        int
+	CacheReadTokens     int
+	CacheCreationTokens int
+}
+
+// TranslateChapter returns a translated copy of segs plus the LLM token usage.
+// The current TargetText on each input segment is treated as the safe NMT draft
+// fallback.
 func (t *Translator) TranslateChapter(
 	ctx context.Context,
 	bible narrative.Bible,
@@ -64,17 +75,17 @@ func (t *Translator) TranslateChapter(
 	segs []segment.Segment,
 	prevCtx string,
 	nextCtx string,
-) ([]segment.Segment, error) {
+) ([]segment.Segment, Usage, error) {
 	if t.Chat == nil {
-		return nil, ErrNilChatClient
+		return nil, Usage{}, ErrNilChatClient
 	}
 	if len(segs) == 0 {
-		return nil, nil
+		return nil, Usage{}, nil
 	}
 
 	payload, states, err := t.buildPayload(segs)
 	if err != nil {
-		return nil, err
+		return nil, Usage{}, err
 	}
 
 	resp, err := t.Chat.Chat(ctx, llm.ChatRequest{
@@ -84,15 +95,22 @@ func (t *Translator) TranslateChapter(
 		JSONSchema: responseSchema,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("unable to translate literary chapter %s, err: %w", chapterID, err)
+		return nil, Usage{}, fmt.Errorf("unable to translate literary chapter %s, err: %w", chapterID, err)
 	}
 	if strings.TrimSpace(resp.Text) == "" {
-		return nil, ErrEmptyResponse
+		return nil, Usage{}, ErrEmptyResponse
+	}
+
+	usage := Usage{
+		InputTokens:         resp.InputTokens,
+		OutputTokens:        resp.OutputTokens,
+		CacheReadTokens:     resp.CacheReadInputTokens,
+		CacheCreationTokens: resp.CacheCreationInputTokens,
 	}
 
 	decoded, err := decodeResponse(resp.Text)
 	if err != nil {
-		return nil, fmt.Errorf("unable to parse literary response for chapter %s, err: %w", chapterID, err)
+		return nil, usage, fmt.Errorf("unable to parse literary response for chapter %s, err: %w", chapterID, err)
 	}
 
 	byID := make(map[string]string, len(decoded.Segments))
@@ -122,7 +140,7 @@ func (t *Translator) TranslateChapter(
 		out[i].Status = segment.StatusPostEdited
 	}
 
-	return out, nil
+	return out, usage, nil
 }
 
 func (t *Translator) buildPayload(segs []segment.Segment) ([]byte, map[string]segmentState, error) {

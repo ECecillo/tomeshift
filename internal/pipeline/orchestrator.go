@@ -421,10 +421,14 @@ func (o *Orchestrator) translateLiteraryChapters(
 		if len(fresh) > 0 {
 			prevCtx := adjacentChapterText(chapters, i-1)
 			nextCtx := adjacentChapterText(chapters, i+1)
-			literarySegments, err := o.LiteraryTranslator.TranslateChapter(ctx, *bible, chapter.ID, fresh, prevCtx, nextCtx)
+			literarySegments, usage, err := o.LiteraryTranslator.TranslateChapter(ctx, *bible, chapter.ID, fresh, prevCtx, nextCtx)
 			if err != nil {
 				return nil, err
 			}
+			result.LLMInputTokens += usage.InputTokens
+			result.LLMOutputTokens += usage.OutputTokens
+			result.LLMCacheReadTokens += usage.CacheReadTokens
+			result.LLMCacheCreationTokens += usage.CacheCreationTokens
 
 			for j, literarySeg := range literarySegments {
 				idx := freshIndices[j]
@@ -460,10 +464,15 @@ func (o *Orchestrator) translateLiteraryChapters(
 			}
 		}
 
-		if err := o.updateBible(ctx, cfg.SeriesID, bible, chapter); err != nil {
-			return nil, err
+		// Frozen by default: keep the bible (and thus the system prefix / prompt
+		// cache) stable across chapters and re-runs. Evolve it only when the run
+		// explicitly opts in.
+		if cfg.UpdateBible {
+			if err := o.updateBible(ctx, cfg.SeriesID, bible, chapter); err != nil {
+				return nil, err
+			}
+			result.BibleVersion = bible.Version
 		}
-		result.BibleVersion = bible.Version
 		translatedSegments = append(translatedSegments, chapter.Segments...)
 	}
 

@@ -35,7 +35,7 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Bonjour."}]}`}
 	tr := literary.Translator{Chat: chat, Model: "model-a", Glossary: gloss}
 
-	_, err = tr.TranslateChapter(t.Context(), bibleFixture(), "ch_0001", []segment.Segment{{
+	_, _, err = tr.TranslateChapter(t.Context(), bibleFixture(), "ch_0001", []segment.Segment{{
 		ID:         "s1",
 		SourceText: "Bilbo arrived.",
 		TargetText: "Bilbon arriva.",
@@ -70,7 +70,7 @@ func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
 	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Une affirmation <x id=\"1\"/>."}]}`}
 	tr := literary.Translator{Chat: chat}
 
-	out, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
+	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 	require.Equal(t, segment.StatusPostEdited, out[0].Status)
@@ -92,7 +92,7 @@ func TestTranslator_FallsBackWhenPlaceholderDropped(t *testing.T) {
 	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Texte sans jeton."}]}`}
 	tr := literary.Translator{Chat: chat}
 
-	out, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
+	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
 	require.NoError(t, err)
 	require.Equal(t, `Brouillon <x id="1"/> sûr.`, out[0].TargetText)
 	require.Equal(t, segment.StatusTranslated, out[0].Status)
@@ -107,7 +107,7 @@ func TestTranslator_GlossaryLockedTermEnforced(t *testing.T) {
 	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Bonjour <g id=\"1\"/>."}]}`}
 	tr := literary.Translator{Chat: chat, Glossary: gloss}
 
-	out, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{{
+	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{{
 		ID:         "s1",
 		SourceText: "Bilbo waved.",
 		TargetText: "Bilbon salua.",
@@ -121,7 +121,7 @@ func TestTranslator_NilChat(t *testing.T) {
 	t.Parallel()
 
 	tr := literary.Translator{}
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{}, "ch_0001", []segment.Segment{{ID: "s1"}}, "", "")
+	_, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{}, "ch_0001", []segment.Segment{{ID: "s1"}}, "", "")
 	require.ErrorIs(t, err, literary.ErrNilChatClient)
 }
 

@@ -25,10 +25,15 @@ type ChatRequest struct {
 }
 
 // ChatResponse is the assistant reply plus token accounting for the cost model.
+// InputTokens counts only uncached prompt tokens; cache reads/writes are
+// reported separately so callers can verify prompt caching and price reads at
+// the ~0.1x cache rate.
 type ChatResponse struct {
-	Text         string
-	InputTokens  int
-	OutputTokens int
+	Text                     string
+	InputTokens              int // uncached prompt tokens
+	OutputTokens             int
+	CacheReadInputTokens     int // served from prompt cache (~0.1x input price)
+	CacheCreationInputTokens int // written to prompt cache (~1.25x input price)
 }
 
 // ChatClient is the provider-agnostic chat-completion contract. The

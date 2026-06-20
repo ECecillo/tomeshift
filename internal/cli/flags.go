@@ -29,6 +29,11 @@ type RunCommand struct {
 	Mode string
 	// Series identifies the narrative bible for literary mode.
 	Series string
+	// UpdateBible, when set, lets literary mode evolve the series bible during
+	// the run (each chapter feeds the next). Off by default: the bible is frozen
+	// for the run, keeping prompts (and the prompt cache) stable and re-runs
+	// reproducible. Re-learn between volumes with an explicit style-profile.
+	UpdateBible bool
 	// Resume is set by --resume, used to request continuation from a prior
 	// run state instead of starting from scratch.
 	Resume bool
@@ -49,6 +54,7 @@ func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 	fs.StringVar(&cmd.RunID, "run-id", "", "optional run ID override")
 	fs.StringVar(&cmd.Mode, "mode", "nmt", "translation mode: nmt or literary")
 	fs.StringVar(&cmd.Series, "series", "", "series identifier for literary mode")
+	fs.BoolVar(&cmd.UpdateBible, "update-bible", false, "literary mode: evolve the series bible during the run (default: frozen)")
 	fs.BoolVar(&cmd.Resume, "resume", false, "resume a previous run")
 
 	if err := fs.Parse(args); err != nil {

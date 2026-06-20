@@ -303,15 +303,16 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg RuntimeConfig
 	defer cancel()
 
 	result, err := orch.Run(ctx, pipeline.RunConfig{
-		InputPath:  cmd.Input,
-		OutputDir:  outputDir,
-		SourceLang: cmd.SourceLang,
-		TargetLang: cmd.TargetLang,
-		RunID:      runID,
-		BookID:     bookIDFromPath(cmd.Input),
-		Mode:       cmd.Mode,
-		SeriesID:   cmd.Series,
-		Resume:     cmd.Resume,
+		InputPath:   cmd.Input,
+		OutputDir:   outputDir,
+		SourceLang:  cmd.SourceLang,
+		TargetLang:  cmd.TargetLang,
+		RunID:       runID,
+		BookID:      bookIDFromPath(cmd.Input),
+		Mode:        cmd.Mode,
+		SeriesID:    cmd.Series,
+		UpdateBible: cmd.UpdateBible,
+		Resume:      cmd.Resume,
 	})
 	if err != nil {
 		writef(stderr, "run failed: %v\n", err)

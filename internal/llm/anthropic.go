@@ -167,10 +167,11 @@ func (c *AnthropicClient) Chat(ctx context.Context, req ChatRequest) (ChatRespon
 	}
 
 	return ChatResponse{
-		Text: text.String(),
-		InputTokens: decoded.Usage.InputTokens +
-			decoded.Usage.CacheReadInputTokens + decoded.Usage.CacheCreationInputTokens,
-		OutputTokens: decoded.Usage.OutputTokens,
+		Text:                     text.String(),
+		InputTokens:              decoded.Usage.InputTokens, // uncached only
+		OutputTokens:             decoded.Usage.OutputTokens,
+		CacheReadInputTokens:     decoded.Usage.CacheReadInputTokens,
+		CacheCreationInputTokens: decoded.Usage.CacheCreationInputTokens,
 	}, nil
 }
 
