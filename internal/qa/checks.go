@@ -76,7 +76,11 @@ func checkPlaceholders(report *Report, segments []segment.Segment) {
 	for _, seg := range segments {
 		for _, ph := range seg.Placeholders {
 			report.PlaceholdersExpected++
-			if strings.Contains(seg.TargetText, ph.Token) {
+			// Match on the id core (id="N") so both the self-closing token
+			// <x id="N"/> and the paired form <x id="N"></x> that some providers
+			// emit count as preserved.
+			core := strings.TrimSuffix(strings.TrimPrefix(ph.Token, "<x "), "/>")
+			if strings.Contains(seg.TargetText, core) {
 				report.PlaceholdersRestored++
 			} else {
 				report.Errors = append(report.Errors,

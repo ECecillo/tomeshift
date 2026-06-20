@@ -133,6 +133,22 @@ func TestRestore_TranslatedText(t *testing.T) {
 	require.Equal(t, "<p>Du texte <em>emphasized</em> ici.</p>", renderNode(t, node))
 }
 
+func TestRestore_AcceptsPairedTokenForm(t *testing.T) {
+	t.Parallel()
+
+	// Some NMT providers (e.g. LibreTranslate with format=html) normalize the
+	// self-closing token <x id="1"/> into the paired form <x id="1"></x>.
+	// Restore must accept both.
+	pm := InlinePlaceholderManager{}
+	node := firstElement(t, "<p>Some <em>emphasized</em> text.</p>", "p")
+
+	_, placeholders, err := pm.Tokenize(node)
+	require.NoError(t, err)
+
+	require.NoError(t, pm.Restore(`Du texte <x id="1"></x> ici.`, placeholders, node))
+	require.Equal(t, "<p>Du texte <em>emphasized</em> ici.</p>", renderNode(t, node))
+}
+
 func TestRestore_Errors(t *testing.T) {
 	t.Parallel()
 

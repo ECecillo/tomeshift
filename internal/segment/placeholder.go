@@ -20,7 +20,12 @@ type PlaceholderManager interface {
 // inline subtrees verbatim, so restoration always yields valid markup.
 type InlinePlaceholderManager struct{}
 
-var placeholderTokenPattern = regexp.MustCompile(`<x id="\d+"/>`)
+// Matches both the self-closing token we emit (<x id="1"/>) and the paired
+// form some providers normalize it to (<x id="1"></x>), capturing the id.
+var placeholderTokenPattern = regexp.MustCompile(`<x id="(\d+)"\s*/?>(?:\s*</x>)?`)
+
+// tokenIDPattern extracts the numeric id from an issued token.
+var tokenIDPattern = regexp.MustCompile(`\d+`)
 
 func placeholderToken(id int) string {
 	return fmt.Sprintf(`<x id="%d"/>`, id)
@@ -78,7 +83,7 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 
 	remaining := make(map[string]*html.Node, len(placeholders))
 	for i := range placeholders {
-		remaining[placeholders[i].Token] = placeholders[i].node
+		remaining[tokenIDPattern.FindString(placeholders[i].Token)] = placeholders[i].node
 	}
 
 	detachChildren(node)
@@ -91,21 +96,21 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 	}
 
 	pos := 0
-	for _, loc := range placeholderTokenPattern.FindAllStringIndex(translatedText, -1) {
+	for _, loc := range placeholderTokenPattern.FindAllStringSubmatchIndex(translatedText, -1) {
 		appendText(translatedText[pos:loc[0]])
 
-		token := translatedText[loc[0]:loc[1]]
-		orig, ok := remaining[token]
+		id := translatedText[loc[2]:loc[3]]
+		orig, ok := remaining[id]
 		if !ok {
 			// A token-shaped string we did not issue: either the source text
 			// literally contained it, or the provider hallucinated one. Keep it
 			// as literal text rather than failing the whole segment.
-			appendText(token)
+			appendText(translatedText[loc[0]:loc[1]])
 			pos = loc[1]
 			continue
 		}
 		node.AppendChild(orig)
-		delete(remaining, token)
+		delete(remaining, id)
 		pos = loc[1]
 	}
 	appendText(translatedText[pos:])

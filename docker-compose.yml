@@ -27,6 +27,10 @@ services:
       - LT_LOAD_ONLY=en,fr
     expose:
       - "5000"
+    # Publish on the host so native (non-compose) runs can reach it too.
+    # Host 5050 (5000 is often taken by macOS AirPlay Receiver).
+    ports:
+      - "5050:5000"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5000/languages"]
       interval: 10s
