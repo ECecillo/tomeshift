@@ -14,4 +14,5 @@ var (
 	ErrInputDirRequired         = errors.New("--input-dir is required")
 	ErrCandidateRequired        = errors.New("--candidate is required")
 	ErrReferenceRequired        = errors.New("--reference is required")
+	ErrSeriesRequired           = errors.New("--series is required")
 )

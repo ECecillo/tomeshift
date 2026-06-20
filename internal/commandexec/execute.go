@@ -21,6 +21,7 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 	"github.com/ECecillo/ebooks-translator/internal/glossary"
 	"github.com/ECecillo/ebooks-translator/internal/llm"
+	"github.com/ECecillo/ebooks-translator/internal/narrative"
 	"github.com/ECecillo/ebooks-translator/internal/pipeline"
 	"github.com/ECecillo/ebooks-translator/internal/qa"
 	"github.com/ECecillo/ebooks-translator/internal/segment"
@@ -41,6 +42,8 @@ type RuntimeConfig struct {
 	LogLevel string
 	// TMPath is the SQLite translation-memory database path.
 	TMPath string
+	// NarrativePath is the SQLite series-bible database path.
+	NarrativePath string
 	// PerBookBudgetUSD is the per-book hard spend cap; <= 0 disables the check.
 	PerBookBudgetUSD float64
 	// DailyBudgetUSD and MonthlyBudgetUSD are rolling spend caps; <= 0 disables.
@@ -61,6 +64,9 @@ type RuntimeConfig struct {
 	LLMEnabled           bool
 	LLMEndpoint          string
 	LLMAPIKey            string
+	LLMChatProvider      string
+	LLMBaseURL           string
+	LLMModel             string
 	LLMEscalateMinChars  int
 	CostLLMPerSegmentUSD float64
 	// LLM token pricing for the `estimate` cost projection.
@@ -159,6 +165,18 @@ func Execute(args []string, stdout, stderr io.Writer, loadConfig ConfigLoader) i
 			return exitcode.InvalidInputConfig
 		}
 		return runSuggest(stdout, stderr, cmd)
+	case "style-profile":
+		cmd, err := cli.ParseStyleProfileArgs(args[1:], stderr)
+		if err != nil {
+			writef(stderr, "invalid style-profile args: %v\n", err)
+			return exitcode.InvalidInputConfig
+		}
+		cfg, err := loadConfig()
+		if err != nil {
+			writef(stderr, "%v\n", err)
+			return exitcode.InvalidInputConfig
+		}
+		return runStyleProfile(stdout, stderr, cmd, cfg)
 	case "-h", "--help", "help":
 		cli.PrintRootUsage(stdout)
 		return exitcode.Success
@@ -506,6 +524,62 @@ func runEval(stdout, stderr io.Writer, cmd cli.EvalCommand) int {
 	return exitcode.Success
 }
 
+// runStyleProfile seeds or refreshes a series bible from an EPUB sample set.
+func runStyleProfile(stdout, stderr io.Writer, cmd cli.StyleProfileCommand, cfg RuntimeConfig) int {
+	path := cfg.NarrativePath
+	if path == "" {
+		path = "./narrative.sqlite"
+	}
+
+	store, err := narrative.NewSQLiteStore(path)
+	if err != nil {
+		writef(stderr, "unable to open narrative store: %v\n", err)
+		return exitcode.InvalidInputConfig
+	}
+	defer func() { _ = store.Close() }()
+
+	baseCtx, stop := signalContext()
+	defer stop()
+	ctx, cancel := withRunTimeout(baseCtx, cfg.RunTimeoutSeconds)
+	defer cancel()
+
+	samples, err := styleProfileSamples(ctx, cmd.Input, cmd.Samples)
+	if err != nil {
+		writef(stderr, "unable to collect style samples: %v\n", err)
+		return exitCodeForError(err)
+	}
+
+	profiler := narrative.Profiler{
+		Chat:  llm.NewChatClient(cfg.LLMChatProvider, cfg.LLMBaseURL, cfg.LLMAPIKey),
+		Model: cfg.LLMModel,
+	}
+	bible, err := profiler.Seed(ctx, samples)
+	if err != nil {
+		writef(stderr, "unable to seed style profile: %v\n", err)
+		return exitCodeForError(err)
+	}
+	bible.SeriesID = cmd.Series
+
+	if err := store.Save(ctx, bible); err != nil {
+		writef(stderr, "unable to save style profile: %v\n", err)
+		return exitcode.InvalidInputConfig
+	}
+
+	saved, found, err := store.Load(ctx, cmd.Series)
+	if err != nil {
+		writef(stderr, "unable to reload style profile: %v\n", err)
+		return exitcode.InvalidInputConfig
+	}
+	if !found {
+		writef(stderr, "unable to reload style profile: series %q not found\n", cmd.Series)
+		return exitcode.InvalidInputConfig
+	}
+
+	writef(stdout, "style-profile %s saved: version %d, %d samples, %d characters, %d address rules\n",
+		cmd.Series, saved.Version, len(samples), len(saved.Characters), len(saved.Address))
+	return exitcode.Success
+}
+
 // runSuggest scans an EPUB for recurring proper-noun candidates and prints them
 // (and optionally writes a glossary JSON skeleton) to bootstrap a series glossary.
 func runSuggest(stdout, stderr io.Writer, cmd cli.SuggestCommand) int {
@@ -539,6 +613,62 @@ func runSuggest(stdout, stderr io.Writer, cmd cli.SuggestCommand) int {
 		writef(stdout, "  %5d  %s\n", c.Count, c.Term)
 	}
 	return exitcode.Success
+}
+
+// styleProfileSamples extracts up to limit spine-document samples in order.
+func styleProfileSamples(ctx context.Context, path string, limit int) ([]string, error) {
+	raw, err := epub.ZipExtractor{}.Extract(ctx, path)
+	if err != nil {
+		return nil, &pipeline.StageError{Stage: pipeline.StageExtract, Err: err}
+	}
+	book, err := epub.OPFParser{}.Parse(ctx, raw)
+	if err != nil {
+		return nil, &pipeline.StageError{Stage: pipeline.StageParse, Err: err}
+	}
+
+	if limit < 1 {
+		limit = 1
+	}
+
+	samples := make([]string, 0, limit)
+	for _, item := range book.Spine {
+		mi, ok := book.Manifest.Items[item.IDRef]
+		if !ok || mi.MediaType != "application/xhtml+xml" || hasProperty(mi, "nav") {
+			continue
+		}
+		doc, ok := book.Contents[mi.Href]
+		if !ok || doc == nil {
+			continue
+		}
+
+		var sb strings.Builder
+		for _, node := range doc.Nodes {
+			if strings.TrimSpace(node.Text) == "" {
+				continue
+			}
+			sb.WriteString(node.Text)
+			sb.WriteByte('\n')
+		}
+		sample := strings.TrimSpace(sb.String())
+		if sample == "" {
+			continue
+		}
+		samples = append(samples, sample)
+		if len(samples) >= limit {
+			break
+		}
+	}
+
+	return samples, nil
+}
+
+func hasProperty(item epub.ManifestItem, property string) bool {
+	for _, p := range item.Properties {
+		if p == property {
+			return true
+		}
+	}
+	return false
 }
 
 // bookPlainText extracts a book's visible text in spine order for evaluation.

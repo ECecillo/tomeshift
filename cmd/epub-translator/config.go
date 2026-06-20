@@ -16,6 +16,7 @@ type Config struct {
 	NMTEndpoint          string  `split_words:"true" required:"true"`
 	NMTAPIKey            string  `split_words:"true"`
 	TMPath               string  `split_words:"true" default:"./tm.sqlite"`
+	NarrativePath        string  `split_words:"true" default:"./narrative.sqlite"`
 	NMTMaxAttempts       int     `split_words:"true" default:"3"`
 	NMTRetryBaseMS       int     `envconfig:"NMT_RETRY_BASE_MS" default:"200"`
 	EPUBCheckBin         string  `envconfig:"EPUBCHECK_BIN"`
@@ -25,6 +26,9 @@ type Config struct {
 	LLMProvider          string  `split_words:"true"`
 	LLMEndpoint          string  `split_words:"true"`
 	LLMAPIKey            string  `split_words:"true"`
+	LLMChatProvider      string  `split_words:"true" default:"openai"`
+	LLMBaseURL           string  `envconfig:"LLM_BASE_URL"`
+	LLMModel             string  `split_words:"true"`
 	LLMEscalateMinChars  int     `split_words:"true" default:"240"`
 	CostLLMPerSegmentUSD float64 `envconfig:"COST_LLM_PER_SEGMENT_USD" default:"0"`
 	CometEndpoint        string  `split_words:"true"`

@@ -82,4 +82,5 @@ func PrintRootUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  epub-translator batch --input-dir <dir> --output-dir <dir> [--glossary <file>]")
 	_, _ = fmt.Fprintln(w, "  epub-translator eval --candidate <out.epub> --reference <human-fr.epub>")
 	_, _ = fmt.Fprintln(w, "  epub-translator glossary-suggest --input <file.epub> [--min-count 3] [--out glossary.json]")
+	_, _ = fmt.Fprintln(w, "  epub-translator style-profile --input <file.epub> --series <id> [--samples 3]")
 }

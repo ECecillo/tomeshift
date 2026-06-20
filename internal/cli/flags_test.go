@@ -127,6 +127,67 @@ func TestPrintRootUsage(t *testing.T) {
 	if !strings.Contains(out, "epub-translator run --input") {
 		t.Fatalf("PrintRootUsage() missing command synopsis, got %q", out)
 	}
+	if !strings.Contains(out, "epub-translator style-profile --input") {
+		t.Fatalf("PrintRootUsage() missing style-profile synopsis, got %q", out)
+	}
+}
+
+func TestParseStyleProfileArgs(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		args    []string
+		want    StyleProfileCommand
+		wantErr error
+	}{
+		{
+			name: "happy path",
+			args: []string{"--input", "book.epub", "--series", "series-a", "--samples", "4"},
+			want: StyleProfileCommand{Input: "book.epub", Series: "series-a", Samples: 4},
+		},
+		{
+			name:    "missing input",
+			args:    []string{"--series", "series-a"},
+			wantErr: ErrInputRequired,
+		},
+		{
+			name:    "missing series",
+			args:    []string{"--input", "book.epub"},
+			wantErr: ErrSeriesRequired,
+		},
+		{
+			name: "clamps samples",
+			args: []string{"--input", "book.epub", "--series", "series-a", "--samples", "0"},
+			want: StyleProfileCommand{Input: "book.epub", Series: "series-a", Samples: 1},
+		},
+		{
+			name:    "unexpected positional",
+			args:    []string{"--input", "book.epub", "--series", "series-a", "extra"},
+			wantErr: ErrUnexpectedPositionalArgs,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			got, err := ParseStyleProfileArgs(tt.args, &bytes.Buffer{})
+			if tt.wantErr == nil {
+				if err != nil {
+					t.Fatalf("ParseStyleProfileArgs() unexpected error = %v", err)
+				}
+				if got != tt.want {
+					t.Fatalf("ParseStyleProfileArgs() got = %+v, want %+v", got, tt.want)
+				}
+				return
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("ParseStyleProfileArgs() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func FuzzParseRunArgs_NoPanic(f *testing.F) {
