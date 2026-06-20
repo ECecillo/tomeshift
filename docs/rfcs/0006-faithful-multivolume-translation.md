@@ -127,19 +127,38 @@ flowchart TB
 
 ## Cost Model (real API pricing)
 
-**Pricing** (Anthropic, per 1M tokens, cached 2026-06-04 via the `claude-api`
-skill):
+**Pricing across providers** (per 1M tokens — Anthropic from the `claude-api`
+skill, cached 2026-06-04; OpenAI/DeepSeek from web sources June 2026; **prices
+are volatile — re-verify before relying on them**):
 
-| Model | Input | Output |
-|---|---|---|
-| Opus 4.8 (`claude-opus-4-8`) | $5 | $25 |
-| Sonnet 4.6 (`claude-sonnet-4-6`) | $3 | $15 |
-| Haiku 4.5 (`claude-haiku-4-5`) | $1 | $5 |
+| Provider / Model | Input | Output | Cached input |
+|---|---|---|---|
+| **Anthropic** Opus 4.8 | $5.00 | $25.00 | ~0.1× ($0.50) |
+| **Anthropic** Sonnet 4.6 | $3.00 | $15.00 | ~0.1× ($0.30) |
+| **Anthropic** Haiku 4.5 | $1.00 | $5.00 | ~0.1× ($0.10) |
+| **OpenAI** GPT-5.5 | $5.00 | $30.00 | $0.50 |
+| **OpenAI** GPT-5.4 | $2.50 | $15.00 | $0.25 |
+| **OpenAI** GPT-5.4 mini | $0.75 | $4.50 | — |
+| **OpenAI** GPT-5 | $1.25 | $10.00 | — |
+| **OpenAI** GPT-5 mini | $0.25 | $2.00 | — |
+| **OpenAI** GPT-4o (legacy) | $2.50 | $10.00 | — |
+| **DeepSeek** V4 Flash (`deepseek-chat` alias) | $0.14 | $0.28 | $0.014 (1/10) |
+| **DeepSeek** V4 Pro | $1.74 | $3.48 | 1/10 |
 
-Levers (also from the skill): **prompt caching** — cache *reads* ≈ 0.1× input
-price, *writes* ≈ 1.25× (5-min TTL) / 2× (1-h TTL); **Batch API** ≈ ~50% off
-(confirm on the pricing page) but only applies to independent calls, so it
-helps within a chapter, not across the sequential bible updates.
+Levers: **prompt caching** (all three support it — Anthropic reads ≈0.1×,
+writes 1.25×/2×; OpenAI cached input ≈10× cheaper; DeepSeek cache-hit 1/10) is
+the biggest lever here because the bible/style-guide prefix is reused on every
+chapter call. **Batch API** ≈ ~50% off on Anthropic and OpenAI for *independent*
+calls (helps within a chapter, not across the sequential bible updates).
+
+> **Design implication — one adapter covers OpenAI *and* DeepSeek.** Both expose
+> an **OpenAI-compatible** `/v1/chat/completions` API, so a single
+> `OpenAICompatibleLLM` adapter in `internal/llm` (base URL + key + model from
+> config) reaches OpenAI, DeepSeek, and most other hosted LLMs. Anthropic uses
+> its own Messages API (separate adapter). `internal/llm.PostEditor` /
+> `LLMLiteraryTranslator` stay interfaces; provider is pure config. **Translation
+> is output-heavy**, so the *output* price dominates the cost below — that is why
+> DeepSeek and the GPT-5 mini/nano tiers look so cheap.
 
 **Measured basis** (local Lumen LN V1): **75,083 words ≈ 429,803 chars ≈
 ~107,000 tokens** of source text, 2,833 segments, 40 XHTML docs.
@@ -157,21 +176,28 @@ helps within a chapter, not across the sequential bible updates.
 | **Cache-read input** | **~200k @ 0.1× = ~20k-equiv** |
 | **Output** | **~160k** |
 
-**Per-volume cost** (translation + bible-update, caching applied):
+**Per-volume and per-series cost** (~320k input-equiv. + ~160k output per
+volume; ~26-volume series; caching applied; order-of-magnitude):
 
-| Model | Input ~320k-eq | Output ~160k | **≈ /volume** |
-|---|---|---|---|
-| Opus 4.8 | $1.60 | $4.00 | **~$5.6** |
-| Sonnet 4.6 | $0.96 | $2.40 | **~$3.4** |
-| Haiku 4.5 | $0.32 | $0.80 | **~$1.1** |
+| Model | ≈ /volume | ≈ /series (26 vol.) |
+|---|---|---|
+| OpenAI GPT-5.5 | ~$6.4 | ~$166 |
+| Anthropic Opus 4.8 | ~$5.6 | ~$146 |
+| Anthropic Sonnet 4.6 | ~$3.4 | ~$87 |
+| OpenAI GPT-5.4 | ~$3.2 | ~$83 |
+| OpenAI GPT-4o (legacy) | ~$2.4 | ~$62 |
+| OpenAI GPT-5 | ~$2.0 | ~$52 |
+| Anthropic Haiku 4.5 | ~$1.1 | ~$29 |
+| DeepSeek V4 Pro | ~$1.1 | ~$29 |
+| OpenAI GPT-5.4 mini | ~$1.0 | ~$25 |
+| OpenAI GPT-5 mini | ~$0.4 | ~$10 |
+| DeepSeek V4 Flash | ~$0.09 | ~$2.3 |
 
-**Per series** (order-of-magnitude; a ~26-volume run):
-
-| Model | ≈ /series |
-|---|---|
-| Opus 4.8 | **~$145** |
-| Sonnet 4.6 | **~$90** |
-| Haiku 4.5 | **~$29** |
+Price is **not** quality. For nuanced literary French, the cheap tiers
+(DeepSeek Flash, GPT-5 mini/nano) are unproven and may regress voice/idiom — and
+DeepSeek's hosting raises a separate data-governance question (see Risks). The
+spread is ~70× (DeepSeek Flash to GPT-5.5), so the right move is a **bake-off**
+(below), not picking by price.
 
 Add a sampled fidelity-judge pass (~10-20% of segments) ≈ +10-15%. Batch API on
 the independent within-chapter calls can shave a further ~20-30% off the
@@ -181,11 +207,15 @@ the M2 `estimate` command + budget caps enforce the real ceiling per run.
 ## Proposed Decision
 
 Adopt **LLM-as-primary-translator in a new "literary mode", driven by a
-persistent series bible**, with **Sonnet 4.6 as the default workhorse**, Opus
-4.8 for flagged/low-fidelity segments and final polish, NMT (LibreTranslate,
-free) retained for cheap drafts + TM warming, and Haiku not recommended for
-nuanced literary voice. Prompt caching of the bible prefix is mandatory for
-cost control. Keep V1 NMT mode as the cheap path; literary mode is opt-in
+persistent series bible**, with a **provider-agnostic** LLM layer: an Anthropic
+Messages adapter and a single **OpenAI-compatible adapter covering OpenAI,
+DeepSeek, and others** (base URL + model from config). **Default to Sonnet 4.6**
+as the workhorse pending a bake-off, with Opus 4.8 / GPT-5.x for flagged or
+low-fidelity segments and final polish; NMT (LibreTranslate, free) retained for
+cheap drafts + TM warming. Pick the production model by a **fidelity bake-off**
+(same chapter across Sonnet 4.6 / GPT-5.4 / DeepSeek V4, scored by the fidelity
+rubric), not by price. Prompt caching of the bible prefix is mandatory for cost
+control. Keep V1 NMT mode as the cheap path; literary mode is opt-in
 (`--mode literary`).
 
 ## Implementation Plan
@@ -193,19 +223,52 @@ cost control. Keep V1 NMT mode as the cheap path; literary mode is opt-in
 1. `internal/narrative`: bible schema (SQLite, series-scoped, versioned) +
    types + load/save + address-matrix with evolution log.
 2. `style-profile` command: seed the bible from vol.1 samples.
-3. `LLMLiteraryTranslator` (uses the existing `internal/llm` client): compose
-   prompt (style guide + bible slice + context + glossary), with prompt-cache
-   breakpoint on the stable bible prefix.
+3. `internal/llm`: add an **`OpenAICompatibleLLM`** adapter
+   (`/v1/chat/completions`, base URL + key + model from config) alongside the
+   Anthropic Messages adapter — one adapter reaches OpenAI, DeepSeek, and
+   compatible hosts. Provider selected by config (mirrors the existing NMT
+   provider factory). `LLMLiteraryTranslator` composes the prompt (style guide +
+   bible slice + context + glossary) behind the `internal/llm` interface, with a
+   prompt-cache breakpoint on the stable bible prefix.
 4. Pipeline literary mode: sequential chapter processing threading the rolling
    summary; bible-update stage after each chapter.
 5. Continuity check + LLM-as-judge fidelity scoring; wire into M3 escalation.
 6. Volume batching with shared bible (extends M2 batch).
 7. `bible` inspect/edit subcommands (human review of the evolving state).
 
+### Testing strategy (TDD, as in M1–M4)
+
+Same discipline as the rest of the project: write the test first, table-driven,
+deterministic, no live network in unit/integration tests.
+
+- **Deterministic mock LLM servers** (mirroring `internal/translate/nmttest`
+  and `internal/llm/llmtest`): an OpenAI-compatible mock (`/v1/chat/completions`)
+  and the existing Anthropic-shaped mock, so the literary translator, the
+  `OpenAICompatibleLLM` adapter, the bible-update pass, and the fidelity judge
+  are all tested **offline** against canned responses.
+- `internal/narrative`: unit tests for the bible store (save/load, versioning,
+  address-matrix evolution log) and the tu/vous consistency check.
+- `LLMLiteraryTranslator`: tests that the composed prompt contains the right
+  bible slice + context + glossary, that placeholders survive (reuse the
+  existing strict round-trip + the `<x></x>` regression), and that prompt-cache
+  breakpoints sit on the stable prefix.
+- `OpenAICompatibleLLM`: adapter tests (request shape, auth header, error/retry,
+  non-2xx) against the mock — same coverage the NMT/HTTP adapters already have.
+- Pipeline literary mode: an end-to-end integration test (fixture EPUB + mock
+  LLM) asserting sequential chapter order, bible carry-over, QA gate, and
+  artifacts — extends the existing `tests/integration` suite.
+- **No live-API test in CI.** Real-provider calls happen only in the manual
+  bake-off and real runs, gated by `estimate` + budget caps.
+
 ## Rollout Plan
 
-- Validate on Lumen V1 chapter 1 (we have it) vs the current NMT output —
-  side-by-side voice comparison, human read.
+- **Provider bake-off first**: translate Lumen V1 ch.1 with the same bible +
+  prompt across Sonnet 4.6 / GPT-5.4 / DeepSeek V4 Flash, score with the
+  fidelity rubric + a human read, and pick the production model on quality (cost
+  is the tiebreaker). Output is the dominant cost, so a cheap-output model that
+  passes the rubric is the win.
+- Validate the chosen model on V1 ch.1 vs the current NMT output — side-by-side
+  voice comparison.
 - Then full V1; then a second volume to exercise cross-volume bible carry-over.
 - Gate spend with the existing per-book/daily/monthly budget caps.
 
@@ -238,7 +301,16 @@ cost control. Keep V1 NMT mode as the cheap path; literary mode is opt-in
 - **Placeholder loss via LLM** → existing strict restore + QA gate (already
   catches the LibreTranslate `<x></x>` case fixed in `94a6f9c`).
 - **Provider lock-in / pricing shifts** → `internal/llm` is an interface; the
-  cost model is config-driven (M2 cost model).
+  OpenAI-compatible adapter + config-driven model make switching providers a
+  config change. Prices are volatile (the table is a June 2026 snapshot) — the
+  M2 cost model is config-driven so rates update without code.
+- **Data governance (DeepSeek)** → DeepSeek is hosted in China; source text +
+  bible would leave for that jurisdiction. Flag to the user before selecting it
+  for rights-sensitive or personal content; prefer Anthropic/OpenAI (or a
+  self-hosted open model via the same OpenAI-compatible adapter) when retention
+  policy matters. Honor each provider's data-retention/usage policy (§11).
+- **Cheap-tier quality regressions** → the bake-off gates model choice on the
+  fidelity rubric, not price; cheap output tiers are unproven for literary voice.
 
 ## Open Questions
 
@@ -253,3 +325,6 @@ cost control. Keep V1 NMT mode as the cheap path; literary mode is opt-in
 - 2026-06-20: status `draft`. Motivated by the real LibreTranslate run on
   Lumen V1 ch.1 showing adequate-but-not-faithful output. Cost model grounded
   in the measured local volume (~107k tokens) and 2026-06-04 API pricing.
+- 2026-06-20: added multi-provider comparison (Anthropic / OpenAI / DeepSeek)
+  with a single OpenAI-compatible adapter covering OpenAI + DeepSeek; added the
+  TDD testing strategy; model choice gated on a fidelity bake-off, not price.
