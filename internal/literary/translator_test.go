@@ -48,17 +48,17 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	require.Contains(t, stable, "formal, precise literary French")
 	require.Contains(t, stable, "Alice")
 	require.Contains(t, stable, "Alice -> Bruno: vous")
-	require.Contains(t, stable, "STORY_SO_FAR")
+	require.Contains(t, stable, "RESUME_DE_L_HISTOIRE")
 	require.Contains(t, stable, "Alice meets Bruno at the gate.")
 	require.Contains(t, stable, "Bilbo => Bilbon")
-	require.Contains(t, volatile, "CHAPTER_SEGMENTS_JSON")
+	require.Contains(t, volatile, "SEGMENTS_DU_CHAPITRE_JSON")
 	require.Contains(t, volatile, "previous")
 	require.Contains(t, volatile, "next")
 
 	combined := stable + volatile
 	require.Less(t,
-		strings.Index(combined, "STYLE_GUIDE"),
-		strings.Index(combined, "CHAPTER_SEGMENTS_JSON"),
+		strings.Index(combined, "GUIDE_DE_STYLE"),
+		strings.Index(combined, "SEGMENTS_DU_CHAPITRE_JSON"),
 		"stable prefix must precede volatile chapter content")
 	require.Equal(t, "model-a", chat.req.Model)
 }

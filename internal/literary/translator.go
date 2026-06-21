@@ -15,9 +15,13 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/segment"
 )
 
-// defaultMaxTokens must comfortably fit a whole chapter's JSON output; a full
-// light-novel chapter is ~50 segments / several thousand output tokens.
+// defaultMaxTokens must comfortably fit a batch's JSON output.
 const defaultMaxTokens = 16000
+
+// defaultBatchSize is the maximum number of segments per LLM call. Small models
+// (≤8B) stop generating before completing long structured outputs, so chapters
+// are split into batches of this size and calls are aggregated.
+const defaultBatchSize = 20
 
 var inlineTokenPattern = regexp.MustCompile(`<x id="(\d+)"\s*/?>(?:\s*</x>)?`)
 
@@ -31,6 +35,10 @@ type Translator struct {
 	Chat      llm.ChatClient
 	Model     string
 	MaxTokens int
+	// BatchSize is the maximum number of segments sent per LLM call. Smaller
+	// models stop generating before completing long structured outputs; batching
+	// works around this. 0 uses defaultBatchSize.
+	BatchSize int
 	Glossary  *glossary.Glossary
 }
 
@@ -67,7 +75,8 @@ type Usage struct {
 
 // TranslateChapter returns a translated copy of segs plus the LLM token usage.
 // The current TargetText on each input segment is treated as the safe NMT draft
-// fallback.
+// fallback. The chapter is split into batches of at most BatchSize segments so
+// that small models (≤8B) do not stop generating before all segments are done.
 func (t *Translator) TranslateChapter(
 	ctx context.Context,
 	bible narrative.Bible,
@@ -88,34 +97,39 @@ func (t *Translator) TranslateChapter(
 		return nil, Usage{}, err
 	}
 
-	resp, err := t.Chat.Chat(ctx, llm.ChatRequest{
-		Model:      t.Model,
-		MaxTokens:  t.maxTokens(),
-		Messages:   composeMessages(bible, t.glossaryTerms(), string(payload), prevCtx, nextCtx),
-		JSONSchema: responseSchema,
-	})
-	if err != nil {
-		return nil, Usage{}, fmt.Errorf("unable to translate literary chapter %s, err: %w", chapterID, err)
-	}
-	if strings.TrimSpace(resp.Text) == "" {
-		return nil, Usage{}, ErrEmptyResponse
-	}
+	// Split the request payload into batches so small models do not stop early.
+	batches := splitBatches(payload, t.batchSize())
 
-	usage := Usage{
-		InputTokens:         resp.InputTokens,
-		OutputTokens:        resp.OutputTokens,
-		CacheReadTokens:     resp.CacheReadInputTokens,
-		CacheCreationTokens: resp.CacheCreationInputTokens,
-	}
+	byID := make(map[string]string, len(segs))
+	var totalUsage Usage
 
-	decoded, err := decodeResponse(resp.Text)
-	if err != nil {
-		return nil, usage, fmt.Errorf("unable to parse literary response for chapter %s, err: %w", chapterID, err)
-	}
+	for batchIdx, batchPayload := range batches {
+		resp, err := t.Chat.Chat(ctx, llm.ChatRequest{
+			Model:      t.Model,
+			MaxTokens:  t.maxTokens(),
+			Messages:   composeMessages(bible, t.glossaryTerms(), string(batchPayload), prevCtx, nextCtx),
+			JSONSchema: responseSchema,
+		})
+		if err != nil {
+			return nil, totalUsage, fmt.Errorf("unable to translate literary chapter %s batch %d, err: %w", chapterID, batchIdx, err)
+		}
+		if strings.TrimSpace(resp.Text) == "" {
+			return nil, totalUsage, ErrEmptyResponse
+		}
 
-	byID := make(map[string]string, len(decoded.Segments))
-	for _, out := range decoded.Segments {
-		byID[out.ID] = out.TargetText
+		totalUsage.InputTokens += resp.InputTokens
+		totalUsage.OutputTokens += resp.OutputTokens
+		totalUsage.CacheReadTokens += resp.CacheReadInputTokens
+		totalUsage.CacheCreationTokens += resp.CacheCreationInputTokens
+
+		decoded, err := decodeResponse(resp.Text)
+		if err != nil {
+			return nil, totalUsage, fmt.Errorf("unable to parse literary response for chapter %s batch %d, err: %w", chapterID, batchIdx, err)
+		}
+
+		for _, out := range decoded.Segments {
+			byID[out.ID] = out.TargetText
+		}
 	}
 
 	out := make([]segment.Segment, len(segs))
@@ -140,15 +154,13 @@ func (t *Translator) TranslateChapter(
 		out[i].Status = segment.StatusPostEdited
 	}
 
-	return out, usage, nil
+	return out, totalUsage, nil
 }
 
-func (t *Translator) buildPayload(segs []segment.Segment) ([]byte, map[string]segmentState, error) {
-	req := struct {
-		Segments []requestSegment `json:"segments"`
-	}{Segments: make([]requestSegment, 0, len(segs))}
-
+func (t *Translator) buildPayload(segs []segment.Segment) ([]requestSegment, map[string]segmentState, error) {
+	items := make([]requestSegment, 0, len(segs))
 	states := make(map[string]segmentState, len(segs))
+
 	for _, seg := range segs {
 		source := seg.SourceText
 		draft := fallbackText(seg)
@@ -157,7 +169,7 @@ func (t *Translator) buildPayload(segs []segment.Segment) ([]byte, map[string]se
 			source, subs = t.Glossary.Protect(source)
 		}
 
-		req.Segments = append(req.Segments, requestSegment{
+		items = append(items, requestSegment{
 			ID:         seg.ID,
 			SourceText: source,
 			DraftText:  draft,
@@ -169,13 +181,31 @@ func (t *Translator) buildPayload(segs []segment.Segment) ([]byte, map[string]se
 		}
 	}
 
-	var buf bytes.Buffer
-	enc := json.NewEncoder(&buf)
-	enc.SetEscapeHTML(false)
-	if err := enc.Encode(req); err != nil {
-		return nil, nil, fmt.Errorf("unable to encode literary chapter request, err: %w", err)
+	return items, states, nil
+}
+
+// splitBatches encodes items into JSON payloads of at most size segments each.
+func splitBatches(items []requestSegment, size int) [][]byte {
+	var batches [][]byte
+	for i := 0; i < len(items); i += size {
+		end := i + size
+		if end > len(items) {
+			end = len(items)
+		}
+		chunk := struct {
+			Segments []requestSegment `json:"segments"`
+		}{Segments: items[i:end]}
+
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		enc.SetEscapeHTML(false)
+		if err := enc.Encode(chunk); err != nil {
+			// Encoding a plain struct cannot fail; panic would be unreachable.
+			panic(fmt.Sprintf("literary: unable to encode batch: %v", err))
+		}
+		batches = append(batches, bytes.TrimSpace(buf.Bytes()))
 	}
-	return bytes.TrimSpace(buf.Bytes()), states, nil
+	return batches
 }
 
 func (t *Translator) maxTokens() int {
@@ -183,6 +213,13 @@ func (t *Translator) maxTokens() int {
 		return t.MaxTokens
 	}
 	return defaultMaxTokens
+}
+
+func (t *Translator) batchSize() int {
+	if t.BatchSize > 0 {
+		return t.BatchSize
+	}
+	return defaultBatchSize
 }
 
 func (t *Translator) glossaryTerms() []glossary.Term {
