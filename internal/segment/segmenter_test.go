@@ -65,9 +65,11 @@ func TestParagraphSegmenter_Segment(t *testing.T) {
 	require.Empty(t, segs[0].Placeholders)
 
 	require.Equal(t, "ch_0001_p_0002", segs[1].ID)
-	require.Equal(t, `Second with <x id="1"/> inside.`, segs[1].SourceText)
-	require.Len(t, segs[1].Placeholders, 1)
-	require.Equal(t, `Second with <x id="1"/> inside.`, segs[1].NormalizedText)
+	// A text-only inline element is split into an open/close token pair so its
+	// inner text ("markup") stays translatable.
+	require.Equal(t, `Second with <x id="1"/>markup<x id="2"/> inside.`, segs[1].SourceText)
+	require.Len(t, segs[1].Placeholders, 2)
+	require.Equal(t, `Second with <x id="1"/>markup<x id="2"/> inside.`, segs[1].NormalizedText)
 }
 
 func TestParagraphSegmenter_NilDocument(t *testing.T) {

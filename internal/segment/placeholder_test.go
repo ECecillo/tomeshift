@@ -59,16 +59,22 @@ func TestTokenize(t *testing.T) {
 			wantPlaceholders: nil,
 		},
 		{
-			name:             "single inline element becomes one placeholder",
+			name:             "simple inline becomes an open/close token pair",
 			fragment:         "<p>Some <em>emphasized</em> text.</p>",
-			wantText:         `Some <x id="1"/> text.`,
-			wantPlaceholders: []string{"<em>emphasized</em>"},
+			wantText:         `Some <x id="1"/>emphasized<x id="2"/> text.`,
+			wantPlaceholders: []string{"<em>emphasized</em>", ""},
 		},
 		{
 			name:             "multiple inline elements get sequential ids",
 			fragment:         `<p>A <strong>b</strong> c <a href="x">d</a> e</p>`,
-			wantText:         `A <x id="1"/> c <x id="2"/> e`,
-			wantPlaceholders: []string{"<strong>b</strong>", `<a href="x">d</a>`},
+			wantText:         `A <x id="1"/>b<x id="2"/> c <x id="3"/>d<x id="4"/> e`,
+			wantPlaceholders: []string{"<strong>b</strong>", "", `<a href="x">d</a>`, ""},
+		},
+		{
+			name:             "inline with nested markup stays opaque",
+			fragment:         `<p>x <span>a <em>b</em></span> y</p>`,
+			wantText:         `x <x id="1"/> y`,
+			wantPlaceholders: []string{`<span>a <em>b</em></span>`},
 		},
 	}
 
@@ -128,9 +134,10 @@ func TestRestore_TranslatedText(t *testing.T) {
 	_, placeholders, err := pm.Tokenize(node)
 	require.NoError(t, err)
 
-	// Translator output: French text keeping the placeholder token.
-	require.NoError(t, pm.Restore(`Du texte <x id="1"/> ici.`, placeholders, node))
-	require.Equal(t, "<p>Du texte <em>emphasized</em> ici.</p>", renderNode(t, node))
+	// Translator output: French text keeping the open/close token pair, with the
+	// inner text now translated ("emphasized" -> "souligné").
+	require.NoError(t, pm.Restore(`Du texte <x id="1"/>souligné<x id="2"/> ici.`, placeholders, node))
+	require.Equal(t, "<p>Du texte <em>souligné</em> ici.</p>", renderNode(t, node))
 }
 
 func TestRestore_AcceptsPairedTokenForm(t *testing.T) {
@@ -145,8 +152,8 @@ func TestRestore_AcceptsPairedTokenForm(t *testing.T) {
 	_, placeholders, err := pm.Tokenize(node)
 	require.NoError(t, err)
 
-	require.NoError(t, pm.Restore(`Du texte <x id="1"></x> ici.`, placeholders, node))
-	require.Equal(t, "<p>Du texte <em>emphasized</em> ici.</p>", renderNode(t, node))
+	require.NoError(t, pm.Restore(`Du texte <x id="1"></x>souligné<x id="2"></x> ici.`, placeholders, node))
+	require.Equal(t, "<p>Du texte <em>souligné</em> ici.</p>", renderNode(t, node))
 }
 
 func TestRestore_Errors(t *testing.T) {

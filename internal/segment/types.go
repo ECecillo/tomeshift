@@ -20,14 +20,30 @@ const (
 	PlaceholderInline PlaceholderType = "inline"
 )
 
+// placeholderRole distinguishes how a placeholder token is spliced back during
+// Restore. Opaque elements (the default) are re-attached as a whole subtree.
+// A "simple" inline element whose children are all text is split into an open
+// token and a close token so its inner text stays translatable: the open token
+// re-creates the (childless) element and the close token closes it, with the
+// translated inner text appended in between.
+type placeholderRole uint8
+
+const (
+	roleOpaque placeholderRole = iota // whole subtree re-attached verbatim
+	roleOpen                          // opening tag of a simple inline element
+	roleClose                         // closing tag of a simple inline element
+)
+
 // Placeholder represents a piece of inline markup removed from a segment's text
-// before translation and restored afterwards. The whole inline element is kept
-// opaque so its subtree can be spliced back verbatim, guaranteeing valid markup.
+// before translation and restored afterwards. Opaque inline elements are kept
+// whole so their subtree splices back verbatim; simple text-only inline elements
+// are kept as an open/close token pair so their inner text can be translated.
 type Placeholder struct {
 	Token    string          // stable token, e.g. `<x id="1"/>`
 	Original string          // original outer HTML, used for reporting/QA
 	Type     PlaceholderType //
-	node     *html.Node      // original node, re-attached on Restore
+	role     placeholderRole // how to splice back on Restore
+	node     *html.Node      // node re-attached on Restore (nil for roleClose)
 }
 
 // Segment is a paragraph-level translatable unit.

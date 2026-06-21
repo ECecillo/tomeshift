@@ -65,9 +65,9 @@ func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
 	t.Parallel()
 
 	seg := tokenizedSegment(t, "s1", `<p>A <em>bold</em> claim.</p>`)
-	seg.TargetText = "Une affirmation <x id=\"1\"/>."
+	seg.TargetText = "Une affirmation <x id=\"1\"/>grasse<x id=\"2\"/>."
 
-	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Une affirmation <x id=\"1\"/>."}]}`}
+	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Une affirmation <x id=\"1\"/>grasse<x id=\"2\"/>."}]}`}
 	tr := literary.Translator{Chat: chat}
 
 	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
@@ -77,7 +77,7 @@ func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
 
 	require.NoError(t, segment.InlinePlaceholderManager{}.Restore(out[0].TargetText, out[0].Placeholders, out[0].Node))
 	rendered := renderNode(t, out[0].Node)
-	require.Contains(t, rendered, "<em>bold</em>")
+	require.Contains(t, rendered, "<em>grasse</em>")
 	require.Contains(t, rendered, "Une affirmation")
 }
 

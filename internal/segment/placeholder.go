@@ -50,8 +50,44 @@ func (InlinePlaceholderManager) Tokenize(node *html.Node) (string, []Placeholder
 			continue
 		}
 
-		// Any non-text child (inline element, comment, ...) is preserved as an
-		// opaque placeholder so the round-trip never loses content.
+		// A simple inline element (e.g. <span>, <em>, <i>) whose children are
+		// all text is split into an open/close token pair so its inner text is
+		// exposed for translation instead of being shelved verbatim.
+		if isSimpleInline(c) {
+			var buf strings.Builder
+			if err := html.Render(&buf, c); err != nil {
+				return "", nil, fmt.Errorf("unable to render inline markup for placeholder, err: %w", err)
+			}
+
+			id++
+			open := placeholderToken(id)
+			sb.WriteString(open)
+			placeholders = append(placeholders, Placeholder{
+				Token:    open,
+				Original: buf.String(),
+				Type:     PlaceholderInline,
+				role:     roleOpen,
+				node:     shallowClone(c),
+			})
+
+			for t := c.FirstChild; t != nil; t = t.NextSibling {
+				sb.WriteString(t.Data)
+			}
+
+			id++
+			closeTok := placeholderToken(id)
+			sb.WriteString(closeTok)
+			placeholders = append(placeholders, Placeholder{
+				Token: closeTok,
+				Type:  PlaceholderInline,
+				role:  roleClose,
+			})
+			continue
+		}
+
+		// Any other non-text child (nested inline, void element, comment, ...)
+		// is preserved as an opaque placeholder so the round-trip never loses
+		// content.
 		id++
 
 		var buf strings.Builder
@@ -65,11 +101,42 @@ func (InlinePlaceholderManager) Tokenize(node *html.Node) (string, []Placeholder
 			Token:    token,
 			Original: buf.String(),
 			Type:     PlaceholderInline,
+			role:     roleOpaque,
 			node:     c,
 		})
 	}
 
 	return sb.String(), placeholders, nil
+}
+
+// isSimpleInline reports whether n is an element whose children are all text
+// nodes (and it has at least one). Such an element can be re-created as an
+// open/close token pair with its inner text translated in between; anything
+// with nested elements or no children stays opaque.
+func isSimpleInline(n *html.Node) bool {
+	if n.Type != html.ElementNode || n.FirstChild == nil {
+		return false
+	}
+	for c := n.FirstChild; c != nil; c = c.NextSibling {
+		if c.Type != html.TextNode {
+			return false
+		}
+	}
+	return true
+}
+
+// shallowClone copies an element node without its children, preserving the tag,
+// namespace and attributes so the opening tag can be reconstructed on Restore.
+func shallowClone(n *html.Node) *html.Node {
+	attr := make([]html.Attribute, len(n.Attr))
+	copy(attr, n.Attr)
+	return &html.Node{
+		Type:      n.Type,
+		DataAtom:  n.DataAtom,
+		Data:      n.Data,
+		Namespace: n.Namespace,
+		Attr:      attr,
+	}
 }
 
 // Restore rebuilds the node's children from the translated text, splicing the
@@ -81,18 +148,22 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 		return ErrNilDocument
 	}
 
-	remaining := make(map[string]*html.Node, len(placeholders))
+	remaining := make(map[string]*Placeholder, len(placeholders))
 	for i := range placeholders {
-		remaining[tokenIDPattern.FindString(placeholders[i].Token)] = placeholders[i].node
+		remaining[tokenIDPattern.FindString(placeholders[i].Token)] = &placeholders[i]
 	}
 
 	detachChildren(node)
 
+	// stack tracks the current append target. Open tokens push the re-created
+	// element so subsequent text/elements nest inside it; close tokens pop back.
+	stack := []*html.Node{node}
+	current := func() *html.Node { return stack[len(stack)-1] }
 	appendText := func(s string) {
 		if s == "" {
 			return
 		}
-		node.AppendChild(&html.Node{Type: html.TextNode, Data: s})
+		current().AppendChild(&html.Node{Type: html.TextNode, Data: s})
 	}
 
 	pos := 0
@@ -100,7 +171,7 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 		appendText(translatedText[pos:loc[0]])
 
 		id := translatedText[loc[2]:loc[3]]
-		orig, ok := remaining[id]
+		ph, ok := remaining[id]
 		if !ok {
 			// A token-shaped string we did not issue: either the source text
 			// literally contained it, or the provider hallucinated one. Keep it
@@ -109,7 +180,17 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 			pos = loc[1]
 			continue
 		}
-		node.AppendChild(orig)
+		switch ph.role {
+		case roleOpen:
+			current().AppendChild(ph.node)
+			stack = append(stack, ph.node)
+		case roleClose:
+			if len(stack) > 1 {
+				stack = stack[:len(stack)-1]
+			}
+		default:
+			current().AppendChild(ph.node)
+		}
 		delete(remaining, id)
 		pos = loc[1]
 	}

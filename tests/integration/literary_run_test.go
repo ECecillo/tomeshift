@@ -70,7 +70,7 @@ func TestRun_LiteraryModeEndToEnd(t *testing.T) {
 			translationChapterSeen = append(translationChapterSeen, "ch_0001")
 			return `{"segments":[
 				{"id":"ch_0001_p_0001","target_text":"Un"},
-				{"id":"ch_0001_p_0002","target_text":"Alice rencontra <x id=\"1\"/>."}
+				{"id":"ch_0001_p_0002","target_text":"Alice rencontra <x id=\"1\"/>Bruno<x id=\"2\"/>."}
 			]}`
 		}
 		if strings.Contains(user, `"id":"ch_0002_p_0001"`) {
