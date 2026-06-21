@@ -124,6 +124,20 @@ seed-bible input series samples="8" merge="":
     if [ "{{merge}}" = "merge" ]; then args+=(--merge); fi
     go run ./cmd/epub-translator "${args[@]}"
 
+# Pretty-print a series bible from a SQLite DB. Args: db path, series id.
+#   just bible ./data/lumen-series.sqlite lumen
+bible db series:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "── version ──"
+    sqlite3 "{{db}}" "SELECT series_id || ' v' || version FROM bibles WHERE series_id='{{series}}';"
+    echo; echo "── style_guide ──"
+    sqlite3 "{{db}}" "SELECT style_guide FROM bibles WHERE series_id='{{series}}';"
+    echo; echo "── characters ──"
+    sqlite3 "{{db}}" "SELECT characters_json FROM bibles WHERE series_id='{{series}}';" | python3 -m json.tool
+    echo; echo "── address (tu/vous) ──"
+    sqlite3 "{{db}}" "SELECT address_json FROM bibles WHERE series_id='{{series}}';" | python3 -m json.tool
+
 # Extract proper-noun glossary candidates from a book (free, heuristic).
 # Args: input, optional output path, optional min occurrence count.
 glossary-suggest input out="glossary.json" min_count="5":
