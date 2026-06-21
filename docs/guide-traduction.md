@@ -220,3 +220,16 @@ epub-translator batch --input-dir ./books/serie --output-dir ./runs \
 > Toutes les commandes prennent `--input <epub>` et `--source-lang en
 > --target-lang fr` (V1). Les chemins de DB et le fournisseur LLM viennent de
 > l'environnement (`.env.local`).
+
+**Raccourcis `just`** — chaque étape a une recette qui source `.env.local` pour
+toi. `just --list` affiche tout avec ses arguments documentés. Exemples :
+```bash
+just nmt-dev                                            # service NMT de dev
+just comet-up                                           # service COMET (Docker)
+just seed-bible "books/vol1.epub" lumen 8              # amorcer la bible
+just literary "books/vol1.epub" lumen ./data/lumen-glossary.json wn-ch1
+just eval-ref runs/wn-ch1/translated.epub ref-fr.epub   # chrF
+just eval-qe  runs/wn-ch1/segments.jsonl                # COMET-QE
+just carve "books/vol1.epub" en-ch1.epub chapter_1.xhtml
+just compare runs/wn-ch1/segments.jsonl wn-ch1.html
+```
