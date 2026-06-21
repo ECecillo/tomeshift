@@ -79,19 +79,32 @@ POST <COMET_ENDPOINT>
   { "samples": [ {"src": "...", "mt": "...", "ref": "..."} ] }   # ref optional (QE)
 → { "scores": [0.83, ...] }
 ```
-A minimal CometKiwi (reference-free) service:
+A minimal CometKiwi (reference-free) service — `comet_service.py`:
 ```python
-# pip install "unbabel-comet>=2.2" fastapi uvicorn
 from comet import download_model, load_from_checkpoint
 from fastapi import FastAPI
-model = load_from_checkpoint(download_model("Unbabel/wmt22-cometkiwi-da"))
+model = load_from_checkpoint(download_model("Unbabel/wmt22-cometkiwi-da"))  # gated on HF
 app = FastAPI()
 @app.post("/score")
 async def score(body: dict):
-    data = [{"src": s["src"], "mt": s["mt"]} for s in body["samples"]]
-    out = model.predict(data, batch_size=8, gpus=0)
-    return {"scores": out.scores}
+    data = [{"src": s["src"], "mt": s["mt"]} for s in body["samples"]]  # QE: ignore ref
+    out = model.predict(data, batch_size=8, gpus=0)                     # gpus=0 → CPU
+    return {"scores": [float(x) for x in out.scores]}
 ```
+Run it with [`uv`](https://docs.astral.sh/uv/) — it pins a compatible Python and
+fetches deps (avoids the bleeding-edge-Python dependency conflicts the COMET ML
+stack hits on 3.13/3.14):
+```bash
+# one-time, if the model is gated: accept the license on its HF page, then
+uv run --python 3.12 --with "huggingface-hub<1.0" -- huggingface-cli login
+
+uv run --python 3.12 \
+  --with "unbabel-comet>=2.2" --with "huggingface-hub<1.0" \
+  --with fastapi --with "uvicorn[standard]" \
+  -- python -m uvicorn comet_service:app --host 127.0.0.1 --port 8000
+```
+Use **Python 3.12** and pin **`huggingface-hub<1.0`** (required by `transformers`).
+A plain `pip`/`venv` works too, but only on a supported Python.
 Enable it:
 ```bash
 EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score

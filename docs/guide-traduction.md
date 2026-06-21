@@ -172,7 +172,8 @@ epub-translator glossary-suggest --input vol2.epub --out glossary-vol2.json
   epub-translator eval --candidate ./runs/<id>/translated.epub --reference ref-fr.epub
   ```
 - **COMET-QE (sans référence)** — la bonne métrique quand on n'a pas de référence
-  alignée. Nécessite un service COMET (ex. CometKiwi via FastAPI, voir README) :
+  alignée. Nécessite un service COMET (CometKiwi via FastAPI — lancer avec `uv`,
+  Python 3.12, `huggingface-hub<1.0` ; recette dans le README) :
   ```bash
   EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
     epub-translator eval --segments ./runs/<id>/segments.jsonl
