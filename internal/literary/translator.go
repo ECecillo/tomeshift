@@ -21,7 +21,7 @@ const defaultMaxTokens = 16000
 // defaultBatchSize is the maximum number of segments per LLM call. Small models
 // (≤8B) stop generating before completing long structured outputs, so chapters
 // are split into batches of this size and calls are aggregated.
-const defaultBatchSize = 20
+const defaultBatchSize = 10
 
 var inlineTokenPattern = regexp.MustCompile(`<x id="(\d+)"\s*/?>(?:\s*</x>)?`)
 
