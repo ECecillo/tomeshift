@@ -99,6 +99,32 @@ Toujours estimer avant de payer :
 
 ---
 
+## Continuité d'un tome à l'autre
+
+La bible étant **scopée par `--series`**, le tome 2 hérite automatiquement du
+`style_guide`, des `characters` et de la matrice `address` du tome 1. Pour que
+l'**intrigue** du tome 1 informe aussi le tome 2, deux choses :
+
+1. **Peupler la mémoire** : traduire le tome 1 avec `--update-bible`. À chaque
+   chapitre, un résumé est ajouté à `summaries_json` (et voix/adresse évoluent).
+2. **L'utiliser** : ces résumés sont injectés dans le prompt sous la section
+   `STORY_SO_FAR` → le LLM sait « ce qui s'est passé avant » en traduisant.
+
+```bash
+# Tome 1 — traduire en faisant évoluer la bible (peuple STORY_SO_FAR)
+./bin/epub-translator run --input vol1.epub --output-dir ./runs \
+  --mode literary --series lumen --update-bible --glossary ./data/lumen-glossary.json
+
+# Tome 2 — hérite de la bible (style + perso + adresse + résumés)
+./bin/epub-translator style-profile --input vol2.epub --series lumen --samples 8 --merge
+./bin/epub-translator run --input vol2.epub --output-dir ./runs \
+  --mode literary --series lumen --glossary ./data/lumen-glossary.json
+```
+
+> Sans `--update-bible`, la bible reste **figée** : pas de nouveaux résumés, donc
+> `STORY_SO_FAR` ne grandit pas. Vérifie l'état avec `just bible <db> <série>`
+> (colonne résumés) avant de lancer le tome suivant.
+
 ## Workflow type d'amélioration
 
 1. Traduire un **chapitre** ([`guide-traduction.md`](guide-traduction.md)).

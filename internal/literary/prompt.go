@@ -55,6 +55,15 @@ func stablePrefix(bible narrative.Bible, terms []glossary.Term) string {
 		}
 	}
 
+	sb.WriteString("\nSTORY_SO_FAR:\n")
+	if len(bible.Summaries) == 0 {
+		sb.WriteString("none")
+	} else {
+		for _, summary := range bible.Summaries {
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", summary.ChapterID, summary.Summary))
+		}
+	}
+
 	sb.WriteString("\nGLOSSARY:\n")
 	if len(terms) == 0 {
 		sb.WriteString("none")

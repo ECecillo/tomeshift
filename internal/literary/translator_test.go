@@ -48,6 +48,8 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	require.Contains(t, stable, "formal, precise literary French")
 	require.Contains(t, stable, "Alice")
 	require.Contains(t, stable, "Alice -> Bruno: vous")
+	require.Contains(t, stable, "STORY_SO_FAR")
+	require.Contains(t, stable, "Alice meets Bruno at the gate.")
 	require.Contains(t, stable, "Bilbo => Bilbon")
 	require.Contains(t, volatile, "CHAPTER_SEGMENTS_JSON")
 	require.Contains(t, volatile, "previous")
@@ -141,6 +143,10 @@ func bibleFixture() narrative.Bible {
 				AtChapter: "ch_0001",
 				Note:      "Formal distance.",
 			}},
+		}},
+		Summaries: []narrative.ChapterSummary{{
+			ChapterID: "ch_0001",
+			Summary:   "Alice meets Bruno at the gate.",
 		}},
 	}
 }
