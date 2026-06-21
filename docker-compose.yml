@@ -37,6 +37,29 @@ services:
       timeout: 5s
       retries: 30
 
+  # Reference-free COMET-QE scoring service for quality evaluation. Heavy ML
+  # stack, so it's behind the "eval" profile: `docker compose --profile eval up comet`.
+  # First boot downloads the model (~2.3 GB) into the persisted comet-cache volume.
+  # Point the app/host at it via EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score
+  # (or http://comet:8000/score from inside the compose network).
+  comet:
+    build:
+      context: .
+      dockerfile: Dockerfile.comet
+    image: epub-translator-comet:local
+    profiles: ["eval"]
+    ports:
+      - "8000:8000"
+    volumes:
+      - comet-cache:/cache/huggingface
+    healthcheck:
+      # /docs only responds once the model has finished loading at import time.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"]
+      interval: 15s
+      timeout: 5s
+      retries: 40
+      start_period: 600s
+
   app:
     build:
       context: .
@@ -59,3 +82,6 @@ services:
       - ./books:/app/books
       - ./data:/app/data
     command: ["run", "--input", "/app/books/source.epub", "--output-dir", "/app/runs", "--source-lang", "en", "--target-lang", "fr"]
+
+volumes:
+  comet-cache:

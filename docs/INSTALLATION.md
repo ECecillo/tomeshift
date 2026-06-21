@@ -116,9 +116,17 @@ uv run --python 3.12 \
 Le 1er lancement télécharge le modèle (~2,3 Go). Détails et interprétation :
 [`evaluation-qualite.md`](evaluation-qualite.md).
 
-> Pourquoi pas dans `docker compose` ? La stack ML (torch + comet) est lourde et
-> capricieuse selon la plateforme ; `uv` fige une version de Python compatible
-> sans polluer le système. Le compose reste dédié à la *traduction*.
+**Ou via Docker** (profil `eval`, image lourde mais isolée ; modèle persté dans
+un volume nommé) :
+```bash
+docker compose --profile eval up -d comet     # 1er boot: build + téléchargement du modèle (long)
+docker compose --profile eval logs -f comet    # attendre "Application startup complete"
+# puis pointer l'éval sur :  EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score
+```
+
+> Deux voies, au choix : `uv` (rapide à itérer, rien à builder) ou Docker
+> (`--profile eval`, isolé du système). Le compose par défaut reste dédié à la
+> *traduction* ; COMET n'est tiré que si tu actives explicitement le profil `eval`.
 
 ---
 
@@ -131,6 +139,7 @@ Le `docker-compose.yml` couvre la **traduction** de bout en bout :
 | `app` | (défaut) | exécute le CLI (`run … source.epub` en NMT par défaut) |
 | `nmt` | (défaut) | NMT de dev intégré (:8081), autonome |
 | `libretranslate` | `real-nmt` | vrai NMT local EN→FR |
+| `comet` | `eval` | service COMET-QE (:8000) pour l'évaluation qualité |
 
 ```bash
 mkdir -p books runs data
@@ -144,7 +153,8 @@ just down       # arrêt + nettoyage
   clé API), mais l'LLM est une **API externe**, pas un service hébergé. Pour
   l'activer en conteneur, adapte la `command:` du service `app`
   (`--mode literary --series … --glossary …`).
-- **COMET-QE** : lancé à part via `uv` (voir §6).
+- **COMET-QE** : disponible via le profil `eval` (`docker compose --profile eval
+  up comet`) ou via `uv` (voir §6) — pas dans le profil par défaut (image lourde).
 
 ---
 

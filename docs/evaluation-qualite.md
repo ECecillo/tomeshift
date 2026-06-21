@@ -46,6 +46,8 @@ uv run --python 3.12 \
   --with fastapi --with "uvicorn[standard]" \
   -- python -m uvicorn comet_service:app --host 127.0.0.1 --port 8000
 ```
+Ou via Docker : `docker compose --profile eval up -d comet` (image isolée, modèle
+persté dans un volume ; voir [`INSTALLATION.md`](INSTALLATION.md#6-optionnel-service-comet-qe-pour-lévaluation)).
 
 **b. Scorer un run** :
 ```bash

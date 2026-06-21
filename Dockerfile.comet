@@ -1,0 +1,24 @@
+# Reference-free COMET-QE scoring service (comet_service.py).
+# Heavy ML image (torch + unbabel-comet) — used only for quality evaluation,
+# behind the compose "eval" profile. The model (~2.3 GB) is downloaded on first
+# boot into HF_HOME, which is a named volume so it persists across restarts.
+FROM python:3.12-slim
+
+# git + build toolchain: a few COMET deps may build from source on slim.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install deps first (cached layer) using the same pins as the uv workflow.
+COPY requirements-comet.txt .
+RUN pip install --no-cache-dir -r requirements-comet.txt
+
+COPY comet_service.py .
+
+# Persist the HuggingFace model cache across container recreations.
+ENV HF_HOME=/cache/huggingface
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "comet_service:app", "--host", "0.0.0.0", "--port", "8000"]
