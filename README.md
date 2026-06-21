@@ -2,6 +2,64 @@
 
 Go-based EPUB EN->FR translation pipeline.
 
+## Comment ça marche (vue d'ensemble)
+
+L'EPUB est parsé puis segmenté (en isolant le markup inline derrière des
+placeholders). Chaque segment passe par la mémoire de traduction (réutilisation
+exacte), sinon un brouillon NMT. En mode **littéraire**, un LLM retraduit à
+partir d'un prompt construit depuis la **bible de série** (style, voix, tu/vous,
+résumés `STORY_SO_FAR`) et du glossaire ; COMET-QE peut n'escalader que les
+brouillons faibles. On restaure les placeholders, on recompose l'EPUB, on valide
+(QA + epubcheck), et on écrit les artefacts. L'évaluation (chrF / COMET-QE) se
+fait à part sur les artefacts.
+
+```mermaid
+flowchart TD
+    EPUB["📖 EPUB source (EN)"] --> PARSE["Parse EPUB<br/>(internal/epub)"]
+    PARSE --> SEG["Segmentation<br/>(internal/segment)<br/>placeholders &lt;x/&gt; &lt;g/&gt;"]
+    SEG --> TM{"Exact match<br/>en mémoire ?<br/>(internal/tm)"}
+
+    TM -- "oui" --> RESTORE["Restaurer placeholders"]
+    TM -- "non" --> NMT["Brouillon NMT<br/>(internal/translate)"]
+
+    NMT --> MODE{"Mode ?"}
+    MODE -- "nmt" --> RESTORE
+    MODE -- "literary" --> PROMPT["Construire le prompt<br/>(internal/literary)"]
+
+    QE -. "score faible<br/>(escalade)" .-> PROMPT
+    NMT -. "score chaque brouillon" .-> QE["COMET-QE<br/>(optionnel)"]
+
+    PROMPT --> LLM["LLM chat<br/>Anthropic / OpenAI / DeepSeek"]
+    LLM --> RESTORE
+
+    RESTORE --> RECOMP["Recomposer l'EPUB<br/>(internal/epub)"]
+    RECOMP --> QA["QA + epubcheck<br/>(internal/qa)"]
+    QA --> OUT["📦 Artefacts du run"]
+
+    subgraph STORES["Stores (SQLite / fichiers)"]
+        BIBLE[("Bible de série<br/>style · voix · tu-vous · STORY_SO_FAR")]
+        GLOSS[("Glossaire<br/>noms verrouillés")]
+        TMDB[("Mémoire de traduction")]
+        CACHE[("Cache LLM")]
+    end
+
+    subgraph ARTIFACTS["Artefacts"]
+        A1["translated.epub"]
+        A2["report.json · metrics.json"]
+        A3["segments.jsonl"]
+    end
+
+    BIBLE --> PROMPT
+    GLOSS --> SEG
+    GLOSS --> PROMPT
+    TMDB --> TM
+    CACHE --> LLM
+    OUT --> A1 & A2 & A3
+
+    A1 -. "chrF (avec réf.)" .-> EVAL["eval"]
+    A3 -. "COMET-QE (sans réf.)" .-> EVAL
+```
+
 ## Documentation
 
 | Doc | Pour quoi |
