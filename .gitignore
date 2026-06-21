@@ -14,3 +14,8 @@
 # Built binaries
 /epub-translator
 /nmt-devserver
+/bin/
+
+# Python caches (COMET service / scripts)
+__pycache__/
+*.pyc

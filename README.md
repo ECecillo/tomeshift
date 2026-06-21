@@ -2,6 +2,19 @@
 
 Go-based EPUB EN->FR translation pipeline.
 
+## Documentation
+
+| Doc | Pour quoi |
+|---|---|
+| **[docs/INSTALLATION.md](docs/INSTALLATION.md)** | télécharger, installer, configurer, build, services (NMT, COMET) — natif & Docker |
+| **[docs/guide-traduction.md](docs/guide-traduction.md)** | traduire un livre pas à pas (modes NMT & littéraire) |
+| **[docs/evaluation-qualite.md](docs/evaluation-qualite.md)** | mesurer la qualité (chrF, COMET-QE) et relire **ligne par ligne** |
+| **[docs/ameliorer-traduction.md](docs/ameliorer-traduction.md)** | améliorer la traduction (glossaire, bible, garde-fous de style) |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | architecture & contraintes (source de vérité) |
+
+> Nouveau venu : commence par **INSTALLATION** → **guide-traduction** →
+> **evaluation-qualite**. Le reste de ce README est une référence rapide.
+
 ## Prerequisites
 - Go (latest stable)
 - Java runtime (`>=21`, tested with Java 25) for `epubcheck`

@@ -1,0 +1,20 @@
+# Pinned dependencies for the local COMET-QE service (comet_service.py).
+# These pins are what actually works on macOS / Python 3.12 — they avoid the
+# dependency conflicts the COMET ML stack hits on bleeding-edge Python and on
+# huggingface-hub >= 1.0 / torch >= 2.3 / setuptools >= 81.
+#
+# Preferred: run via uv (no venv to manage), which honors these constraints:
+#
+#   uv run --python 3.12 \
+#     --with "unbabel-comet>=2.2" --with "huggingface-hub<1.0" \
+#     --with "torch<2.3" --with "setuptools<81" \
+#     --with fastapi --with "uvicorn[standard]" \
+#     -- python -m uvicorn comet_service:app --host 127.0.0.1 --port 8000
+#
+# Or with a plain venv on Python 3.12:  pip install -r requirements-comet.txt
+unbabel-comet>=2.2
+huggingface-hub<1.0
+torch<2.3
+setuptools<81
+fastapi
+uvicorn[standard]
