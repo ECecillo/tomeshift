@@ -64,12 +64,16 @@ type RuntimeConfig struct {
 	// RunTimeoutSeconds bounds a single book's run; 0 disables.
 	RunTimeoutSeconds int
 	// LLM post-edit (M3) settings; disabled unless LLMEnabled and LLMEndpoint set.
-	LLMEnabled           bool
-	LLMEndpoint          string
-	LLMAPIKey            string
-	LLMChatProvider      string
-	LLMBaseURL           string
-	LLMModel             string
+	LLMEnabled      bool
+	LLMEndpoint     string
+	LLMAPIKey       string
+	LLMChatProvider string
+	LLMBaseURL      string
+	LLMModel        string
+	// LLMBatchSize is the number of segments per literary LLM call; 0 uses the
+	// literary package default. Raise it for large models that finish long
+	// structured outputs in one pass, to spend fewer calls per chapter.
+	LLMBatchSize         int
 	LLMCachePath         string
 	LLMEscalateMinChars  int
 	CostLLMPerSegmentUSD float64
@@ -271,9 +275,10 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg RuntimeConfig
 
 		narrativeProfiler = &narrative.Profiler{Chat: cachedChatClient, Model: cfg.LLMModel}
 		literaryTranslator = &literary.Translator{
-			Chat:     cachedChatClient,
-			Model:    cfg.LLMModel,
-			Glossary: gloss,
+			Chat:      cachedChatClient,
+			Model:     cfg.LLMModel,
+			BatchSize: cfg.LLMBatchSize,
+			Glossary:  gloss,
 		}
 	}
 

@@ -29,6 +29,7 @@ type Config struct {
 	LLMChatProvider      string  `split_words:"true" default:"openai"`
 	LLMBaseURL           string  `envconfig:"LLM_BASE_URL"`
 	LLMModel             string  `split_words:"true"`
+	LLMBatchSize         int     `split_words:"true" default:"0"`
 	LLMCachePath         string  `split_words:"true" default:"./llm_cache.sqlite"`
 	LLMEscalateMinChars  int     `split_words:"true" default:"240"`
 	CostLLMPerSegmentUSD float64 `envconfig:"COST_LLM_PER_SEGMENT_USD" default:"0"`

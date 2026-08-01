@@ -47,6 +47,7 @@ func loadRuntimeConfig() (commandexec.RuntimeConfig, error) {
 		LLMChatProvider:       cfg.LLMChatProvider,
 		LLMBaseURL:            cfg.LLMBaseURL,
 		LLMModel:              cfg.LLMModel,
+		LLMBatchSize:          cfg.LLMBatchSize,
 		LLMCachePath:          cfg.LLMCachePath,
 		LLMEscalateMinChars:   cfg.LLMEscalateMinChars,
 		CostLLMPerSegmentUSD:  cfg.CostLLMPerSegmentUSD,

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -48,8 +49,15 @@ func (s *stubChat) lastReq() llm.ChatRequest {
 // whole batch.
 type echoChat struct {
 	maxSegments int
+	// truncateOver cuts the response off mid-JSON when the batch holds more than
+	// this many segments, as a model hitting its output limit does; 0 disables.
+	truncateOver int
+	// errOnCall makes the nth call (1-based) fail like a transport error would;
+	// 0 disables.
+	errOnCall int
 	// batches records the segment IDs requested by each call, in order.
 	batches [][]string
+	reqs    []llm.ChatRequest
 }
 
 func (e *echoChat) Chat(_ context.Context, req llm.ChatRequest) (llm.ChatResponse, error) {
@@ -58,6 +66,18 @@ func (e *echoChat) Chat(_ context.Context, req llm.ChatRequest) (llm.ChatRespons
 		return llm.ChatResponse{}, err
 	}
 	e.batches = append(e.batches, ids)
+	e.reqs = append(e.reqs, req)
+
+	if e.errOnCall == len(e.reqs) {
+		return llm.ChatResponse{}, errors.New("provider unavailable")
+	}
+	if e.truncateOver > 0 && len(ids) > e.truncateOver {
+		// Cut mid-object: the JSON cannot be parsed at all.
+		return llm.ChatResponse{
+			Text:        fmt.Sprintf(`{"segments":[{"id":%q,"target_`, ids[0]),
+			InputTokens: 100, OutputTokens: 10,
+		}, nil
+	}
 
 	answered := ids
 	if e.maxSegments > 0 && len(answered) > e.maxSegments {
@@ -257,6 +277,86 @@ func TestTranslator_RetriesSegmentsTheModelStoppedShortOf(t *testing.T) {
 	}
 }
 
+func TestTranslator_ContextFollowsTheBatchBoundary(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(20)
+	chat := &echoChat{}
+	tr := literary.Translator{Chat: chat, BatchSize: 10}
+
+	_, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
+		segs, "AVANT_LE_CHAPITRE", "APRES_LE_CHAPITRE")
+	require.NoError(t, err)
+	require.Len(t, chat.reqs, 2)
+
+	// The first batch opens the chapter, so it gets the caller's context before
+	// it and the second batch's source after it.
+	first := volatileSections(t, chat.reqs[0])
+	require.Contains(t, first.prev, "AVANT_LE_CHAPITRE")
+	require.Contains(t, first.next, "Claim s011", "a batch must see the source that follows it")
+	require.NotContains(t, first.next, "APRES_LE_CHAPITRE")
+
+	// The second batch continues from the French just produced, not from the
+	// previous chapter, and closes the chapter so it gets the caller's tail.
+	second := volatileSections(t, chat.reqs[1])
+	require.Contains(t, second.prev, "traduction s010", "a batch must see the translation that precedes it")
+	require.NotContains(t, second.prev, "AVANT_LE_CHAPITRE")
+	require.Contains(t, second.next, "APRES_LE_CHAPITRE")
+}
+
+func TestTranslator_ChapterSurvivesOneFailedBatch(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(20)
+	// The second of two batches fails outright, as a transport error would.
+	chat := &echoChat{errOnCall: 2}
+	tr := literary.Translator{Chat: chat, BatchSize: 10}
+
+	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	require.NoError(t, err, "one bad batch must not discard the batch that succeeded")
+
+	for _, seg := range out[:10] {
+		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
+		require.Equal(t, segment.StatusPostEdited, seg.Status)
+	}
+	for _, seg := range out[10:] {
+		// Same degradation as a segment the model simply did not answer: the
+		// draft survives and the status tells the caller it was not post-edited.
+		require.Equal(t, "Claim "+seg.ID, seg.TargetText)
+		require.Equal(t, segment.StatusTranslated, seg.Status)
+	}
+}
+
+func TestTranslator_ErrorsWhenNoBatchProducesAnything(t *testing.T) {
+	t.Parallel()
+
+	chat := &echoChat{errOnCall: 1}
+	tr := literary.Translator{Chat: chat, BatchSize: 10}
+
+	_, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", numberedSegments(5), "", "")
+	require.ErrorContains(t, err, "provider unavailable",
+		"a chapter that produced nothing must fail loudly, not return English")
+}
+
+func TestTranslator_RetriesUnparseableResponseOnSmallerBatches(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(8)
+	// Batches over 3 segments come back cut off mid-JSON, as a model hitting its
+	// output limit does.
+	chat := &echoChat{truncateOver: 3}
+	tr := literary.Translator{Chat: chat, BatchSize: len(segs)}
+
+	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	require.NoError(t, err)
+
+	require.Greater(t, len(chat.batches), 1, "a truncated response must be retried on smaller batches")
+	for _, seg := range out {
+		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
+		require.Equal(t, segment.StatusPostEdited, seg.Status)
+	}
+}
+
 func TestTranslator_NilChat(t *testing.T) {
 	t.Parallel()
 
@@ -268,12 +368,28 @@ func TestTranslator_NilChat(t *testing.T) {
 func numberedSegments(n int) []segment.Segment {
 	segs := make([]segment.Segment, n)
 	for i := range segs {
-		segs[i] = segment.Segment{
-			ID:         fmt.Sprintf("s%03d", i+1),
-			SourceText: "A claim.",
-		}
+		id := fmt.Sprintf("s%03d", i+1)
+		segs[i] = segment.Segment{ID: id, SourceText: "Claim " + id}
 	}
 	return segs
+}
+
+// volatileSections splits the volatile message into the context blocks the
+// translator sends around a batch.
+func volatileSections(t *testing.T, req llm.ChatRequest) struct{ prev, next string } {
+	t.Helper()
+
+	content := req.Messages[len(req.Messages)-1].Content
+	prevStart := strings.Index(content, "CONTEXTE_PRECEDENT:")
+	nextStart := strings.Index(content, "CONTEXTE_SUIVANT:")
+	payloadStart := strings.Index(content, "SEGMENTS_DU_CHAPITRE_JSON:")
+	require.True(t, prevStart >= 0 && prevStart < nextStart && nextStart < payloadStart,
+		"volatile message must carry both context blocks before the payload")
+
+	return struct{ prev, next string }{
+		prev: content[prevStart:nextStart],
+		next: content[nextStart:payloadStart],
+	}
 }
 
 func segmentIDs(segs []segment.Segment) []string {

@@ -53,6 +53,7 @@ cp .env.example .env.local      # config locale, gitignorée
 | `LLM_CACHE_PATH` | cache des complétions LLM | `./data/llm-cache.sqlite` |
 | `LLM_CHAT_PROVIDER` | `anthropic` \| `openai` \| `deepseek` | `anthropic` |
 | `LLM_MODEL` | modèle LLM (mode littéraire) | `claude-sonnet-4-6` |
+| `LLM_BATCH_SIZE` | segments par appel LLM littéraire (`0` = défaut interne) | `0` |
 | `LLM_API_KEY` | clé du fournisseur LLM | `sk-ant-…` |
 | `COMET_ENDPOINT` | service COMET-QE (éval) | `http://localhost:8000/score` |
 
