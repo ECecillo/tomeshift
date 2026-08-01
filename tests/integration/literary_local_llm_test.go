@@ -37,16 +37,71 @@ func skipIfOllamaUnavailable(t *testing.T) {
 	}
 }
 
-// TestLiterary_LocalMistral_BatchingCompletesAllSegments verifies that
-// TranslateChapter returns all segments translated (not English fallback) when
-// the chapter has more segments than BatchSize. This guards against the small-
-// model early-stop regression that prompted the batching fix.
-func TestLiterary_LocalMistral_BatchingCompletesAllSegments(t *testing.T) {
+// TestLiterary_LocalMistral_CompletesEverySegment checks against a real small
+// model that no segment is left in the English fallback. The two cases cover
+// the configuration production runs, and the early-stop condition the halving
+// retry exists for — which a stub can only approximate.
+func TestLiterary_LocalMistral_CompletesEverySegment(t *testing.T) {
 	skipIfOllamaUnavailable(t)
 
-	const totalSegments = 40 // four batches at the default batch size of 10
+	tests := []struct {
+		name      string
+		segments  int
+		batchSize int
+		maxTokens int
+	}{
+		{
+			// Shipped defaults: one call for a chapter this size on a 7B model.
+			name:     "default batch size",
+			segments: 40,
+		},
+		{
+			// A token budget far below what the batch needs forces the model to
+			// stop mid-output, so the response is unusable. Only splitting the
+			// batch down to something that fits can finish the chapter: without
+			// the retry every segment here stays English.
+			name:      "forced early stop",
+			segments:  16,
+			batchSize: 16,
+			maxTokens: 200,
+		},
+	}
 
-	segs := make([]segment.Segment, totalSegments)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tr := literary.Translator{
+				Chat:      llm.NewOpenAICompatibleClient(ollamaBaseURL, ""),
+				Model:     ollamaModel,
+				BatchSize: tt.batchSize,
+				MaxTokens: tt.maxTokens,
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+			defer cancel()
+
+			segs := syntheticChapter(tt.segments)
+			out, usage, err := tr.TranslateChapter(ctx,
+				narrative.Bible{StyleGuide: "Prose littéraire sobre, phrases courtes."},
+				"ch_0001", segs, "", "")
+			require.NoError(t, err)
+
+			t.Logf("tokens — input: %d, output: %d", usage.InputTokens, usage.OutputTokens)
+
+			untranslated := 0
+			for _, seg := range out {
+				// A segment is considered untranslated when its target equals its
+				// source (English) — exactly the fallback behaviour we are guarding.
+				if strings.EqualFold(strings.TrimSpace(seg.TargetText), strings.TrimSpace(seg.SourceText)) {
+					untranslated++
+					t.Logf("untranslated: %s => %q", seg.ID, seg.TargetText)
+				}
+			}
+			require.Zero(t, untranslated, "all segments must be translated; %d remained in English", untranslated)
+		})
+	}
+}
+
+func syntheticChapter(n int) []segment.Segment {
 	sentences := []string{
 		"The wind howled through the broken towers.",
 		"Kael pressed his back against the cold stone wall.",
@@ -59,37 +114,13 @@ func TestLiterary_LocalMistral_BatchingCompletesAllSegments(t *testing.T) {
 		"The village lay in ruins ahead.",
 		"Nothing had survived the last incursion.",
 	}
+
+	segs := make([]segment.Segment, n)
 	for i := range segs {
 		segs[i] = segment.Segment{
 			ID:         fmt.Sprintf("ch_0001_s%04d", i+1),
 			SourceText: sentences[i%len(sentences)],
 		}
 	}
-
-	chat := llm.NewOpenAICompatibleClient(ollamaBaseURL, "")
-	tr := literary.Translator{
-		Chat:  chat,
-		Model: ollamaModel,
-		// BatchSize left unset so the test exercises the shipped default
-		// (defaultBatchSize), which is what production uses.
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
-	defer cancel()
-
-	out, usage, err := tr.TranslateChapter(ctx, narrative.Bible{StyleGuide: "Prose littéraire sobre, phrases courtes."}, "ch_0001", segs, "", "")
-	require.NoError(t, err)
-
-	t.Logf("tokens — input: %d, output: %d", usage.InputTokens, usage.OutputTokens)
-
-	untranslated := 0
-	for _, seg := range out {
-		// A segment is considered untranslated when its target equals its source
-		// (English) — which is exactly the fallback behaviour we are guarding.
-		if strings.EqualFold(strings.TrimSpace(seg.TargetText), strings.TrimSpace(seg.SourceText)) {
-			untranslated++
-			t.Logf("untranslated: %s => %q", seg.ID, seg.TargetText)
-		}
-	}
-	require.Zero(t, untranslated, "all segments must be translated; %d remained in English", untranslated)
+	return segs
 }

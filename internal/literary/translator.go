@@ -23,7 +23,14 @@ const defaultMaxTokens = 16000
 // chapter. It is a throughput hint, not a correctness parameter: a response
 // that omits some of the requested segments is retried on smaller batches, so
 // an oversized value costs extra calls rather than untranslated text.
-const defaultBatchSize = 10
+//
+// It is deliberately large. Every call repeats the stable prefix (bible plus
+// glossary), so splitting a chapter that the model could have answered in one
+// pass multiplies input tokens for nothing: a 40-segment chapter measured
+// against a local 7B model cost 4284 input tokens over four calls versus 2288
+// in one, with no difference in output and no retry triggered. Prompt caching
+// absorbs that on Anthropic but not on OpenAI-compatible hosts.
+const defaultBatchSize = 50
 
 var inlineTokenPattern = regexp.MustCompile(`<x id="(\d+)"\s*/?>(?:\s*</x>)?`)
 
