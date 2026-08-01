@@ -3,6 +3,8 @@ package literary_test
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -16,14 +18,94 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/segment"
 )
 
+// stubChat records every request and answers with replies in order; the last
+// reply repeats once the slice is exhausted.
 type stubChat struct {
-	reply string
-	req   llm.ChatRequest
+	replies []llm.ChatResponse
+	reqs    []llm.ChatRequest
+}
+
+func newStubChat(texts ...string) *stubChat {
+	replies := make([]llm.ChatResponse, 0, len(texts))
+	for _, text := range texts {
+		replies = append(replies, llm.ChatResponse{Text: text})
+	}
+	return &stubChat{replies: replies}
 }
 
 func (s *stubChat) Chat(_ context.Context, req llm.ChatRequest) (llm.ChatResponse, error) {
-	s.req = req
-	return llm.ChatResponse{Text: s.reply}, nil
+	s.reqs = append(s.reqs, req)
+	return s.replies[min(len(s.reqs)-1, len(s.replies)-1)], nil
+}
+
+func (s *stubChat) lastReq() llm.ChatRequest {
+	return s.reqs[len(s.reqs)-1]
+}
+
+// echoChat answers each batch with a target text for every requested segment
+// ID. maxSegments caps how many segments a single response carries, simulating
+// a small model that stops generating before finishing the batch; 0 answers the
+// whole batch.
+type echoChat struct {
+	maxSegments int
+	// batches records the segment IDs requested by each call, in order.
+	batches [][]string
+}
+
+func (e *echoChat) Chat(_ context.Context, req llm.ChatRequest) (llm.ChatResponse, error) {
+	ids, err := requestedIDs(req)
+	if err != nil {
+		return llm.ChatResponse{}, err
+	}
+	e.batches = append(e.batches, ids)
+
+	answered := ids
+	if e.maxSegments > 0 && len(answered) > e.maxSegments {
+		answered = answered[:e.maxSegments]
+	}
+	body := struct {
+		Segments []map[string]string `json:"segments"`
+	}{Segments: make([]map[string]string, 0, len(answered))}
+	for _, id := range answered {
+		body.Segments = append(body.Segments, map[string]string{"id": id, "target_text": "traduction " + id})
+	}
+
+	text, err := json.Marshal(body)
+	if err != nil {
+		return llm.ChatResponse{}, err
+	}
+	return llm.ChatResponse{
+		Text:                     string(text),
+		InputTokens:              100,
+		OutputTokens:             10,
+		CacheReadInputTokens:     1,
+		CacheCreationInputTokens: 2,
+	}, nil
+}
+
+// requestedIDs extracts the segment IDs from the JSON payload the translator
+// embeds at the end of the volatile message.
+func requestedIDs(req llm.ChatRequest) ([]string, error) {
+	content := req.Messages[len(req.Messages)-1].Content
+	start := strings.Index(content, `{"segments"`)
+	if start == -1 {
+		return nil, fmt.Errorf("no segments payload in request: %q", content)
+	}
+
+	var payload struct {
+		Segments []struct {
+			ID string `json:"id"`
+		} `json:"segments"`
+	}
+	if err := json.Unmarshal([]byte(content[start:]), &payload); err != nil {
+		return nil, err
+	}
+
+	ids := make([]string, 0, len(payload.Segments))
+	for _, seg := range payload.Segments {
+		ids = append(ids, seg.ID)
+	}
+	return ids, nil
 }
 
 func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
@@ -32,7 +114,7 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	gloss, err := glossary.New([]glossary.Term{{EN: "Bilbo", FR: "Bilbon", Locked: true}})
 	require.NoError(t, err)
 
-	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Bonjour."}]}`}
+	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Bonjour."}]}`)
 	tr := literary.Translator{Chat: chat, Model: "model-a", Glossary: gloss}
 
 	_, _, err = tr.TranslateChapter(t.Context(), bibleFixture(), "ch_0001", []segment.Segment{{
@@ -42,9 +124,9 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	}}, "previous", "next")
 	require.NoError(t, err)
 
-	require.Len(t, chat.req.Messages, 2)
-	stable := chat.req.Messages[0].Content
-	volatile := chat.req.Messages[1].Content
+	require.Len(t, chat.lastReq().Messages, 2)
+	stable := chat.lastReq().Messages[0].Content
+	volatile := chat.lastReq().Messages[1].Content
 	require.Contains(t, stable, "formal, precise literary French")
 	require.Contains(t, stable, "Alice")
 	require.Contains(t, stable, "Alice -> Bruno: vous")
@@ -60,7 +142,7 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 		strings.Index(combined, "GUIDE_DE_STYLE"),
 		strings.Index(combined, "SEGMENTS_DU_CHAPITRE_JSON"),
 		"stable prefix must precede volatile chapter content")
-	require.Equal(t, "model-a", chat.req.Model)
+	require.Equal(t, "model-a", chat.lastReq().Model)
 }
 
 func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
@@ -69,7 +151,7 @@ func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
 	seg := tokenizedSegment(t, "s1", `<p>A <em>bold</em> claim.</p>`)
 	seg.TargetText = "Une affirmation <x id=\"1\"/>grasse<x id=\"2\"/>."
 
-	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Une affirmation <x id=\"1\"/>grasse<x id=\"2\"/>."}]}`}
+	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Une affirmation <x id=\"1\"/>grasse<x id=\"2\"/>."}]}`)
 	tr := literary.Translator{Chat: chat}
 
 	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
@@ -91,7 +173,7 @@ func TestTranslator_FallsBackWhenPlaceholderDropped(t *testing.T) {
 		SourceText: `A <x id="1"/> claim.`,
 		TargetText: `Brouillon <x id="1"/> sûr.`,
 	}
-	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Texte sans jeton."}]}`}
+	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Texte sans jeton."}]}`)
 	tr := literary.Translator{Chat: chat}
 
 	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
@@ -106,7 +188,7 @@ func TestTranslator_GlossaryLockedTermEnforced(t *testing.T) {
 	gloss, err := glossary.New([]glossary.Term{{EN: "Bilbo", FR: "Bilbon", Locked: true}})
 	require.NoError(t, err)
 
-	chat := &stubChat{reply: `{"segments":[{"id":"s1","target_text":"Bonjour <g id=\"1\"/>."}]}`}
+	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Bonjour <g id=\"1\"/>."}]}`)
 	tr := literary.Translator{Chat: chat, Glossary: gloss}
 
 	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{{
@@ -116,7 +198,63 @@ func TestTranslator_GlossaryLockedTermEnforced(t *testing.T) {
 	}}, "", "")
 	require.NoError(t, err)
 	require.Equal(t, "Bonjour Bilbon.", out[0].TargetText)
-	require.Contains(t, chat.req.Messages[1].Content, `<g id=\"1\"/>`)
+	require.Contains(t, chat.lastReq().Messages[1].Content, `<g id=\"1\"/>`)
+}
+
+func TestTranslator_SplitsChapterIntoBatchesAndSumsUsage(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(25)
+	chat := &echoChat{}
+	tr := literary.Translator{Chat: chat, BatchSize: 10}
+
+	out, usage, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	require.NoError(t, err)
+
+	require.Len(t, chat.batches, 3, "25 segments at BatchSize 10 must be 3 calls")
+	require.Len(t, chat.batches[0], 10)
+	require.Len(t, chat.batches[1], 10)
+	require.Len(t, chat.batches[2], 5)
+
+	var requested []string
+	for _, batch := range chat.batches {
+		requested = append(requested, batch...)
+	}
+	require.ElementsMatch(t, segmentIDs(segs), requested, "batches must partition the chapter without overlap")
+
+	for _, seg := range out {
+		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
+		require.Equal(t, segment.StatusPostEdited, seg.Status)
+	}
+
+	// Usage is summed over the three calls rather than taken from the last one.
+	require.Equal(t, 300, usage.InputTokens)
+	require.Equal(t, 30, usage.OutputTokens)
+	require.Equal(t, 3, usage.CacheReadTokens)
+	require.Equal(t, 6, usage.CacheCreationTokens)
+}
+
+func TestTranslator_RetriesSegmentsTheModelStoppedShortOf(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(8)
+	// The model answers at most 3 segments per call, as a small model that stops
+	// generating mid-output does. Without a retry the last 5 would silently keep
+	// their English draft.
+	chat := &echoChat{maxSegments: 3}
+	tr := literary.Translator{Chat: chat, BatchSize: len(segs)}
+
+	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	require.NoError(t, err)
+
+	require.Greater(t, len(chat.batches), 1, "an incomplete batch must be retried on smaller batches")
+	for _, batch := range chat.batches[1:] {
+		require.Less(t, len(batch), len(segs), "retries must be smaller than the batch that failed")
+	}
+	for _, seg := range out {
+		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
+		require.Equal(t, segment.StatusPostEdited, seg.Status)
+	}
 }
 
 func TestTranslator_NilChat(t *testing.T) {
@@ -125,6 +263,25 @@ func TestTranslator_NilChat(t *testing.T) {
 	tr := literary.Translator{}
 	_, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{}, "ch_0001", []segment.Segment{{ID: "s1"}}, "", "")
 	require.ErrorIs(t, err, literary.ErrNilChatClient)
+}
+
+func numberedSegments(n int) []segment.Segment {
+	segs := make([]segment.Segment, n)
+	for i := range segs {
+		segs[i] = segment.Segment{
+			ID:         fmt.Sprintf("s%03d", i+1),
+			SourceText: "A claim.",
+		}
+	}
+	return segs
+}
+
+func segmentIDs(segs []segment.Segment) []string {
+	ids := make([]string, 0, len(segs))
+	for _, seg := range segs {
+		ids = append(ids, seg.ID)
+	}
+	return ids
 }
 
 func bibleFixture() narrative.Bible {
