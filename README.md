@@ -69,6 +69,7 @@ flowchart TD
 | **[docs/evaluation-qualite.md](docs/evaluation-qualite.md)** | mesurer la qualité (chrF, COMET-QE) et relire **ligne par ligne** |
 | **[docs/ameliorer-traduction.md](docs/ameliorer-traduction.md)** | améliorer la traduction (glossaire, bible, garde-fous de style) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | architecture & contraintes (source de vérité) |
+| [docs/rfc-0007-google-translate.html](docs/rfc-0007-google-translate.html) | RFC 0007 illustrée — brouillon Google, garde-fou par tokens, contexte LLM (diagrammes) |
 
 > Nouveau venu : commence par **INSTALLATION** → **guide-traduction** →
 > **evaluation-qualite**. Le reste de ce README est une référence rapide.

@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>RFC 0007 — Google Translate comme moteur de brouillon</title>
+  <style>
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface2: #151824;
+      --border: #2a2d3e;
+      --text: #e2e4f0;
+      --muted: #8b8fa8;
+      --green: #4ade80;
+      --yellow: #facc15;
+      --red: #f87171;
+      --blue: #60a5fa;
+      --purple: #c084fc;
+      --tag-bg: #252840;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+      font-size: 13px;
+      line-height: 1.65;
+      padding: 2rem 1.25rem 5rem;
+      max-width: 960px;
+      margin: 0 auto;
+    }
+    header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    header h1 { font-size: 1.45rem; color: var(--blue); letter-spacing: 0.02em; line-height: 1.35; }
+    header .meta { color: var(--muted); margin-top: 0.6rem; font-size: 0.82rem; }
+    header .meta a { color: var(--muted); }
+
+    h2 {
+      font-size: 1.05rem;
+      color: var(--yellow);
+      margin: 2.6rem 0 0.9rem;
+      padding-bottom: 0.4rem;
+      border-bottom: 1px solid var(--border);
+    }
+    h3 { font-size: 0.95rem; color: var(--purple); margin: 1.8rem 0 0.6rem; }
+    h4 { font-size: 0.87rem; color: var(--text); margin: 1.2rem 0 0.4rem; }
+    p { margin: 0.7rem 0; }
+    ul, ol { padding-left: 1.3rem; margin: 0.6rem 0; }
+    li { margin: 0.3rem 0; }
+    a { color: var(--blue); text-decoration: none; border-bottom: 1px dotted var(--border); }
+    a:hover { border-bottom-style: solid; }
+    code {
+      background: var(--tag-bg);
+      border-radius: 3px;
+      padding: 0.08rem 0.32rem;
+      font-size: 0.92em;
+      color: var(--green);
+    }
+    pre {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.9rem 1rem;
+      overflow-x: auto;
+      margin: 0.9rem 0;
+      font-size: 0.85rem;
+      line-height: 1.55;
+    }
+    pre code { background: none; padding: 0; color: var(--text); }
+
+    .badge {
+      display: inline-block;
+      background: var(--tag-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 0.1rem 0.5rem;
+      font-size: 0.72rem;
+      color: var(--yellow);
+      margin-right: 0.4rem;
+    }
+    .badge.ok { color: var(--green); }
+    .badge.bad { color: var(--red); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem 1.25rem;
+      margin: 1.1rem 0;
+    }
+    .card.finding { border-left: 3px solid var(--red); }
+    .card.decision { border-left: 3px solid var(--green); }
+    .card.note { border-left: 3px solid var(--blue); }
+    .card > .label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--muted);
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+
+    .table-wrap { overflow-x: auto; margin: 1rem 0; }
+    table { border-collapse: collapse; width: 100%; font-size: 0.85rem; min-width: 480px; }
+    th, td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+    th { background: var(--tag-bg); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.06em; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    tr.highlight td { background: rgba(96,165,250,0.07); }
+
+    figure { margin: 1.4rem 0; }
+    figure figcaption { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; text-align: center; }
+    pre.mermaid {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem;
+      text-align: center;
+      overflow-x: auto;
+    }
+    blockquote {
+      border-left: 3px solid var(--border);
+      padding: 0.2rem 0 0.2rem 1rem;
+      margin: 0.9rem 0;
+      color: var(--muted);
+      font-style: italic;
+    }
+    hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+    footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.78rem; }
+    .toc { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; }
+    .toc .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+    .toc ol { margin: 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>RFC 0007 — Google Cloud Translation comme moteur de brouillon,<br/>et un garde-fou budgétaire par tokens</h1>
+  <div class="meta">
+    Document de conception · 1<sup>er</sup> août 2026 · statut <code>proposed</code><br/>
+    Code référencé figé sur <a href="https://github.com/ECecillo/ebooks-translator/tree/de07509374c6c4622b55a305f2c23b338d36fdca"><code>de07509</code></a>
+    · RFC : <code>docs/rfcs/0007-google-translate-draft-and-token-cost-model.md</code>
+    · Chiffres reproductibles : <code>scripts/cost_model.py</code>
+  </div>
+</header>
+
+<div class="toc">
+  <span class="label">Sommaire</span>
+  <ol>
+    <li><a href="#symptome">Le symptôme</a></li>
+    <li><a href="#existant">Ce qui existe aujourd'hui</a></li>
+    <li><a href="#causes">Le raisonnement : cinq causes racines</a></li>
+    <li><a href="#fournisseur">Choix du fournisseur et matrice de coûts</a></li>
+    <li><a href="#solutions">Les solutions retenues</a>
+      — <a href="#sonnet5">5.1 la migration Sonnet 5</a></li>
+    <li><a href="#contexte">Pourquoi le chapitre et pas le livre entier</a>
+      — <a href="#rfc8">6.2 la bible pré-générée</a></li>
+    <li><a href="#sequencement">Séquencement en quatre lots</a></li>
+    <li><a href="#horsperimetre">Ce qu'on ne fait pas</a></li>
+    <li><a href="#annexe">Annexe : commandes de reproduction</a></li>
+  </ol>
+</div>
+
+<h2 id="symptome">1. Le symptôme</h2>
+
+<p>
+  Le mode <code>literary</code> produit des traductions dont la faiblesse dominante vient du
+  <strong>brouillon</strong>, pas de la correction. Le brouillon est servi par une instance
+  LibreTranslate/Argos auto-hébergée ; la passe LLM qui le reprend est, elle, mature — bible de
+  série, glossaire verrouillé, lots auto-réparants, dégradation partielle.
+</p>
+
+<p>
+  La demande initiale était simple : remplacer Argos par Google Translate, puis laisser le LLM
+  corriger contre le dictionnaire généré. En instrumentant le pipeline pour chiffrer ce changement,
+  <strong>cinq défauts indépendants de Google</strong> sont apparus — dont deux qu'une simple
+  substitution de fournisseur aurait aggravés en silence.
+</p>
+
+<div class="card note">
+  <span class="label">Ce que ce document apporte</span>
+  <p style="margin-top:0">
+    Il rappelle d'abord la logique existante — parce que trois des cinq défauts ne se comprennent
+    qu'en sachant précisément ce que le pipeline fait déjà — puis expose le raisonnement qui mène à
+    chaque cause racine, avec la mesure qui l'établit posée <em>au moment</em> où la conclusion est
+    tirée. Les onze décisions retenues arrivent en §5.
+  </p>
+</div>
+
+<h2 id="existant">2. Ce qui existe aujourd'hui</h2>
+
+<h3>2.1 Le pipeline littéraire de bout en bout</h3>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    A["EPUB source"] --> B["Extract + Parse<br/>arbre DOM vivant"]
+    B --> C["segmentBookByChapter<br/>1 segment par bloc"]
+    C --> D["loadBible<br/>bible scopee serie"]
+    D --> E{"projection budget<br/>pire cas"}
+    E -->|"depasse le plafond"| F["ErrBudgetExceeded<br/>zero appel provider"]
+    E -->|"passe"| G["boucle par chapitre"]
+
+    G --> H{"hit TM ?"}
+    H -->|"oui"| I["StatusReused<br/>segment ignore"]
+    H -->|"non"| J["brouillon NMT<br/>1 appel par segment"]
+    J --> K["fresh : segments a corriger"]
+    K --> L["TranslateChapter<br/>lots de 50"]
+    L --> M["StatusPostEdited<br/>sauve en TM"]
+
+    I --> N["Restore : reinjection<br/>dans l'arbre DOM"]
+    M --> N
+    N --> O["chapitre suivant"]
+    O --> G
+    O --> P["Recompose EPUB"]
+    P --> Q["QA + epubcheck"]
+
+    style F fill:#3a1f26,stroke:#f87171,color:#e2e4f0
+    style I fill:#3a3520,stroke:#facc15,color:#e2e4f0
+    style L fill:#1f2f3a,stroke:#60a5fa,color:#e2e4f0
+</pre>
+<figcaption>
+  Le pipeline actuel. Source :
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L188-L311"><code>orchestrator.go:188-311</code></a>
+  (<code>runLiterary</code>) et
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L370-L481"><code>orchestrator.go:370-481</code></a>
+  (<code>translateLiteraryChapters</code>).
+</figcaption>
+</figure>
+
+<p>
+  Deux points de ce schéma seront décisifs plus loin : la branche <em>hit TM</em> saute la correction
+  LLM entièrement, et la projection budgétaire est un pré-vol strict — elle refuse le run avant tout
+  appel payant.
+</p>
+
+<h3>2.2 Comment le HTML est neutralisé : les placeholders</h3>
+
+<p>
+  Une question naturelle est de savoir si l'on envoie du HTML au traducteur. La réponse est
+  <strong>non, aucune structure ne part</strong> — le mécanisme fait déjà exactement ce qu'on
+  attendrait : extraire le texte, noter la position des éléments, réinjecter la traduction au même
+  endroit.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    subgraph src["Noeud DOM d'origine"]
+      A1["&lt;p&gt;He turned to &lt;em&gt;her&lt;/em&gt;, then left.&lt;/p&gt;"]
+    end
+    A1 -->|"Tokenize"| B1
+    subgraph tok["Ce qui part chez le traducteur"]
+      B1["He turned to &lt;x id=1/&gt;her&lt;x id=2/&gt;, then left."]
+    end
+    B1 -->|"Placeholder.node<br/>mis de cote"| S["&lt;em&gt; conserve<br/>hors du flux texte"]
+    B1 -->|"Google / LLM"| C1
+    subgraph out["Retour traduit"]
+      C1["Il se tourna vers &lt;x id=1/&gt;elle&lt;x id=2/&gt;, puis partit."]
+    end
+    C1 -->|"Restore"| D1
+    S --> D1
+    subgraph fin["Noeud DOM reconstruit"]
+      D1["&lt;p&gt;Il se tourna vers &lt;em&gt;elle&lt;/em&gt;, puis partit.&lt;/p&gt;"]
+    end
+
+    style tok fill:#1f2f3a,stroke:#60a5fa,color:#e2e4f0
+    style S fill:#252840,stroke:#c084fc,color:#e2e4f0
+</pre>
+<figcaption>
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L36-L110"><code>placeholder.go:36-110</code></a>
+  (<code>Tokenize</code>) et
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L146-L204"><code>placeholder.go:146-204</code></a>
+  (<code>Restore</code>).
+</figcaption>
+</figure>
+
+<p>
+  Trois traitements selon l'enfant du nœud : un nœud texte passe tel quel ; un inline
+  <em>simple</em> — dont tous les enfants sont du texte — devient une <strong>paire</strong> de
+  jetons ouvrant/fermant, ce qui garde son texte intérieur traduisible ; tout le reste devient
+  <strong>un</strong> jeton opaque dont le sous-arbre est mis de côté. Aucun <code>&lt;p&gt;</code>,
+  aucun attribut, aucune structure ne quitte le processus Go.
+</p>
+
+<p>
+  Pourquoi le marqueur ressemble-t-il à une balise plutôt qu'à un <code>[[1]]</code> inerte ? Parce
+  qu'il doit <strong>survivre au moteur</strong>. Avec <code>format=html</code>, Google et
+  LibreTranslate s'engagent à préserver les balises ; un marqueur en texte brut serait traduit,
+  déplacé ou espacé. Le code porte d'ailleurs la trace d'un moteur ayant déjà réécrit le jeton :
+</p>
+
+<pre><code>// Matches both the self-closing token we emit (&lt;x id="1"/&gt;) and the paired
+// form some providers normalize it to (&lt;x id="1"&gt;&lt;/x&gt;), capturing the id.
+var placeholderTokenPattern = regexp.MustCompile(`&lt;x id="(\d+)"\s*/?&gt;(?:\s*&lt;/x&gt;)?`)</code></pre>
+
+<p style="color:var(--muted);font-size:0.82rem">
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L23-L25">placeholder.go:23-25</a>
+  — et le choix de <code>format=html</code> côté adaptateur :
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/translate/libretranslate.go#L14-L17">libretranslate.go:14-17</a>.
+</p>
+
+<h3>2.3 Ce que le LLM reçoit réellement à chaque appel</h3>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    subgraph sys["message system — identique a chaque appel, donc mis en cache"]
+      direction TB
+      S1["instruction FR : traduis tout, preserve &lt;x id&gt; et &lt;g id&gt;"]
+      S2["GUIDE_DE_STYLE"]
+      S3["VOIX_DES_PERSONNAGES"]
+      S4["REGLES_DE_VOUVOIEMENT_TUTOIEMENT"]
+      S5["RESUME_DE_L_HISTOIRE — seulement si --update-bible"]
+      S6["GLOSSAIRE"]
+    end
+    subgraph usr["message user — change a chaque appel"]
+      direction TB
+      U1["CONTEXTE_PRECEDENT : 1200 runes<br/>= la traduction FR du lot i-1"]
+      U2["CONTEXTE_SUIVANT : 1200 runes<br/>= la source du lot i+1"]
+      U3["SEGMENTS_JSON : 50 segments<br/>id + source_text + draft_text"]
+    end
+    sys --> R["reponse JSON contrainte par schema<br/>segments : id + target_text"]
+    usr --> R
+
+    style sys fill:#1f2f3a,stroke:#60a5fa,color:#e2e4f0
+    style usr fill:#252840,stroke:#c084fc,color:#e2e4f0
+    style S5 fill:#3a3520,stroke:#facc15,color:#e2e4f0
+</pre>
+<figcaption>
+  Composition du prompt :
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/literary/prompt.go#L29-L82"><code>prompt.go:29-82</code></a>
+  (<code>stablePrefix</code>) et
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/literary/prompt.go#L84-L93"><code>prompt.go:84-93</code></a>
+  (<code>volatilePrompt</code>).
+</figcaption>
+</figure>
+
+<p>
+  C'est tout. <strong>Le LLM ne voit ni le chapitre entier, ni les autres chapitres.</strong> Le
+  <code>CONTEXTE_PRECEDENT</code> du lot <em>i</em> est la traduction française que le modèle vient
+  lui-même de produire au lot <em>i-1</em>
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/literary/translator.go#L123-L129">translator.go:123-129</a>) —
+  ce chaînage impose que les lots d'un chapitre soient séquentiels, et c'est lui qui porte la
+  continuité de registre locale. Les <em>chapitres</em>, eux, sont indépendants :
+  <code>adjacentChapterText</code> ne lit que la source des voisins.
+</p>
+
+<h2 id="causes">3. Le raisonnement : cinq causes racines</h2>
+
+<h3>3.1 Un hit TM court-circuite définitivement la correction</h3>
+
+<p>
+  La table <code>segments</code> a <code>source_hash</code> pour <strong>clé primaire</strong>, et
+  <code>Lookup</code> ne filtre pas par moteur. Interrogeons le contenu réel :
+</p>
+
+<pre><code>$ sqlite3 tm.sqlite "SELECT engine, COUNT(*) FROM segments GROUP BY engine;"
+literary|58
+nmt-http|9
+
+$ sqlite3 data/lumen-lit-tm.sqlite    "SELECT engine, COUNT(*) FROM segments GROUP BY engine;"
+literary|83
+$ sqlite3 data/lumen-review-tm.sqlite "SELECT engine, COUNT(*) FROM segments GROUP BY engine;"
+literary|148</code></pre>
+
+<p>
+  Neuf entrées <code>nmt-http</code> sont anecdotiques ; c'est la règle qui compte. Le brouillon NMT
+  brut <em>est</em> persisté
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L772-L784">orchestrator.go:772-784</a>),
+  et en mode littéraire un hit provoque un <code>continue</code> avant que le segment n'entre dans
+  <code>fresh</code>
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L400-L419">orchestrator.go:400-419</a>) :
+</p>
+
+<figure>
+<pre class="mermaid">
+sequenceDiagram
+    participant O as Orchestrator
+    participant T as TM SQLite
+    participant N as NMT
+    participant L as LLM
+
+    Note over O,L: Run 1 — interrompu apres le brouillon
+    O->>T: Lookup(hash)
+    T-->>O: miss
+    O->>N: Translate
+    N-->>O: brouillon Argos
+    O->>T: Save(engine = nmt-libretranslate)
+    Note over O: run interrompu, pas de passe LLM
+
+    Note over O,L: Run 2 — le brouillon fait ecran
+    O->>T: Lookup(hash)
+    T-->>O: HIT : brouillon Argos brut
+    Note over O: StatusReused + continue
+    O--xL: le LLM ne voit jamais ce segment
+    Note over O,L: et ce, pour tous les runs suivants
+</pre>
+<figcaption>Le défaut de masquage. Il préexiste au branchement de Google — mais changer de moteur le rend visible : les segments déjà touchés par Argos ne bénéficieraient jamais du nouveau brouillon.</figcaption>
+</figure>
+
+<div class="card finding">
+  <span class="label">Cause racine 1</span>
+  <p style="margin-top:0">
+    La TM mélange deux natures de données — des <em>brouillons</em> intermédiaires et des
+    <em>traductions finales</em> — sous une clé qui ne les distingue pas, alors que le mode littéraire
+    traite tout hit comme final.
+  </p>
+</div>
+
+<h3>3.2 Le garde-fou budgétaire est calibré à zéro</h3>
+
+<p>
+  La projection est un pré-vol strict, et c'est bien fait : pire cas sans réutilisation TM, avant
+  tout appel provider, plus des plafonds glissants jour/mois qui échouent <em>en mode fermé</em> —
+  une erreur de lecture du ledger avorte le run plutôt que de laisser passer
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L313-L350">orchestrator.go:313-350</a>).
+</p>
+
+<p>Mais il existe <strong>deux modèles de coût</strong>, et le run n'utilise pas le bon :</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th></th><th><code>Model.Project</code> / <code>Actual</code></th><th><code>Model.EstimateScenarios</code></th></tr></thead>
+  <tbody>
+    <tr><td>Utilisé par</td><td><strong>le garde-fou du run</strong></td><td>la commande <code>estimate</code> seulement</td></tr>
+    <tr><td>Forme</td><td>forfaitaire : $/segment, $/1000 car.</td><td>par tokens : entrée, sortie, overhead</td></tr>
+    <tr><td>Source</td><td><a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cost/model.go">model.go</a></td><td><a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cost/estimate.go">estimate.go</a></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Et les constantes valent zéro :</p>
+
+<pre><code>$ grep -n "CostLLMPerSegment\|CostPer1000Chars" cmd/epub-translator/config.go
+33:	CostPer1000CharsUSD  float64 `envconfig:"COST_PER_1000_CHARS_USD" default:"0"`
+35:	CostLLMPerSegmentUSD float64 `envconfig:"COST_LLM_PER_SEGMENT_USD" default:"0"`</code></pre>
+
+<p>
+  En littéraire, la ligne
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L232">orchestrator.go:232</a>
+  calcule donc <code>projection += 4269 × 0 = 0 $</code>. Ajouté au NMT local à 0 $, la projection
+  vaut zéro des deux côtés — <strong>c'est pourquoi aucun run n'a jamais été bloqué.</strong> Le
+  plafond de 2 $ existe, il n'a simplement jamais eu quoi que ce soit à comparer.
+</p>
+
+<p>Trois écarts supplémentaires dans le modèle par tokens :</p>
+
+<ul>
+  <li><code>LLM_PROMPT_OVERHEAD_TOKENS</code> vaut <code>200</code> par défaut ; le préfixe réel
+    mesuré fait <strong>~3 000 tokens</strong>.</li>
+  <li>Il est multiplié par le nombre de <em>segments</em> et non d'<em>appels</em> :
+    <code>in = tokensFromChars(chars) + segs*rates.PromptOverheadTokens</code>
+    (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cost/estimate.go#L67">estimate.go:67</a>).
+    Avec des lots de 50, cela surcompte d'un facteur ~33.</li>
+  <li>Le cache de prompt n'est pas modélisé, alors qu'il retire ~90 % du préfixe côté Anthropic.</li>
+</ul>
+
+<div class="card finding">
+  <span class="label">Cause racine 2</span>
+  <p style="margin-top:0">
+    Ces écarts se compensent partiellement, ce qui est le pire cas de figure : le chiffre paraît
+    plausible et il est faux. Et la projection est <em>uniquement</em> pré-vol — rien n'arrête un run
+    dont la dépense réelle dérive.
+  </p>
+</div>
+
+<h3>3.3 <code>Restore</code> mute l'arbre avant de valider</h3>
+
+<p>Le commentaire de l'appelant annonce un repli :</p>
+
+<blockquote>
+  « A restore failure leaves the original (source) markup in place; QA will flag the dropped
+  placeholder. Do not abort the whole run. »
+  <br/><span style="font-style:normal">—
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L702-L707">orchestrator.go:702-707</a></span>
+</blockquote>
+
+<p>Ce n'est pas ce que fait le code :</p>
+
+<figure>
+<pre class="mermaid">
+sequenceDiagram
+    participant C as Appelant
+    participant R as Restore
+    participant D as Arbre DOM
+
+    C->>R: Restore(traduit, placeholders, node)
+    R->>D: detachChildren(node)
+    Note right of D: ligne 156 — les enfants<br/>d'origine sont deja detruits
+    R->>D: reconstruction depuis le texte traduit
+    Note right of R: un jeton manque dans la reponse
+    R-->>C: ErrMissingPlaceholder
+    Note right of R: ligne 200 — trop tard
+    C->>C: log.Warn puis on continue
+    Note over C,D: le contenu du placeholder perdu<br/>est SUPPRIME, pas conserve
+</pre>
+<figcaption>
+  <code>detachChildren</code> est appelé
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L156">ligne 156</a>,
+  l'erreur ne remonte qu'
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L199-L201">ligne 199-201</a>.
+</figcaption>
+</figure>
+
+<div class="card finding">
+  <span class="label">Cause racine 3</span>
+  <p style="margin-top:0">
+    La QA compte l'écart (<code>placeholder_restore_ratio</code>) et fait échouer le run, donc rien
+    ne sort en silence <em>globalement</em>. Mais le repli documenté n'existe pas : du contenu est
+    perdu au lieu d'être préservé.
+  </p>
+</div>
+
+<h3>3.4 Le préfixe stable domine le coût d'entrée</h3>
+
+<p>Mesurons d'abord la volumétrie réelle, avec la segmentation du pipeline lui-même :</p>
+
+<pre><code>$ EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:8081/translate \
+  go run ./cmd/epub-translator estimate --input "books/lumen/en/Lumen Web Novel - Volume 1.epub"
+estimate for Lumen Web Novel - Volume 1: 4269 segments, 472509 source chars (~118127 tokens)
+
+$ go run ./cmd/epub-translator estimate --input "books/lumen/en/Lumen LN - Volume 01.epub"
+estimate for Lumen LN - Volume 01: 2833 segments, 414044 source chars</code></pre>
+
+<p>Puis la taille réelle du préfixe, dans la bible v3 effectivement utilisée :</p>
+
+<pre><code>$ sqlite3 data/lumen-series.sqlite \
+    "SELECT 'style='||length(style_guide), 'perso='||length(characters_json),
+            'adresse='||length(address_json) FROM bibles;"
+style=1760|perso=5245|adresse=1547
+
+$ python3 -c "import json;d=json.load(open('data/lumen-glossary.json'));print(len(d),'termes verrouilles')"
+12 termes verrouilles</code></pre>
+
+<p>
+  Soit <strong>~10 500 caractères ≈ 3 000 tokens</strong> de préfixe, répétés à chaque appel. Le
+  nombre d'appels devient donc le pilote du coût — et il n'est pas
+  <code>ceil(4269/50)</code>, parce que <strong>chaque chapitre est découpé indépendamment</strong> :
+</p>
+
+<pre><code>$ python3 scripts/cost_model.py --epub "...Volume 1.epub" --segments 4269 --chars 472509 \
+    --bible data/lumen-series.sqlite --series-id lumen --glossary data/lumen-glossary.json
+chapitres (spine)   : 68
+prefixe stable      : 10,489 car. ~ 2,997 tokens
+chapitre median     : ~1,020 tokens
+livre entier        : ~119,245 tokens
+
+--- lot = 50 : 130 appels LLM (naif 86, ecart du a un chunking par chapitre)
+    actuel (2 x 1200 runes)    prefixe = 49% de l'input | ... Claude Sonnet 4.6 4.22$ ...</code></pre>
+
+<div class="card note">
+  <span class="label">Conclusion déjà tirée en amont</span>
+  <p style="margin-top:0">
+    Cette analyse était <strong>déjà faite et déjà corrigée</strong> sur <code>main</code>. Le commit
+    <a href="https://github.com/ECecillo/ebooks-translator/commit/de07509374c6c4622b55a305f2c23b338d36fdca"><code>de07509</code></a>
+    fait passer <code>defaultBatchSize</code> de 10 à 50 avec ce commentaire :
+  </p>
+  <blockquote style="margin-bottom:0">
+    « It is deliberately large. Every call repeats the stable prefix (bible plus glossary), so
+    splitting a chapter that the model could have answered in one pass multiplies input tokens for
+    nothing […] Prompt caching absorbs that on Anthropic but not on OpenAI-compatible hosts. »
+  </blockquote>
+</div>
+
+<p>
+  Cette RFC ne revient donc pas sur la taille de lot. En revanche, elle en tire les conséquences
+  pour le modèle de coût : à lot 50 le préfixe pèse encore <strong>49 %</strong> de l'input, et une
+  projection qui ignore le cache est pessimiste d'un facteur ~1,6 — assez pour refuser un run qui
+  coûterait 1,41 $ sous un plafond de 2 $.
+</p>
+
+<div class="card finding">
+  <span class="label">Cause racine 4</span>
+  <p style="margin-top:0">
+    Le coût d'un run n'est pas proportionnel au texte traduit mais au <em>nombre d'appels</em>, et
+    aucun des deux modèles de coût du dépôt ne sait exprimer cette dépendance ni l'effet du cache.
+  </p>
+</div>
+
+<h3>3.5 Le brouillon est le maillon faible, et il est bon marché à remplacer</h3>
+
+<p>
+  C'est la cause racine d'origine, et la seule qui motivait la demande. Elle est confirmée mais elle
+  est aussi la moins coûteuse à traiter : au volume de l'utilisateur, le brouillon Google est
+  <strong>gratuit</strong>.
+</p>
+
+<h2 id="fournisseur">4. Choix du fournisseur et matrice de coûts</h2>
+
+<h3>4.1 Le palier gratuit, et son piège</h3>
+
+<p>
+  Cloud Translation offre <strong>500 000 caractères par mois</strong>, permanents — pas une
+  promotion de 12 mois. Deux précisions vérifiées sur la documentation officielle, la seconde ayant
+  corrigé une première lecture erronée :
+</p>
+
+<ul>
+  <li>Le quota est <strong>partagé</strong> entre Basic (v2) et Advanced (v3) :
+    <em>« the first 500,000 characters sent to the API to process (Basic and Advanced combined) per
+    month are free »</em>. Il n'y a pas de cumul à 1 M.</li>
+  <li>Il est <strong>par projet</strong>, et exige un projet GCP avec facturation activée.</li>
+</ul>
+
+<p>Un volume fait ~450 000 caractères. D'où, par volume :</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Moteur de brouillon</th><th class="num">1 vol/mois</th><th class="num">2 vol/mois</th><th class="num">4 vol/mois</th></tr></thead>
+  <tbody>
+    <tr><td>LibreTranslate auto-hébergé <em>(actuel)</em></td><td class="num">0 $</td><td class="num">0 $</td><td class="num">0 $</td></tr>
+    <tr class="highlight"><td><strong>Google Cloud Translation v2</strong></td><td class="num"><strong>0 $</strong></td><td class="num">4,00 $</td><td class="num">6,50 $</td></tr>
+    <tr><td>DeepL Developer</td><td colspan="3">1 M car. <em>au total</em> ⇒ deux volumes, une fois</td></tr>
+    <tr><td>DeepL Growth (26 $/mois)</td><td class="num">26,00 $</td><td class="num">13,00 $</td><td class="num">6,50 $</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  <strong>DeepL est écarté sur la disponibilité, pas sur la qualité.</strong> Depuis juillet 2026,
+  API Free et API Pro ne sont plus vendus aux nouveaux clients ; le plan Developer donne 1 M
+  caractères au total et Growth coûte 26 $/mois fixes. Google n'atteint la parité avec Growth qu'à
+  quatre volumes par mois.
+</p>
+
+<h3>4.2 v2 (Basic) contre v3 (Advanced)</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th></th><th>v2 — Basic</th><th>v3 — Advanced</th></tr></thead>
+  <tbody>
+    <tr><td>Authentification</td><td><strong>clé API</strong> ou service account</td><td>service account uniquement</td></tr>
+    <tr><td>Modèles</td><td>NMT standard</td><td>NMT, Translation LLM, AutoML</td></tr>
+    <tr><td>Glossaire natif</td><td>non</td><td>oui</td></tr>
+    <tr><td>Lot / documents</td><td>non</td><td>oui</td></tr>
+    <tr><td><code>format=html</code></td><td>oui <em>(défaut)</em></td><td>oui</td></tr>
+    <tr><td>Chaînes par requête</td><td class="num">128</td><td>—</td></tr>
+    <tr><td>Prix NMT</td><td class="num">20 $/M car.</td><td class="num">20 $/M car.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Deux arguments décident pour v2. L'<strong>authentification</strong> : <code>NMTAPIKey</code>
+  existe déjà dans la config, donc une variable d'environnement suffit, là où v3 impose un service
+  account et des credentials à plomber dans Docker et la CI — pour zéro gain de qualité de
+  traduction. Et le <strong>glossaire natif ne remplacerait pas <code>Protect</code>/<code>Apply</code></strong> :
+  celui-ci protège les termes verrouillés <em>et</em> côté NMT <em>et</em> côté LLM
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/literary/translator.go#L218">translator.go:218</a>).
+  Un glossaire Google ne couvrirait que l'étape NMT, et le projet maintiendrait deux sources de
+  vérité pour douze termes.
+</p>
+
+<p>
+  Les modèles exclusifs à v3 ont été chiffrés puis écartés : <strong>Translation LLM</strong>
+  (10 $/M en entrée + 10 $/M en sortie) coûte ~9,70 $/volume et <strong>Adaptive Translation</strong>
+  (25 $ + 25 $) ~24 $/volume, contre 1,41 $ pour <code>Google NMT + Haiku 4.5</code> — et ni l'un ni
+  l'autre n'accepte la bible ou les règles d'adresse.
+</p>
+
+<h3>4.3 La matrice complète, passe LLM comprise</h3>
+
+<p>WN vol. 1, lot 50 (le défaut livré), depuis <code>scripts/cost_model.py</code> :</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Modèle de correction</th><th class="num">Contexte actuel</th><th class="num">+ chapitre</th><th class="num">+ livre entier</th><th>Cache</th></tr></thead>
+  <tbody>
+    <tr><td>Ollama local (Mistral 8B)</td><td class="num">0 $</td><td class="num">0 $</td><td class="num">0 $</td><td>—</td></tr>
+    <tr><td>DeepSeek V4-Flash</td><td class="num">0,11 $</td><td class="num">0,15 $</td><td class="num">0,16 $</td><td>serveur</td></tr>
+    <tr><td>Mistral Small 4</td><td class="num">0,23 $</td><td class="num">0,24 $</td><td class="num">2,55 $</td><td><span class="badge bad">non</span></td></tr>
+    <tr><td>Claude Haiku 4.5</td><td class="num">1,41 $</td><td class="num">1,64 $</td><td class="num">3,01 $</td><td>oui</td></tr>
+    <tr><td><strong>Claude Sonnet 4.6</strong> <em>(réglage actuel)</em></td><td class="num"><strong>4,22 $</strong></td><td class="num">4,93 $</td><td class="num">9,02 $</td><td>oui</td></tr>
+    <tr class="highlight"><td><strong>Claude Sonnet 5</strong> — tarif intro <em>(→&nbsp;31/08/2026)</em></td><td class="num">3,66 $</td><td class="num"><strong>4,27 $</strong></td><td class="num">7,81 $</td><td>oui</td></tr>
+    <tr class="highlight"><td><strong>Claude Sonnet 5</strong> — tarif standard</td><td class="num">5,49 $</td><td class="num"><strong>6,40 $</strong></td><td class="num">11,72 $</td><td>oui</td></tr>
+    <tr><td>Claude Opus 5</td><td class="num">9,14 $</td><td class="num">10,67 $</td><td class="num">19,53 $</td><td>oui</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p style="color:var(--muted);font-size:0.82rem">
+  Les lignes Sonnet 5 et Opus 5 intègrent un facteur de tokenisation de 1,30 (voir
+  §5.1) : à tarif affiché identique, ces modèles produisent ~30 % de tokens en plus
+  pour le même texte. Les lignes Sonnet 4.6 et Haiku 4.5 sont à 1,00.
+</p>
+
+<div class="card note">
+  <span class="label">Ce que la matrice dit vraiment</span>
+  <p style="margin-top:0">
+    Le total par volume va de 0 $ à ~8 $. L'écart entre DeepSeek et Haiku 4.5 est de
+    <strong>1,49 $ par volume</strong> : une série de 26 volumes coûte 4 $ chez l'un, 43 $ chez
+    l'autre. Ce n'est pas là qu'est le risque — le risque est un volume entier mal traduit à relire à
+    la main. <strong>Le coût ne devrait donc pas décider ; la qualité mesurée devrait.</strong> D'où
+    la décision 11.
+  </p>
+</div>
+
+<h2 id="solutions">5. Les solutions retenues</h2>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    A["EPUB source"] --> B["Extract + Parse + Segment"]
+    B --> C["loadBible"]
+    C --> D["prefixe MESURE depuis la bible reelle"]
+    D --> E{"projection PAR TOKENS<br/>overhead par appel<br/>cache pris en compte<br/>palier gratuit deduit"}
+    E -->|"depasse"| F["ErrBudgetExceeded"]
+    E -->|"passe"| G["boucle par chapitre"]
+
+    G --> H["miss TM du chapitre<br/>collectes"]
+    H --> I["TranslateBatch Google v2<br/>min 128 segments / 5000 car."]
+    I --> J["PAS de Save du brouillon"]
+    J --> K["TranslateChapter<br/>+ source du chapitre en prefixe cache"]
+    K --> L["Save : traductions finales seulement"]
+    L --> M["Restore ATOMIQUE<br/>validation avant mutation"]
+    M --> N["Recompose + QA"]
+    N --> O["ledger : cout ET caracteres NMT"]
+
+    style E fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style I fill:#1f2f3a,stroke:#60a5fa,color:#e2e4f0
+    style J fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style M fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style O fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+</pre>
+<figcaption>Architecture cible. En vert, ce qui change de comportement ; en bleu, le nouveau fournisseur.</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th class="num">#</th><th>Décision</th><th>Corrige</th></tr></thead>
+  <tbody>
+    <tr><td class="num">1</td><td><code>ProviderGoogle</code>, tag moteur <code>nmt-google</code>, <code>format=html</code>, clé API</td><td>3.5</td></tr>
+    <tr><td class="num">2</td><td>Cloud Translation <strong>v2 Basic</strong></td><td>3.5</td></tr>
+    <tr><td class="num">3</td><td><code>TranslateBatch</code> sur l'interface, borné à <code>min(128, 5000 car.)</code></td><td>latence</td></tr>
+    <tr><td class="num">4</td><td>Ne plus persister les brouillons NMT <strong>en mode littéraire</strong></td><td>3.1</td></tr>
+    <tr><td class="num">5</td><td><code>Restore</code> atomique : valider tous les jetons avant <code>detachChildren</code></td><td>3.3</td></tr>
+    <tr><td class="num">6</td><td>Garde-fou unifié sur le modèle par tokens, overhead par <em>appel</em></td><td>3.2, 3.4</td></tr>
+    <tr><td class="num">7</td><td>Modéliser le palier gratuit : caractères NMT au ledger, seul le dépassement est facturé</td><td>3.2</td></tr>
+    <tr><td class="num">8</td><td><code>LLM_CACHE_READ_PER_MTOK_USD</code> en config (0 = pas de cache)</td><td>3.4</td></tr>
+    <tr><td class="num">9</td><td>Préfixe mesuré au run depuis la bible ; constante conservée pour <code>estimate</code></td><td>3.4</td></tr>
+    <tr><td class="num">10</td><td>Source intégrale du chapitre dans le préfixe cachable</td><td>contexte</td></tr>
+    <tr><td class="num">11</td><td>Choix du LLM par mesure sur le chapitre 1</td><td>qualité</td></tr>
+    <tr><td class="num">12</td><td>Migration vers <code>claude-sonnet-5</code> : <code>thinking</code> désactivé, <code>stop_reason</code> exposé, facteur de tokenisation en config</td><td>qualité</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="sonnet5">5.1 Décision 12 — ce que contient réellement la migration Sonnet 5</h3>
+
+<p>
+  L'adaptateur a été audité changement par changement. La plupart des ruptures ne
+  s'appliquent pas, une seule s'applique, et la partie coûteuse n'est pas une rupture.
+</p>
+
+<h4>Ce qui ne te concerne pas</h4>
+<p>
+  <code>anthropicRequest</code> ne porte ni <code>temperature</code>, ni
+  <code>top_p</code>, ni <code>top_k</code>
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/llm/anthropic.go#L37-L43">anthropic.go:37-43</a>) :
+  le retrait des paramètres d'échantillonnage est un non-événement. Les messages sont
+  <code>system</code> + <code>user</code> uniquement, donc le rejet du prefill
+  assistant ne s'applique pas. <code>output_config.format</code> utilise déjà la forme
+  actuelle et non le <code>output_format</code> déprécié. La réflexion manuelle
+  (<code>budget_tokens</code>) n'a jamais été utilisée.
+</p>
+
+<h4>La seule rupture qui te touche</h4>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    A["anthropicRequest n'envoie<br/>AUCUN champ thinking"] --> B{"quel modele ?"}
+    B -->|"claude-sonnet-4-6"| C["pas de reflexion<br/>comportement actuel"]
+    B -->|"claude-sonnet-5"| D["ADAPTIVE ACTIVE<br/>changement de defaut silencieux"]
+    D --> E["tokens de reflexion<br/>factures au tarif de SORTIE 15 $/Mtok"]
+    D --> F["max_tokens 16000 plafonne<br/>reflexion + reponse ENSEMBLE"]
+    F --> G["JSON tronque sur un lot de 50"]
+    G --> H["decodeResponse echoue"]
+    H --> I["rattrapage par demi-lots<br/>absorbe... et facture"]
+    E --> J["cout de sortie multiplie<br/>par un facteur non projetable"]
+
+    K["CORRECTIF : thinking type=disabled explicite"] --> C
+
+    style D fill:#3a1f26,stroke:#f87171,color:#e2e4f0
+    style G fill:#3a1f26,stroke:#f87171,color:#e2e4f0
+    style I fill:#3a3520,stroke:#facc15,color:#e2e4f0
+    style K fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style C fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+</pre>
+<figcaption>
+  Le piège du défaut silencieux. Le JSON tronqué est exactement la panne que
+  <code>342f3bd</code> a été écrit pour survivre : le rattrapage l'absorberait, en
+  silence, en payant.
+</figcaption>
+</figure>
+
+<p>
+  La question de savoir si la réflexion adaptative <em>améliore</em> la post-édition
+  littéraire est légitime — mais c'est un cinquième bras du comparatif, pas un défaut
+  à hériter par omission.
+</p>
+
+<h4>Refus et troncatures sont aujourd'hui invisibles</h4>
+<p>
+  <code>anthropicResponse</code> décode <code>content</code> et <code>usage</code>,
+  mais pas <code>stop_reason</code>
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/llm/anthropic.go#L54-L65">anthropic.go:54-65</a>).
+  Sonnet 5 embarque des garde-fous cybersécurité renforcés et peut renvoyer
+  <code>stop_reason: "refusal"</code> sur un <strong>HTTP 200</strong> avec un
+  <code>content</code> vide ou partiel. Combiné au risque de troncature ci-dessus,
+  deux pannes distinctes se présenteraient toutes deux sous la même forme :
+  « <code>decodeResponse</code> a échoué, on rejoue sur des demi-lots ». Exposer
+  <code>stop_reason</code> les rend diagnosticables pour quelques lignes.
+</p>
+
+<h4>La partie coûteuse est le tokenizer, pas le tarif</h4>
+<p>
+  Sonnet 5 utilise le tokenizer de la famille Opus 4.7 : environ <strong>30 % de
+  tokens en plus pour le même texte</strong> que Sonnet 4.6. Le tarif affiché est
+  identique (3 $/15 $), donc le coût effectif monte d'autant.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Modèle</th><th>Tarif affiché</th><th class="num">Tokens</th><th class="num">Contexte actuel</th><th class="num">+ chapitre</th></tr></thead>
+  <tbody>
+    <tr><td><code>claude-sonnet-4-6</code> <em>(aujourd'hui)</em></td><td>3 $/15 $</td><td class="num">1,00×</td><td class="num">4,22 $</td><td class="num">4,93 $</td></tr>
+    <tr class="highlight"><td><code>claude-sonnet-5</code>, tarif intro</td><td>2 $/10 $</td><td class="num">1,30×</td><td class="num"><strong>3,66 $</strong></td><td class="num"><strong>4,27 $</strong></td></tr>
+    <tr class="highlight"><td><code>claude-sonnet-5</code>, tarif standard</td><td>3 $/15 $</td><td class="num">1,30×</td><td class="num"><strong>5,49 $</strong></td><td class="num"><strong>6,40 $</strong></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="card finding">
+  <span class="label">Le fait qui compte</span>
+  <p style="margin-top:0">
+    Le tarif d'introduction court jusqu'au <strong>31 août 2026</strong> — trente jours
+    à compter de cette RFC. Jusque-là la migration est <em>moins chère</em> que le
+    statu quo ; ensuite elle est <strong>~52 % plus chère par volume</strong>
+    (6,40 $ contre 4,22 $, contexte chapitre inclus) : 30 % viennent du tokenizer, le
+    reste du préfixe cachable élargi. <strong>C'est un arbitrage de qualité, pas une
+    économie</strong> — et le plafond par livre doit être calibré sur le chiffre
+    d'après-août, sinon il commencera à refuser des runs un mois plus tard sans raison
+    visible.
+  </p>
+</div>
+
+<p>
+  Conséquence sur les décisions 6 et 9 : l'heuristique caractères→tokens devient
+  <strong>dépendante du modèle</strong>. Un <code>LLM_TOKEN_MULTIPLIER</code>
+  (défaut <code>1.0</code>) est ajouté à côté des tarifs et appliqué par-dessus
+  <code>charsPerToken</code>, en miroir de <code>Rates.token_multiplier</code> dans
+  <code>scripts/cost_model.py</code>. Sans lui, le garde-fou sous-projette Sonnet 5 de
+  30 %, et le préfixe mesuré de la décision 9 héritait de la même erreur.
+</p>
+
+<h4>Ce que le comparatif doit vérifier, et qu'on ne peut pas supposer</h4>
+<p>
+  Sonnet 5 suit les instructions plus littéralement que Sonnet 4.6. Le prompt système
+  ouvre sur <code>RÈGLES ABSOLUES</code> en capitales, et <code>af84a62</code> a déjà
+  eu à adoucir une règle qui poussait le modèle à traduire les noms propres contre le
+  glossaire. Une conformité plus littérale pourrait raviver cette classe de conflit —
+  <code>glossary_violations</code> dans le rapport de run est le détecteur. La longueur
+  de réponse se calibre aussi sur la complexité perçue plutôt que sur une verbosité
+  fixe, ce qui devrait être inerte pour une réponse à schéma JSON figé, mais reste à
+  confirmer.
+</p>
+
+<div class="card decision">
+  <span class="label">Décision 4 — précision de portée</span>
+  <p style="margin-top:0">
+    <code>resolveTranslation</code> est partagé par les deux modes. En mode <code>nmt</code>, le
+    brouillon <em>est</em> la sortie finale d'un segment non escaladé, donc supprimer la sauvegarde
+    partout ferait perdre toute réutilisation TM à ce mode. La règle est <strong>« ne pas persister
+    le brouillon en mode littéraire »</strong>, pas « ne jamais persister ».
+  </p>
+</div>
+
+<div class="card decision">
+  <span class="label">Décision 5 — elle en absorbe une autre</span>
+  <p style="margin-top:0">
+    Un contrôle d'intégrité des placeholders dès la sortie du NMT avait été envisagé, puis retiré :
+    <code>Restore</code> est appelé <em>par chapitre</em>
+    (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L456-L465">orchestrator.go:456-465</a>),
+    pas en fin de livre. Le coût d'un dégât non détecté est donc d'environ trois appels LLM, pas
+    d'un volume. Avec un <code>Restore</code> atomique le repli existe réellement, ce qui suffit.
+  </p>
+</div>
+
+<h2 id="contexte">6. Pourquoi le chapitre et pas le livre entier</h2>
+
+<p>
+  L'inquiétude naturelle est celle-ci : si l'on corrige chapitre par chapitre sans savoir si le style
+  du chapitre 1 est cohérent avec celui du chapitre 2, ne crée-t-on pas des incohérences ? La réponse
+  demande de séparer deux problèmes qu'on confond facilement.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    Q["Le LLM corrige 50 phrases.<br/>De quoi a-t-il besoin ?"]
+    Q --> COH["COHERENCE DE STYLE<br/>registre, lexique, epithetes, tu/vous"]
+    Q --> NAR["COMPREHENSION NARRATIVE<br/>a qui renvoie elle, rappel d'une scene"]
+
+    COH --> M1["Specifiee, pas deduite :<br/>GUIDE_DE_STYLE fige, identique<br/>dans les 130 appels"]
+    M1 --> M2["glossaire applique MECANIQUEMENT<br/>par Protect et Apply"]
+    M2 --> R1["DEJA RESOLU — 0 $"]
+
+    NAR --> O1["source du chapitre courant<br/>+0,71 $"]
+    NAR --> O2["synopsis par tome<br/>RFC 0008 — 0,41 $ une fois"]
+    NAR --> O3["source du livre entier<br/>+4,80 $"]
+    O3 --> X["ne fournit que l'ANGLAIS des chapitres<br/>precedents, jamais le FRANCAIS deja produit<br/>=> ne repond pas a la coherence de style"]
+
+    style COH fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style R1 fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style NAR fill:#252840,stroke:#c084fc,color:#e2e4f0
+    style O1 fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style O2 fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style X fill:#3a1f26,stroke:#f87171,color:#e2e4f0
+</pre>
+<figcaption>
+  Deux problèmes distincts, un seul est un problème de contexte. La branche rouge est
+  l'argument décisif contre le contexte-livre : il apporte l'anglais des chapitres
+  précédents, alors que la crainte porte sur le français déjà produit.
+</figcaption>
+</figure>
+
+<p>
+  La cohérence de style <strong>n'est pas déduite, elle est spécifiée</strong> — par un document figé,
+  identique octet pour octet dans les 130 appels. Extrait du <code>GUIDE_DE_STYLE</code> réellement
+  stocké dans la bible v3 :
+</p>
+
+<blockquote>
+  « Epithets ('Old Man Bram', 'Pops', 'scar-faced man') are consistent across chapters. Register
+  fidelity: do not add oral fillers, interjections or discourse markers (e.g. « ouais », « bon »,
+  « bah », « hein ») that are absent from the source. […] Lexical consistency: keep the same word for
+  recurring concrete nouns across the volume (e.g. always « survêtement », never « survêt' »). »
+</blockquote>
+
+<p>
+  C'est plus fort que la mémoire d'un modèle : déterministe, auditable via <code>just bible</code>,
+  non dégradant sur 68 chapitres, et transmis d'un tome à l'autre.
+</p>
+
+<div class="card finding">
+  <span class="label">L'argument décisif contre le contexte-livre</span>
+  <p style="margin-top:0">
+    Le contexte « livre entier » fournirait au LLM l'<strong>anglais</strong> des chapitres
+    précédents. Or la crainte porte sur le <strong>français produit</strong> — « ai-je traduit ce mot
+    pareil au chapitre 1 ? ». Cette information n'est nulle part dans le contexte-livre. Pour
+    vraiment la donner il faudrait injecter la traduction FR accumulée : ~148 k tokens en fin de
+    volume, changeant à chaque chapitre donc <strong>non cachable</strong>, pour 9 à 15 $/volume et un
+    risque de dilution maximal. Le glossaire et la règle de cohérence lexicale font ce travail pour
+    0 $.
+  </p>
+</div>
+
+<h3>6.1 Le vrai problème de <code>--update-bible</code>, chiffré</h3>
+
+<div class="card note">
+  <span class="label">Correction d'une première formulation</span>
+  <p style="margin-top:0">
+    Une lecture antérieure présentait comme un défaut le fait que « la spécification n'est
+    plus la même d'un bout à l'autre du volume ». <strong>C'en est pas un.</strong> Un
+    traducteur humain travaillant au chapitre 2 ne connaît pas le chapitre 50 non plus :
+    l'asymétrie reproduit l'ordre de lecture et se défend. Les vrais défauts sont
+    ailleurs, et ils sont mesurables.
+  </p>
+</div>
+
+<p>
+  <code>updateBible</code> mute la bible <strong>en place</strong> à la fin de chaque
+  chapitre, et le même pointeur sert au chapitre suivant
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L467-L475">orchestrator.go:467-475</a>,
+  puis
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L483-L513">483-513</a>).
+  Comme <code>stablePrefix</code> embarque <code>RESUME_DE_L_HISTOIRE</code>, le préfixe
+  cachable change à chaque chapitre. Les résumés réellement stockés mesurent 301,
+  1 511 et 1 067 caractères, soit <strong>274 tokens en moyenne</strong> :
+</p>
+
+<pre><code>préfixe : 2 997 tokens au chapitre 1  →  21 355 tokens au chapitre 68</code></pre>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th></th><th class="num">Bible figée</th><th class="num">Bible évolutive</th></tr></thead>
+  <tbody>
+    <tr><td>Coût du préfixe (Sonnet 4.6)</td><td class="num">0,13 $</td><td class="num"><strong>3,33 $</strong></td></tr>
+    <tr><td>Écritures de cache</td><td class="num">1</td><td class="num">68</td></tr>
+    <tr><td>Re-run du même livre</td><td class="num"><strong>0 $</strong></td><td class="num">3,33 $ + toute la passe LLM</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Trois défauts, donc :</p>
+
+<ol>
+  <li><strong>+3,20 $ par volume</strong> — plus que le brouillon Google entier, et du même
+    ordre que toute la passe LLM (4,22 $). Le préfixe finit 7× plus gros qu'au départ et
+    il est réécrit en cache 68 fois au lieu d'une.</li>
+  <li><strong>Les re-runs cessent d'être gratuits et reproductibles.</strong>
+    <code>llm_cache.sqlite</code> est clé par modèle + messages. Avec une bible figée, un
+    re-run coûte 0 $. Avec <code>--update-bible</code>, la bible sur disque a changé depuis
+    le run précédent, donc le prompt du chapitre 1 diffère, donc zéro hit : toute la passe
+    est repayée. Et l'opération n'est pas idempotente — au premier run le chapitre 1 voit
+    0 résumé, au second il en voit 68.</li>
+  <li><strong><code>Version</code> ne bouge pas.</strong>
+    <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L492"><code>updated.Version = bible.Version</code></a> :
+    le contenu évolue, le numéro reste. <code>just bible</code> affiche <code>v3</code> que la
+    bible contienne 3 résumés ou 70 — ce qui explique l'état actuel, les versions venant de
+    <code>style-profile</code> et non de <code>--update-bible</code>.</li>
+</ol>
+
+<h3 id="rfc8">6.2 Le correctif : une bible pré-générée — <a href="rfcs/0008-pre-generated-series-bible.md">RFC 0008</a></h3>
+
+<p>
+  La bonne réponse est de construire la bible <strong>avant</strong> toute traduction, à
+  partir de tous les volumes disponibles, et de ne la régénérer qu'à la parution d'un
+  nouveau tome. Un run de traduction consomme alors un artefact figé et n'y écrit jamais.
+  Cela règle les trois défauts d'un coup. Mais l'instrumenter a révélé un blocage et un
+  piège de coût.
+</p>
+
+<h4>Le blocage : les identifiants de chapitre entrent en collision entre volumes</h4>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    A["segmentBookByChapter genere<br/>ch_%04d PAR LIVRE"] --> B["tome 1 ch.1 = ch_0001"]
+    A --> C["tome 2 ch.1 = ch_0001<br/>MEME identifiant"]
+    B --> D["bible : summaries contient ch_0001"]
+    C --> E["mergeSummaries : if seen[ChapterID] continue"]
+    D --> E
+    E --> F["tome 2 JETE en silence<br/>ni erreur ni compteur"]
+
+    style C fill:#3a3520,stroke:#facc15,color:#e2e4f0
+    style F fill:#3a1f26,stroke:#f87171,color:#e2e4f0
+</pre>
+<figcaption>
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L605"><code>orchestrator.go:605</code></a>
+  et <code>mergeSummaries</code> dans
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/narrative/merge.go"><code>merge.go</code></a>.
+  <code>ChapterSummary</code> ne porte que <code>{ChapterID, Summary}</code> : la collision
+  est structurelle.
+</figcaption>
+</figure>
+
+<p>
+  Indice corroborant : les résumés de la bible réelle sont clés <code>prologue</code>,
+  <code>1</code>, <code>2</code> — pas au format <code>ch_0001</code>. Ils viennent donc du
+  seeding par <code>style-profile</code>, pas de <code>--update-bible</code> pendant un run.
+  Ce chemin incrémental n'a probablement jamais tourné, ce qui explique la version bloquée à 3.
+</p>
+
+<h4>Le piège de coût : « la plus complète possible » se paie au prorata</h4>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Variante de bible</th><th class="num">Tokens de préfixe</th><th class="num">$/volume</th></tr></thead>
+  <tbody>
+    <tr><td><code>--update-bible</code> <em>(comportement actuel)</em></td><td class="num">2 997 → 21 355</td><td class="num">4,33 $</td></tr>
+    <tr><td>Figée, 3 résumés <em>(état de fait aujourd'hui)</em></td><td class="num">2 997</td><td class="num">0,17 $</td></tr>
+    <tr><td>Pré-générée, <strong>par chapitre</strong>, 5 tomes</td><td class="num">96 157</td><td class="num"><strong>5,31 $</strong></td></tr>
+    <tr><td>Pré-générée, <strong>par chapitre</strong>, 15 tomes</td><td class="num">282 477</td><td class="num"><strong>15,59 $</strong></td></tr>
+    <tr class="highlight"><td>Pré-générée, <strong>1 synopsis/tome</strong>, 5 tomes</td><td class="num">4 497</td><td class="num"><strong>0,25 $</strong></td></tr>
+    <tr class="highlight"><td>Pré-générée, <strong>1 synopsis/tome</strong>, 15 tomes</td><td class="num">7 497</td><td class="num"><strong>0,41 $</strong></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p style="color:var(--muted);font-size:0.82rem">
+  Sonnet 5, tarif standard, 130 appels. Garder des résumés par chapitre en pré-génération
+  coûterait <em>plus cher</em> dès 5 tomes que le comportement qu'on cherche à supprimer.
+</p>
+
+<p>
+  D'où le choix d'<strong>un synopsis par volume</strong>, qui n'est pas qu'une économie :
+  le résumé du chapitre 42 du tome 7 est du bruit quand on traduit le chapitre 3 du tome 1.
+  Ce que le traducteur a besoin de savoir des autres tomes, c'est l'arc — et la décision 10
+  fournit déjà la source intégrale du chapitre courant pour le détail local.
+</p>
+
+<h4>La portée : bornée aux tomes 1..N</h4>
+
+<pre><code>bible utilisée pour traduire le tome N   (figée pendant tout le run)
+  GUIDE_DE_STYLE        ← tous les tomes disponibles
+  VOIX_DES_PERSONNAGES  ← tous les tomes disponibles
+  REGLES_TU_VOUS        ← tous les tomes disponibles
+  RESUME_DE_L_HISTOIRE  ← tomes 1..N seulement</code></pre>
+
+<p>
+  Le style, les voix et les règles d'adresse sont tirés de <em>toute</em> la série : c'est là
+  qu'on veut la complétude et elle est quasi gratuite. Seuls les résumés narratifs sont
+  bornés — pour ne pas donner la fin au modèle. Ce n'est pas une précaution abstraite ici :
+  ton guide de style dit que l'horreur de <em>Return by Ash</em> repose sur une description
+  factuelle dans les sections de boucle, effet qui dépend de ne pas savoir. Un modèle
+  connaissant la vraie nature d'un personnage révélée au tome 8 peut colorer ses dialogues du
+  tome 1.
+</p>
+
+<h4>Comment le synopsis d'un tome est produit</h4>
+
+<p>
+  Aucune opération existante ne convient. <code>Profiler.Seed(samples []string)</code> fait
+  un appel et renvoie une bible entière à partir d'<strong>échantillons</strong>,
+  <code>Update</code> fait de même après un chapitre — et les deux font un aller-retour
+  complet de bible, ce dont un synopsis n'a pas besoin.
+</p>
+
+<div class="card note">
+  <span class="label">La distinction qui décide</span>
+  <p style="margin-top:0">
+    <strong>L'échantillonnage est la bonne méthode pour le style et la mauvaise pour
+    l'intrigue.</strong> Le registre, le ton et les idiolectes se déduisent de cinq
+    extraits — c'est exactement la raison d'être de <code>Seed</code>. Un synopsis, non :
+    on ne résume pas une histoire à partir de morceaux choisis. Deux problèmes
+    d'extraction distincts, deux méthodes distinctes.
+  </p>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    subgraph map["MAP — 68 appels, compression 4:1"]
+      direction TB
+      C1["ch.1 source<br/>~1 020 tok"] --> S1["resume ~274 tok"]
+      C2["ch.2 source"] --> S2["resume"]
+      CN["... ch.68"] --> SN["resume"]
+    end
+    subgraph red["REDUCE — 1 appel, compression 47:1"]
+      R["68 resumes<br/>~18 600 tok"] --> SYN["SYNOPSIS DU TOME<br/>~400 tok"]
+    end
+    S1 --> R
+    S2 --> R
+    SN --> R
+    SN -.->|"conserves comme<br/>sous-produit"| BP["68 resumes de chapitre<br/>en base"]
+
+    style map fill:#1f2f3a,stroke:#60a5fa,color:#e2e4f0
+    style red fill:#1f3a2a,stroke:#4ade80,color:#e2e4f0
+    style BP fill:#252840,stroke:#c084fc,color:#e2e4f0
+</pre>
+<figcaption>
+  Deux opérations étroites — <code>SummariseChapter</code> et
+  <code>SynthesiseVolume</code> — dont aucune ne manipule <code>Bible</code>. Source
+  uniquement, même pour un tome déjà traduit : l'uniformité vaut mieux que le gain marginal
+  d'une traduction existante.
+</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Modèle</th><th class="num">A — 1 appel / tome</th><th class="num">B — map-reduce</th></tr></thead>
+  <tbody>
+    <tr><td>Haiku 4.5</td><td class="num">0,12 $</td><td class="num">0,18 $</td></tr>
+    <tr class="highlight"><td>Sonnet 4.6</td><td class="num">0,36 $</td><td class="num"><strong>0,55 $</strong></td></tr>
+    <tr><td>Sonnet 5, tarif standard</td><td class="num">0,47 $</td><td class="num">0,71 $</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Coût <strong>unique par tome, jamais rejoué</strong> : sur 15 tomes en Sonnet 4.6, 5,46 $
+  contre 8,24 $ pour la vie du projet. Le coût ne décide donc pas. Ce qui décide, c'est que
+  l'option A comprime <strong>298:1 en un seul passage</strong> — le modèle doit tenir un
+  roman entier et juger seul de ce qui compte. La dégradation en milieu de contexte est un
+  mode de défaillance documenté, et <em>silencieux</em> : le synopsis se lirait bien sur
+  l'ouverture et la fin, creux au milieu, sans rien pour te l'indiquer. Map-reduce lit
+  chaque chapitre à 4:1 puis réduit à 47:1 — deux ratios confortables.
+</p>
+
+<p>
+  Le reste du détail — changement de schéma, <code>mergeSummaries</code> rendu explicite
+  plutôt que silencieusement destructeur, migration de la seule bible curée — est dans la
+  <strong><a href="rfcs/0008-pre-generated-series-bible.md">RFC 0008</a></strong>. Les deux
+  RFC se composent sans conflit : la 0007 met la source du chapitre dans le préfixe, la 0008
+  garantit que le reste du préfixe ne bouge pas.
+</p>
+
+<h2 id="sequencement">7. Séquencement en quatre lots</h2>
+
+<p>
+  L'ordre est porteur de sens. La décision 10 change le prompt : elle invalide le cache LLM
+  <em>et</em> modifie la qualité. Livrée avec Google, elle rendrait le comparatif de la décision 11
+  incapable de distinguer l'effet du brouillon de l'effet du contexte.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    L1["LOT 1 — Google de bout en bout<br/>decisions 1 2 3 4 5"]
+    M1["MESURE : ch.1, chrF + COMET-QE<br/>= effet Google seul"]
+    L2["LOT 2 — Modele de cout et garde-fou<br/>decisions 6 7 8 9"]
+    L3["LOT 3 — Contexte chapitre<br/>decision 10"]
+    M2["MESURE : ch.1, delta vs baseline<br/>= effet contexte seul"]
+    L4["LOT 4 — Migration Sonnet 5<br/>decision 12"]
+    M3["MESURE : usage.output_tokens<br/>= thinking bien desactive ?"]
+    L5["LOT 5 — Comparatif des LLM<br/>decision 11, 5 bras"]
+
+    L1 --> M1 --> L2 --> L3 --> M2 --> L4 --> M3 --> L5
+
+    style M1 fill:#3a3520,stroke:#facc15,color:#e2e4f0
+    style M2 fill:#3a3520,stroke:#facc15,color:#e2e4f0
+    style M3 fill:#3a3520,stroke:#facc15,color:#e2e4f0
+</pre>
+<figcaption>
+  Chaque mesure isole un seul changement. Le chapitre 1 fait 67 segments : gratuit
+  côté Google, quelques centimes côté LLM. La mesure du lot 4 n'est pas une mesure de
+  qualité mais un contrôle : si <code>usage.output_tokens</code> dépasse nettement la
+  baseline Sonnet 4.6 corrigée du facteur de tokenisation, c'est que
+  <code>thinking</code> n'a pas été désactivé.
+</figcaption>
+</figure>
+
+<p>
+  <strong>Prérequis du lot 1 :</strong> rebaser <code>google-translate-api</code> sur
+  <code>de07509</code>. La branche est en retard d'un commit, et ce commit change précisément
+  <code>defaultBatchSize</code>.
+</p>
+
+<p>
+  L'outillage de mesure existe déjà : <code>books/lumen/ch1/fr-ch1.epub</code> est une traduction
+  humaine du chapitre 1 et <code>eval --reference</code> calcule le chrF contre elle
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cli/eval.go#L26">eval.go:26</a>).
+  Attention à l'interprétation : le chrF mesure l'<em>accord avec cette traduction précise</em>, pas
+  la qualité absolue — d'où le croisement avec COMET-QE et une relecture en trois colonnes.
+</p>
+
+<h2 id="horsperimetre">8. Ce qu'on ne fait pas</h2>
+
+<ul>
+  <li><strong>Paralléliser les chapitres pendant la passe LLM.</strong> Faisable — les chapitres sont
+    indépendants — et c'est le plus gros levier de latence restant, mais c'est un chantier distinct.
+    Ordre de grandeur pour WN vol. 1 : le brouillon passe de ~14 min à ~30 s grâce au lot, tandis que
+    la passe LLM reste le goulot.</li>
+  <li><strong>La bible pré-générée</strong> — traitée, mais dans la
+    <a href="rfcs/0008-pre-generated-series-bible.md">RFC 0008</a> et non ici : commande
+    dédiée, changement de schéma, nouveau chemin de résumé. Voir §6.2.</li>
+  <li><strong>Translation LLM et Adaptive Translation de v3</strong> (§4.2).</li>
+  <li><strong>TM floue, migration PostgreSQL</strong> (RFC 0005), et toute modification du portail QA.</li>
+</ul>
+
+<h2 id="annexe">9. Annexe : commandes de reproduction</h2>
+
+<p>Chaque chiffre de ce document se rejoue. Les commandes sont préfixées par <code>env -u GOROOT</code> conformément à <code>AGENTS.md</code>.</p>
+
+<h4>Volumétrie</h4>
+<pre><code>EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:8081/translate \
+  env -u GOROOT go run ./cmd/epub-translator estimate \
+    --input "books/lumen/en/Lumen Web Novel - Volume 1.epub"</code></pre>
+
+<h4>Préfixe stable et glossaire</h4>
+<pre><code>sqlite3 data/lumen-series.sqlite \
+  "SELECT length(style_guide), length(characters_json),
+          length(address_json), length(summaries_json) FROM bibles;"
+
+python3 -c "import json;d=json.load(open('data/lumen-glossary.json'));\
+print(len(d),'termes,',sum(1 for t in d if t.get('locked')),'verrouilles')"</code></pre>
+
+<h4>Contenu de la TM par moteur</h4>
+<pre><code>for db in tm.sqlite data/lumen-lit-tm.sqlite data/lumen-review-tm.sqlite; do
+  echo "== $db"; sqlite3 "$db" "SELECT engine, COUNT(*) FROM segments GROUP BY engine;"
+done</code></pre>
+
+<h4>Matrice de coûts complète</h4>
+<pre><code>python3 scripts/cost_model.py \
+  --epub "books/lumen/en/Lumen Web Novel - Volume 1.epub" \
+  --segments 4269 --chars 472509 \
+  --bible data/lumen-series.sqlite --series-id lumen \
+  --glossary data/lumen-glossary.json \
+  --batch-sizes 10,50</code></pre>
+
+<h4>Sensibilité à la réflexion adaptative (§5.1)</h4>
+<p style="margin:0.4rem 0;color:var(--muted);font-size:0.82rem">
+  Le script tabule le coût Sonnet 5 selon un multiplicateur de sortie. Seule la ligne
+  <em>thinking désactivé</em> est projetable ; les autres sont des hypothèses à confronter
+  à <code>usage.output_tokens</code> sur un chapitre réel.
+</p>
+<pre><code>python3 scripts/cost_model.py --epub "...Volume 1.epub" \
+  --segments 4269 --chars 472509 --batch-sizes 50 \
+  --bible data/lumen-series.sqlite --series-id lumen \
+  --glossary data/lumen-glossary.json | tail -8</code></pre>
+
+<h4>Taille réelle des résumés de bible (§6.1)</h4>
+<pre><code>sqlite3 data/lumen-series.sqlite "SELECT summaries_json FROM bibles;" | python3 -c "
+import json,sys
+d=json.load(sys.stdin)
+for r in d: print(f\"{r['chapter_id']:10s} {len(r['summary']):5d} car.\")
+print('moyenne', round(sum(len(r['summary']) for r in d)/len(d)), 'car.')"</code></pre>
+
+<h4>Vérification de l'écart entre la branche et <code>main</code></h4>
+<pre><code>git diff --stat 347ba2d de07509
+git diff 347ba2d de07509 -- internal/literary/translator.go</code></pre>
+
+<div class="card note">
+  <span class="label">Limites de la méthode</span>
+  <p style="margin-top:0">
+    Les conversions caractères→tokens sont des heuristiques nommées et centralisées dans
+    <code>scripts/cost_model.py</code> (4,0 car./token en anglais, 3,5 en français, expansion 1,15).
+    Elles reprennent <code>charsPerToken</code> de
+    <a href="https://github.com/ECecillo/ebooks-translator/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cost/estimate.go#L11">estimate.go:11</a>.
+    Pour un chiffre exact il faut le tokenizer du fournisseur. Marge attendue : ±20 %, ce qui ne change
+    aucun classement de cette RFC mais peut déplacer un run près d'un plafond. La répartition des
+    segments par chapitre est un prorata des longueurs de texte, pas la segmentation réelle par
+    chapitre — le total, lui, vient de <code>estimate</code>.
+  </p>
+</div>
+
+<footer>
+  RFC 0007 · <code>docs/rfcs/0007-google-translate-draft-and-token-cost-model.md</code> ·
+  code figé sur <code>de07509</code> ·
+  chiffres reproductibles via <code>scripts/cost_model.py</code>
+</footer>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#151824',
+      primaryColor: '#252840',
+      primaryTextColor: '#e2e4f0',
+      primaryBorderColor: '#2a2d3e',
+      lineColor: '#8b8fa8',
+      secondaryColor: '#1a1d27',
+      tertiaryColor: '#1f2f3a',
+      fontFamily: "'SF Mono','Fira Code',ui-monospace,monospace",
+      fontSize: '12px'
+    },
+    flowchart: { curve: 'basis', padding: 14 },
+    sequence: { actorMargin: 40, width: 150 }
+  });
+</script>
+
+</body>
+</html>
