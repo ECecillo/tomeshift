@@ -109,9 +109,15 @@ type CachedChatClient struct {
 // Chat checks the cache first, and delegates to Inner if no cache hit occurs.
 func (c *CachedChatClient) Chat(ctx context.Context, req ChatRequest) (ChatResponse, error) {
 	if c.Cache != nil {
-		cachedResp, hit, err := c.Cache.Get(ctx, req)
+		cached, hit, err := c.Cache.Get(ctx, req)
 		if err == nil && hit {
-			return cachedResp, nil
+			// A cache hit consumed nothing from the provider, so it reports no
+			// usage. Replaying the stored counts would price a free re-run at
+			// full rate, write that phantom spend to the run ledger and charge
+			// it against the daily and monthly caps — and the stored row has no
+			// cache-read/creation split to price it correctly with anyway.
+			cached.InputTokens, cached.OutputTokens = 0, 0
+			return cached, nil
 		}
 	}
 
@@ -120,11 +126,18 @@ func (c *CachedChatClient) Chat(ctx context.Context, req ChatRequest) (ChatRespo
 		return ChatResponse{}, err
 	}
 
-	if c.Cache != nil {
+	// Only a complete answer is worth keeping. The cache does not carry the
+	// stop reason, so storing a refusal or a truncation would replay it on the
+	// next run stripped of the one field that explains it.
+	if c.Cache != nil && completedNormally(resp) {
 		_ = c.Cache.Set(ctx, req, resp) // Best effort, ignore errors
 	}
 
 	return resp, nil
+}
+
+func completedNormally(resp ChatResponse) bool {
+	return resp.StopReason == "" || resp.StopReason == StopReasonEndTurn
 }
 
 var _ ChatClient = (*CachedChatClient)(nil)

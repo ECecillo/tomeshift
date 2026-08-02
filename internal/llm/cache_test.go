@@ -94,3 +94,31 @@ func TestCachedChatClient(t *testing.T) {
 	require.Equal(t, "mocked reply", resp2.Text)
 	require.Equal(t, 1, mock.calls) // calls should still be 1
 }
+
+func TestCachedChatClient_CacheHitReportsNoUsage(t *testing.T) {
+	t.Parallel()
+
+	cache, err := llm.NewSQLiteCache(filepath.Join(t.TempDir(), "llm_cache.sqlite"))
+	require.NoError(t, err)
+	defer func() { _ = cache.Close() }()
+
+	inner := &mockChatClient{reply: llm.ChatResponse{
+		Text: "Bonjour", InputTokens: 3000, OutputTokens: 800,
+	}}
+	client := &llm.CachedChatClient{Inner: inner, Cache: cache}
+	req := llm.ChatRequest{Model: "m", Messages: []llm.ChatMessage{{Role: "user", Content: "Hello"}}}
+
+	first, err := client.Chat(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, 3000, first.InputTokens, "the paid call reports what it consumed")
+
+	// The re-run costs nothing at the provider. Reporting the stored counts
+	// would bill it at full rate and charge the daily and monthly caps for
+	// spend that never happened, which is what makes re-runs free.
+	second, err := client.Chat(t.Context(), req)
+	require.NoError(t, err)
+	require.Equal(t, 1, inner.calls, "the second call must be served from cache")
+	require.Equal(t, "Bonjour", second.Text)
+	require.Zero(t, second.InputTokens)
+	require.Zero(t, second.OutputTokens)
+}
