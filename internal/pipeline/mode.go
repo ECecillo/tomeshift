@@ -89,7 +89,7 @@ func (m *nmtMode) Project(chapters []chapterSegments, usedFreeChars int) cost.Pr
 // model that projected it: counting the escalated segments but not their cost
 // would make the guardrail lie by exactly the amount the LLM costs.
 func (m *nmtMode) Cost(result *RunResult, usedFreeChars int) float64 {
-	_, _, llmUSD := m.orch.CostModel.Tokens.Project(postEditPass(result.LLMSegments, result.LLMChars))
+	_, _, llmUSD := m.orch.CostModel.Tokens.Project(postEditPass(result.LLMAttempts, result.LLMChars))
 	return m.orch.CostModel.Actual(
 		result.NMTSegments, result.NMTChars, usedFreeChars, cost.TokenUsage{}) + llmUSD
 }

@@ -566,12 +566,20 @@ func (o *Orchestrator) translateSegments(
 					SourceLang: cfg.SourceLang,
 					TargetLang: cfg.TargetLang,
 				})
+
+				// Billed on the attempt, not on the outcome. A call that
+				// errored, or came back with the placeholders rearranged, still
+				// consumed tokens; SafePostEdit reports only whether the result
+				// was usable. LLMSegments stays the count of segments actually
+				// improved, which is what the escalation ratio means.
+				result.LLMAttempts++
+				result.LLMChars += utf8.RuneCountInString(seg.SourceText)
+
 				if postEdited {
 					target = edited
 					seg.TargetText = target
 					seg.Status = segment.StatusPostEdited
 					result.LLMSegments++
-					result.LLMChars += utf8.RuneCountInString(seg.SourceText)
 					if o.TM != nil {
 						if err := o.TM.Save(ctx, tm.Entry{
 							SourceHash: seg.Hash, SourceText: seg.SourceText, TargetText: target,
