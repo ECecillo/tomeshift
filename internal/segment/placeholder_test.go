@@ -191,4 +191,35 @@ func TestRestore_Errors(t *testing.T) {
 		err = pm.Restore(`a translated without token`, placeholders, node)
 		require.ErrorIs(t, err, ErrMissingPlaceholder)
 	})
+
+	t.Run("dropped placeholder leaves the node untouched", func(t *testing.T) {
+		t.Parallel()
+		// The callers document a restore failure as "the segment keeps its
+		// source markup". That is only true if Restore validates before it
+		// mutates: a partial rebuild would drop <em>b</em> outright.
+		node := firstElement(t, "<p>a <em>b</em> c</p>", "p")
+		before := renderNode(t, node)
+
+		_, placeholders, err := pm.Tokenize(node)
+		require.NoError(t, err)
+
+		err = pm.Restore(`a b c`, placeholders, node)
+		require.ErrorIs(t, err, ErrMissingPlaceholder)
+		require.Equal(t, before, renderNode(t, node))
+	})
+
+	t.Run("partially dropped placeholder leaves the node untouched", func(t *testing.T) {
+		t.Parallel()
+		// The close token survives, the open token does not. Before the
+		// pre-flight check this rebuilt the node and lost the <em> element.
+		node := firstElement(t, "<p>a <em>b</em> c</p>", "p")
+		before := renderNode(t, node)
+
+		_, placeholders, err := pm.Tokenize(node)
+		require.NoError(t, err)
+
+		err = pm.Restore(`a b<x id="2"/> c`, placeholders, node)
+		require.ErrorIs(t, err, ErrMissingPlaceholder)
+		require.Equal(t, before, renderNode(t, node))
+	})
 }

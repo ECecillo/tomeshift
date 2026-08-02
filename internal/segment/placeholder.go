@@ -141,8 +141,14 @@ func shallowClone(n *html.Node) *html.Node {
 
 // Restore rebuilds the node's children from the translated text, splicing the
 // original inline subtrees back in place of their placeholder tokens. It is
-// strict: an unknown token or a dropped placeholder is an error so the pipeline
-// can flag the segment instead of emitting broken markup.
+// strict: a dropped placeholder is an error so the pipeline can flag the
+// segment instead of emitting broken markup.
+//
+// It is atomic. Every issued token is checked against the translated text
+// before the node is touched, so a failure leaves the node exactly as it was —
+// holding its original source markup, which is the fallback the callers
+// document. Validating after mutation would have discarded the content it was
+// meant to preserve.
 func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Placeholder, node *html.Node) error {
 	if node == nil {
 		return ErrNilDocument
@@ -151,6 +157,10 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 	remaining := make(map[string]*Placeholder, len(placeholders))
 	for i := range placeholders {
 		remaining[tokenIDPattern.FindString(placeholders[i].Token)] = &placeholders[i]
+	}
+
+	if missing := missingTokenIDs(translatedText, remaining); missing > 0 {
+		return fmt.Errorf("unable to restore %d placeholder(s), err: %w", missing, ErrMissingPlaceholder)
 	}
 
 	detachChildren(node)
@@ -201,6 +211,24 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 	}
 
 	return nil
+}
+
+// missingTokenIDs counts the issued placeholders that the translated text does
+// not carry. It is the pre-flight half of the atomic Restore: the walk below
+// re-runs the same match, so the two stay in step by construction.
+func missingTokenIDs(translatedText string, issued map[string]*Placeholder) int {
+	seen := make(map[string]bool, len(issued))
+	for _, loc := range placeholderTokenPattern.FindAllStringSubmatchIndex(translatedText, -1) {
+		seen[translatedText[loc[2]:loc[3]]] = true
+	}
+
+	missing := 0
+	for id := range issued {
+		if !seen[id] {
+			missing++
+		}
+	}
+	return missing
 }
 
 // detachChildren removes every child of n so they can be re-appended in a new

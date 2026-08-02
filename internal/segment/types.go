@@ -1,6 +1,10 @@
 package segment
 
-import "golang.org/x/net/html"
+import (
+	"unicode/utf8"
+
+	"golang.org/x/net/html"
+)
 
 // SegmentStatus tracks where a segment's translation came from.
 type SegmentStatus string
@@ -58,4 +62,15 @@ type Segment struct {
 	TargetText     string        // translated text with placeholder tokens
 	Status         SegmentStatus //
 	Node           *html.Node    // reference into the live tree for recomposition
+}
+
+// SourceChars totals the source characters of segs, counting runes rather than
+// bytes so accented text is not over-counted. It is the unit the NMT providers
+// bill in, and the basis of every token heuristic.
+func SourceChars(segs []Segment) int {
+	chars := 0
+	for i := range segs {
+		chars += utf8.RuneCountInString(segs[i].SourceText)
+	}
+	return chars
 }
