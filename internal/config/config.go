@@ -12,6 +12,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 
 	"github.com/ECecillo/ebooks-translator/internal/cost"
+	"github.com/ECecillo/ebooks-translator/internal/translate"
 )
 
 const envPrefix = "EPUB_TRANSLATOR"
@@ -108,7 +109,41 @@ func Load() (Config, error) {
 	if cfg.DailyBudgetUSD < 0 || cfg.MonthlyBudgetUSD < 0 || cfg.PerBookBudgetUSD < 0 {
 		return Config{}, fmt.Errorf("unable to validate budget config: values must be >= 0, err: %w", ErrNegativeBudget)
 	}
+	if err := cfg.applyProviderDefaults(); err != nil {
+		return Config{}, err
+	}
 	return cfg, nil
+}
+
+// Google Cloud Translation's published rate and free allowance, as of
+// 2026-08. They are defaults, not constants: an explicit setting always wins,
+// and they should be re-checked against Google's pricing page rather than
+// trusted indefinitely.
+const (
+	googlePer1000CharsUSD   = 0.02 // 20 $ per million characters
+	googleFreeCharsPerMonth = 500_000
+)
+
+// applyProviderDefaults keeps a paid provider from being selected with a
+// guardrail that projects nothing. The whole point of RFC 0007's cost work is
+// that the per-book cap has something true to compare against; defaulting to
+// zero for the one provider that actually bills would reinstate exactly the
+// defect it set out to remove.
+func (c *Config) applyProviderDefaults() error {
+	if c.NMTProvider != translate.ProviderGoogle {
+		return nil
+	}
+	if c.NMTAPIKey == "" {
+		return fmt.Errorf("unable to use the google NMT provider: set EPUB_TRANSLATOR_NMT_API_KEY, err: %w",
+			ErrMissingAPIKey)
+	}
+	if c.CostPer1000CharsUSD == 0 {
+		c.CostPer1000CharsUSD = googlePer1000CharsUSD
+	}
+	if c.NMTFreeCharsPerMonth == 0 {
+		c.NMTFreeCharsPerMonth = googleFreeCharsPerMonth
+	}
+	return nil
 }
 
 // CostModel builds the single cost model shared by `estimate`, `run` and
