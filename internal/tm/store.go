@@ -25,8 +25,9 @@ CREATE TABLE IF NOT EXISTS segments (
   schema_version INTEGER NOT NULL DEFAULT 1,
   created_at     TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS runs (
-  run_id          TEXT PRIMARY KEY,
+CREATE TABLE IF NOT EXISTS run_attempts (
+  attempt_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id          TEXT NOT NULL,
   book_id         TEXT NOT NULL,
   started_at      TEXT NOT NULL,
   ended_at        TEXT NOT NULL,
@@ -34,15 +35,64 @@ CREATE TABLE IF NOT EXISTS runs (
   nmt_engine      TEXT NOT NULL DEFAULT '',
   nmt_chars       INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL
-);`
+);
+CREATE INDEX IF NOT EXISTS idx_run_attempts_created_at ON run_attempts (created_at);`
 
-// migrations bring an existing database up to the current schema. CREATE TABLE
-// IF NOT EXISTS is a no-op on a ledger created before nmt_chars existed, so the
-// column has to be added explicitly; the statement failing because the column
-// is already there is the expected outcome on an up-to-date database.
-var migrations = []string{
+// legacyRunColumns brings a pre-existing `runs` table up to the columns
+// run_attempts expects before its rows are folded in. A duplicate-column error
+// means the migration already ran, which is the expected outcome; anything else
+// must not be swallowed.
+var legacyRunColumns = []string{
 	`ALTER TABLE runs ADD COLUMN nmt_chars INTEGER NOT NULL DEFAULT 0`,
 	`ALTER TABLE runs ADD COLUMN nmt_engine TEXT NOT NULL DEFAULT ''`,
+}
+
+// migrateLegacyRuns folds the old `runs` table into run_attempts and drops it.
+//
+// `runs` was keyed by run_id and upserted, so a resumed or re-run invocation
+// replaced the previous attempt's spend instead of adding to it. That is the
+// wrong shape for a ledger meant to stand for provider billing: an attempt that
+// failed after paying for half a book is a fact, and the retry that follows is
+// a second one. run_id identifies the run artifact; each execution is its own
+// billing event.
+//
+// Existing rows carry over as one attempt each, which is the best reading
+// available — the upsert already destroyed any earlier attempts under the same
+// id, so nothing more can be recovered.
+func migrateLegacyRuns(db *sql.DB) error {
+	var name string
+	err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='runs'`).Scan(&name)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("unable to inspect tm schema, err: %w", err)
+	}
+
+	for _, stmt := range legacyRunColumns {
+		if _, err := db.Exec(stmt); err != nil && !isDuplicateColumn(err) {
+			return fmt.Errorf("unable to migrate legacy runs table, err: %w", err)
+		}
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("unable to begin tm migration, err: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if _, err := tx.Exec(`INSERT INTO run_attempts
+  (run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_engine, nmt_chars, created_at)
+SELECT run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_engine, nmt_chars, created_at FROM runs`); err != nil {
+		return fmt.Errorf("unable to copy legacy runs, err: %w", err)
+	}
+	if _, err := tx.Exec(`DROP TABLE runs`); err != nil {
+		return fmt.Errorf("unable to drop legacy runs table, err: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("unable to commit tm migration, err: %w", err)
+	}
+	return nil
 }
 
 // isDuplicateColumn recognises the one migration failure that means "already
@@ -73,16 +123,9 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		_ = db.Close()
 		return nil, fmt.Errorf("unable to initialize tm schema, err: %w", err)
 	}
-	for _, stmt := range migrations {
-		// A duplicate column means the migration already ran, which is the
-		// expected outcome on an up-to-date database. Anything else — a
-		// permissions problem, a corrupt file, an unrecognised schema — must not
-		// be swallowed, or the ledger silently loses columns it will later be
-		// asked to write.
-		if _, err := db.Exec(stmt); err != nil && !isDuplicateColumn(err) {
-			_ = db.Close()
-			return nil, fmt.Errorf("unable to migrate tm schema, err: %w", err)
-		}
+	if err := migrateLegacyRuns(db); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 
 	return &SQLiteStore{db: db}, nil
@@ -155,22 +198,20 @@ ON CONFLICT(source_hash) DO UPDATE SET
 	return nil
 }
 
-// RecordRun persists a completed run's realized spend.
+// RecordRun appends one execution's realized spend.
+//
+// It appends rather than upserts. A run id names an artifact, not a payment:
+// re-running or resuming under the same id is a second execution that the
+// provider charged separately, so replacing the earlier row would erase spend
+// that really happened.
 func (s *SQLiteStore) RecordRun(ctx context.Context, spend RunSpend) error {
 	if s.db == nil {
 		return ErrNilDatabase
 	}
 
-	const stmt = `INSERT INTO runs (run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_engine, nmt_chars, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(run_id) DO UPDATE SET
-  book_id=excluded.book_id,
-  started_at=excluded.started_at,
-  ended_at=excluded.ended_at,
-  actual_cost_usd=excluded.actual_cost_usd,
-  nmt_engine=excluded.nmt_engine,
-  nmt_chars=excluded.nmt_chars,
-  created_at=excluded.created_at;`
+	const stmt = `INSERT INTO run_attempts
+  (run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_engine, nmt_chars, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := s.db.ExecContext(ctx, stmt,
@@ -190,7 +231,7 @@ func (s *SQLiteStore) SpendSince(ctx context.Context, since time.Time) (float64,
 		return 0, ErrNilDatabase
 	}
 
-	const query = `SELECT COALESCE(SUM(actual_cost_usd), 0) FROM runs WHERE created_at >= ?`
+	const query = `SELECT COALESCE(SUM(actual_cost_usd), 0) FROM run_attempts WHERE created_at >= ?`
 
 	var total float64
 	if err := s.db.QueryRowContext(ctx, query, since.UTC().Format(time.RFC3339)).Scan(&total); err != nil {
@@ -214,7 +255,7 @@ func (s *SQLiteStore) CharsSince(ctx context.Context, since time.Time, engine st
 		return 0, ErrNilDatabase
 	}
 
-	const query = `SELECT COALESCE(SUM(nmt_chars), 0) FROM runs WHERE created_at >= ? AND nmt_engine = ?`
+	const query = `SELECT COALESCE(SUM(nmt_chars), 0) FROM run_attempts WHERE created_at >= ? AND nmt_engine = ?`
 
 	var total int
 	if err := s.db.QueryRowContext(ctx, query, since.UTC().Format(time.RFC3339), engine).Scan(&total); err != nil {

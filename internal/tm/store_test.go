@@ -1,6 +1,7 @@
 package tm
 
 import (
+	"database/sql"
 	"path/filepath"
 	"testing"
 	"time"
@@ -136,19 +137,74 @@ func TestSQLiteStore_CharsSince(t *testing.T) {
 	require.Equal(t, 0, future)
 }
 
-func TestSQLiteStore_RecordRunUpserts(t *testing.T) {
+func TestSQLiteStore_RecordRunAppendsEachAttempt(t *testing.T) {
 	t.Parallel()
 
 	store := newTestStore(t)
 	ctx := t.Context()
 	now := time.Now().UTC()
 
-	require.NoError(t, store.RecordRun(ctx, RunSpend{RunID: "r1", BookID: "b", StartedAt: now, EndedAt: now, ActualCostUSD: 1.0}))
-	require.NoError(t, store.RecordRun(ctx, RunSpend{RunID: "r1", BookID: "b", StartedAt: now, EndedAt: now, ActualCostUSD: 5.0}))
+	// A run id names an artifact, not a payment. An attempt that failed after
+	// drafting half a book was billed for that half, and the --resume that
+	// follows is a second, separately billed execution. The ledger used to
+	// upsert on run_id and so erased the first.
+	require.NoError(t, store.RecordRun(ctx, RunSpend{
+		RunID: "r1", BookID: "b", StartedAt: now, EndedAt: now,
+		ActualCostUSD: 1.0, NMTEngine: "nmt-google", NMTChars: 100,
+	}))
+	require.NoError(t, store.RecordRun(ctx, RunSpend{
+		RunID: "r1", BookID: "b", StartedAt: now, EndedAt: now,
+		ActualCostUSD: 5.0, NMTEngine: "nmt-google", NMTChars: 40,
+	}))
 
-	total, err := store.SpendSince(ctx, now.Add(-time.Hour))
+	spend, err := store.SpendSince(ctx, now.Add(-time.Hour))
 	require.NoError(t, err)
-	require.InDelta(t, 5.0, total, 0.0001, "same run id must not double-count")
+	require.InDelta(t, 6.0, spend, 0.0001, "both attempts were paid for")
+
+	chars, err := store.CharsSince(ctx, now.Add(-time.Hour), "nmt-google")
+	require.NoError(t, err)
+	require.Equal(t, 140, chars)
+}
+
+func TestNewSQLiteStore_FoldsALegacyRunsTable(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "legacy.sqlite")
+
+	// A ledger written before run_attempts existed, and before nmt_chars and
+	// nmt_engine were added to it.
+	legacy, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	_, err = legacy.Exec(`CREATE TABLE runs (
+  run_id TEXT PRIMARY KEY, book_id TEXT NOT NULL, started_at TEXT NOT NULL,
+  ended_at TEXT NOT NULL, actual_cost_usd REAL NOT NULL, created_at TEXT NOT NULL)`)
+	require.NoError(t, err)
+	_, err = legacy.Exec(`INSERT INTO runs VALUES ('old', 'b', '2026-08-01T00:00:00Z',
+  '2026-08-01T00:00:00Z', 2.5, '2026-08-01T00:00:00Z')`)
+	require.NoError(t, err)
+	require.NoError(t, legacy.Close())
+
+	store, err := NewSQLiteStore(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	// The spend carries over, and the old table is gone rather than left to
+	// diverge from the one being written.
+	spend, err := store.SpendSince(t.Context(), time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.InDelta(t, 2.5, spend, 0.0001)
+
+	var name string
+	err = store.db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name='runs'`).Scan(&name)
+	require.ErrorIs(t, err, sql.ErrNoRows)
+
+	// Opening again must be a no-op, not a second copy.
+	reopened, err := NewSQLiteStore(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = reopened.Close() })
+	spend, err = reopened.SpendSince(t.Context(), time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.InDelta(t, 2.5, spend, 0.0001)
 }
 
 func TestSQLiteStore_EmptyHash(t *testing.T) {
