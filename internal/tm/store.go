@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver
@@ -44,6 +45,13 @@ var migrations = []string{
 	`ALTER TABLE runs ADD COLUMN nmt_engine TEXT NOT NULL DEFAULT ''`,
 }
 
+// isDuplicateColumn recognises the one migration failure that means "already
+// applied". The driver reports it as a message rather than a typed error, so
+// this has to match on text.
+func isDuplicateColumn(err error) bool {
+	return strings.Contains(err.Error(), "duplicate column name")
+}
+
 // SQLiteStore is a translation memory backed by a SQLite database.
 type SQLiteStore struct {
 	db *sql.DB
@@ -66,9 +74,15 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 		return nil, fmt.Errorf("unable to initialize tm schema, err: %w", err)
 	}
 	for _, stmt := range migrations {
-		// A duplicate-column error means the migration already ran; anything
-		// else is left to surface on first use rather than blocking the open.
-		_, _ = db.Exec(stmt)
+		// A duplicate column means the migration already ran, which is the
+		// expected outcome on an up-to-date database. Anything else — a
+		// permissions problem, a corrupt file, an unrecognised schema — must not
+		// be swallowed, or the ledger silently loses columns it will later be
+		// asked to write.
+		if _, err := db.Exec(stmt); err != nil && !isDuplicateColumn(err) {
+			_ = db.Close()
+			return nil, fmt.Errorf("unable to migrate tm schema, err: %w", err)
+		}
 	}
 
 	return &SQLiteStore{db: db}, nil

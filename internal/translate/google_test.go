@@ -198,6 +198,21 @@ func TestGoogleTranslator_SplitsOnCharacterBudget(t *testing.T) {
 	require.Len(t, got, 3)
 }
 
+func TestGoogleTranslator_RejectsATextPastTheRequestLimit(t *testing.T) {
+	t.Parallel()
+
+	var called bool
+	srv := googleServer(t, func(q string) string { called = true; return q }, nil)
+
+	// Too long to batch around, and splitting it would cut placeholder tokens
+	// in half — so it must fail with a precise error, not a 400 from the API.
+	tr := translate.NewGoogleTranslator(srv.URL, "")
+	_, err := tr.Translate(t.Context(), translate.Request{Text: strings.Repeat("a", 30_001)})
+
+	require.ErrorIs(t, err, translate.ErrTextTooLong)
+	require.False(t, called, "the request must not be sent")
+}
+
 func TestGoogleTranslator_NonOKStatus(t *testing.T) {
 	t.Parallel()
 

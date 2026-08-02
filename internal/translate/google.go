@@ -22,6 +22,11 @@ const (
 	// googleMaxBatchChars keeps a request comfortably inside the payload limit;
 	// a single text longer than this is sent on its own rather than rejected.
 	googleMaxBatchChars = 5000
+	// googleMaxTextChars is the provider's own ceiling on one request. A single
+	// segment past it cannot be batched around and must not be split either —
+	// splitting mid-sentence would cut placeholder tokens in half — so it is
+	// rejected with a precise error instead of a 400 from the API.
+	googleMaxTextChars = 30000
 )
 
 // googleRequestBody is the Cloud Translation v2 wire contract. format=html is
@@ -91,6 +96,13 @@ func (t *GoogleTranslator) TranslateBatch(ctx context.Context, req BatchRequest)
 	}
 	if len(req.Texts) == 0 {
 		return nil, nil
+	}
+
+	for i, text := range req.Texts {
+		if size := utf8.RuneCountInString(text); size > googleMaxTextChars {
+			return nil, fmt.Errorf("unable to translate text %d: %d characters exceeds the %d-character request limit, err: %w",
+				i, size, googleMaxTextChars, ErrTextTooLong)
+		}
 	}
 
 	out := make([]Response, 0, len(req.Texts))
