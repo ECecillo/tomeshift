@@ -44,8 +44,12 @@ type RunSpend struct {
 	EndedAt   time.Time
 	// ActualCostUSD is what the run was billed, free tier already deducted.
 	ActualCostUSD float64
-	// NMTChars is how many source characters the run sent to the NMT provider.
-	// It is tracked separately from cost because the provider's free tier is
+	// NMTEngine tags which provider consumed NMTChars. The allowance being
+	// counted belongs to one provider, so a run against the local dev server or
+	// a self-hosted engine must not eat into it.
+	NMTEngine string
+	// NMTChars is how many source characters the run sent to that provider. It
+	// is tracked separately from cost because the provider's free tier is
 	// denominated in characters per calendar month, not in dollars: a run that
 	// cost nothing still consumes the allowance the next one will be billed
 	// against.
@@ -63,9 +67,9 @@ type Store interface {
 	RecordRun(ctx context.Context, spend RunSpend) error
 	// SpendSince returns the total realized spend recorded at or after since.
 	SpendSince(ctx context.Context, since time.Time) (float64, error)
-	// CharsSince returns the total NMT characters recorded at or after since,
-	// which is how much of the provider's monthly free allowance is gone.
-	CharsSince(ctx context.Context, since time.Time) (int, error)
+	// CharsSince returns the NMT characters engine was sent at or after since,
+	// which is how much of that provider's monthly free allowance is gone.
+	CharsSince(ctx context.Context, since time.Time, engine string) (int, error)
 	// Close releases the underlying database handle.
 	Close() error
 }

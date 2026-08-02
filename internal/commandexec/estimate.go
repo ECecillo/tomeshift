@@ -12,6 +12,7 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/pipeline"
 	"github.com/ECecillo/ebooks-translator/internal/segment"
 	"github.com/ECecillo/ebooks-translator/internal/tm"
+	"github.com/ECecillo/ebooks-translator/internal/translate"
 )
 
 // runEstimate parses+segments the book without translating and prints a cost
@@ -22,6 +23,10 @@ func runEstimate(stdout, stderr io.Writer, cmd cli.EstimateCommand, cfg config.C
 		Parser:    epub.OPFParser{},
 		Segmenter: segment.NewParagraphSegmenter(),
 		CostModel: cfg.CostModel(),
+		// Never called — but it names the engine, and the free-tier counter is
+		// per engine. Without it `estimate` would read a different allowance
+		// from the one the run enforces.
+		Translator: translate.NewProvider(cfg.NMTProvider, cfg.NMTEndpoint, cfg.NMTAPIKey),
 	}
 
 	ctx := context.Background()

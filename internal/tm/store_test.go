@@ -105,21 +105,33 @@ func TestSQLiteStore_CharsSince(t *testing.T) {
 	// the monthly character allowance the next run is billed against, so the
 	// two are tracked independently.
 	require.NoError(t, store.RecordRun(ctx, RunSpend{
-		RunID: "r1", BookID: "b", StartedAt: now, EndedAt: now, ActualCostUSD: 0, NMTChars: 472_509,
+		RunID: "r1", BookID: "b", StartedAt: now, EndedAt: now,
+		ActualCostUSD: 0, NMTEngine: "nmt-google", NMTChars: 472_509,
 	}))
 	require.NoError(t, store.RecordRun(ctx, RunSpend{
-		RunID: "r2", BookID: "b", StartedAt: now, EndedAt: now, ActualCostUSD: 0, NMTChars: 414_044,
+		RunID: "r2", BookID: "b", StartedAt: now, EndedAt: now,
+		ActualCostUSD: 0, NMTEngine: "nmt-google", NMTChars: 414_044,
+	}))
+	// A run against the bundled dev server shares this ledger and must not
+	// burn Google's allowance.
+	require.NoError(t, store.RecordRun(ctx, RunSpend{
+		RunID: "r3", BookID: "b", StartedAt: now, EndedAt: now,
+		ActualCostUSD: 0, NMTEngine: "nmt-http", NMTChars: 1_000_000,
 	}))
 
-	total, err := store.CharsSince(ctx, now.Add(-time.Hour))
+	total, err := store.CharsSince(ctx, now.Add(-time.Hour), "nmt-google")
 	require.NoError(t, err)
 	require.Equal(t, 886_553, total)
+
+	local, err := store.CharsSince(ctx, now.Add(-time.Hour), "nmt-http")
+	require.NoError(t, err)
+	require.Equal(t, 1_000_000, local)
 
 	spend, err := store.SpendSince(ctx, now.Add(-time.Hour))
 	require.NoError(t, err)
 	require.InDelta(t, 0.0, spend, 0.0001)
 
-	future, err := store.CharsSince(ctx, now.Add(time.Hour))
+	future, err := store.CharsSince(ctx, now.Add(time.Hour), "nmt-google")
 	require.NoError(t, err)
 	require.Equal(t, 0, future)
 }

@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS runs (
   started_at      TEXT NOT NULL,
   ended_at        TEXT NOT NULL,
   actual_cost_usd REAL NOT NULL,
+  nmt_engine      TEXT NOT NULL DEFAULT '',
   nmt_chars       INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL
 );`
@@ -40,6 +41,7 @@ CREATE TABLE IF NOT EXISTS runs (
 // is already there is the expected outcome on an up-to-date database.
 var migrations = []string{
 	`ALTER TABLE runs ADD COLUMN nmt_chars INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE runs ADD COLUMN nmt_engine TEXT NOT NULL DEFAULT ''`,
 }
 
 // SQLiteStore is a translation memory backed by a SQLite database.
@@ -145,13 +147,14 @@ func (s *SQLiteStore) RecordRun(ctx context.Context, spend RunSpend) error {
 		return ErrNilDatabase
 	}
 
-	const stmt = `INSERT INTO runs (run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_chars, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
+	const stmt = `INSERT INTO runs (run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_engine, nmt_chars, created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(run_id) DO UPDATE SET
   book_id=excluded.book_id,
   started_at=excluded.started_at,
   ended_at=excluded.ended_at,
   actual_cost_usd=excluded.actual_cost_usd,
+  nmt_engine=excluded.nmt_engine,
   nmt_chars=excluded.nmt_chars,
   created_at=excluded.created_at;`
 
@@ -160,7 +163,7 @@ ON CONFLICT(run_id) DO UPDATE SET
 		spend.RunID, spend.BookID,
 		spend.StartedAt.UTC().Format(time.RFC3339),
 		spend.EndedAt.UTC().Format(time.RFC3339),
-		spend.ActualCostUSD, spend.NMTChars, now,
+		spend.ActualCostUSD, spend.NMTEngine, spend.NMTChars, now,
 	); err != nil {
 		return fmt.Errorf("unable to record run %q, err: %w", spend.RunID, err)
 	}
@@ -182,19 +185,25 @@ func (s *SQLiteStore) SpendSince(ctx context.Context, since time.Time) (float64,
 	return total, nil
 }
 
-// CharsSince returns the total NMT characters recorded at or after since. It is
-// how the pipeline knows how much of the provider's monthly free allowance is
-// already gone: the allowance is denominated in characters, and a run inside it
-// costs nothing while still consuming it.
-func (s *SQLiteStore) CharsSince(ctx context.Context, since time.Time) (int, error) {
+// CharsSince returns the NMT characters engine was sent at or after since. It
+// is how the pipeline knows how much of that provider's monthly free allowance
+// is already gone: the allowance is denominated in characters, and a run inside
+// it costs nothing while still consuming it.
+//
+// The filter on engine is load-bearing. The default provider is a local dev
+// server and the ledger is shared, so summing every run would let free local
+// translation burn a paid provider's allowance. Note the scope is the engine,
+// not the billing project: Google's allowance is per GCP project, and an API
+// key does not name one, so switching projects still shares a counter.
+func (s *SQLiteStore) CharsSince(ctx context.Context, since time.Time, engine string) (int, error) {
 	if s.db == nil {
 		return 0, ErrNilDatabase
 	}
 
-	const query = `SELECT COALESCE(SUM(nmt_chars), 0) FROM runs WHERE created_at >= ?`
+	const query = `SELECT COALESCE(SUM(nmt_chars), 0) FROM runs WHERE created_at >= ? AND nmt_engine = ?`
 
 	var total int
-	if err := s.db.QueryRowContext(ctx, query, since.UTC().Format(time.RFC3339)).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, query, since.UTC().Format(time.RFC3339), engine).Scan(&total); err != nil {
 		return 0, fmt.Errorf("unable to sum run nmt chars, err: %w", err)
 	}
 	return total, nil

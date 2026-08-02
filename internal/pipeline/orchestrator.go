@@ -106,6 +106,7 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 		BookID:        cfg.BookID,
 		StartedAt:     started,
 		TotalSegments: countSegments(chapters),
+		NMTEngine:     o.nmtEngine(),
 	}
 	mode.Init(result)
 
@@ -175,6 +176,7 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 			StartedAt:     result.StartedAt,
 			EndedAt:       result.EndedAt,
 			ActualCostUSD: result.ActualCostUSD,
+			NMTEngine:     result.NMTEngine,
 			NMTChars:      result.NMTChars,
 		}); err != nil {
 			log.Warn("unable to record run spend", zap.Error(err))
@@ -209,17 +211,30 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	return result, nil
 }
 
-// freeCharsUsed reports how much of the provider's monthly free character
-// allowance this calendar month has already consumed, so the projection bills
+// nmtEngine identifies the provider whose allowance a run consumes. It is empty
+// when no translator is configured, which is the case for a dry run.
+func (o *Orchestrator) nmtEngine() string {
+	if o.Translator == nil {
+		return ""
+	}
+	return o.Translator.Engine()
+}
+
+// freeCharsUsed reports how much of this provider's monthly free character
+// allowance the calendar month has already consumed, so the projection bills
 // only the overflow. It fails closed: a ledger read error aborts the run rather
 // than silently projecting a free draft.
+//
+// The count is per engine. The ledger is shared and the default provider is a
+// local dev server, so a month of free local translation would otherwise be
+// charged against a paid provider's allowance.
 func (o *Orchestrator) freeCharsUsed(ctx context.Context, now time.Time) (int, error) {
 	if o.TM == nil || o.CostModel.FreeCharsPerMonth <= 0 {
 		return 0, nil
 	}
 
 	since := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	used, err := o.TM.CharsSince(ctx, since)
+	used, err := o.TM.CharsSince(ctx, since, o.nmtEngine())
 	if err != nil {
 		return 0, fmt.Errorf("unable to read this month's NMT characters, err: %w", err)
 	}
