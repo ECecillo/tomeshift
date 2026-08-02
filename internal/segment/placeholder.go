@@ -159,8 +159,8 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 		remaining[tokenIDPattern.FindString(placeholders[i].Token)] = &placeholders[i]
 	}
 
-	if missing := missingTokenIDs(translatedText, remaining); missing > 0 {
-		return fmt.Errorf("unable to restore %d placeholder(s), err: %w", missing, ErrMissingPlaceholder)
+	if err := validateTokens(translatedText, remaining); err != nil {
+		return err
 	}
 
 	detachChildren(node)
@@ -213,22 +213,65 @@ func (InlinePlaceholderManager) Restore(translatedText string, placeholders []Pl
 	return nil
 }
 
-// missingTokenIDs counts the issued placeholders that the translated text does
-// not carry. It is the pre-flight half of the atomic Restore: the walk below
-// re-runs the same match, so the two stay in step by construction.
-func missingTokenIDs(translatedText string, issued map[string]*Placeholder) int {
-	seen := make(map[string]bool, len(issued))
+// validateTokens is the pre-flight half of the atomic Restore: it rejects a
+// translation the walk below could not rebuild faithfully, before the node is
+// touched. The walk re-runs the same match, so the two stay in step by
+// construction.
+//
+// Presence is not enough. An open/close pair that came back reordered or
+// duplicated passes a presence check and then rebuilds silently wrong: a close
+// seen first pops nothing, and the open that follows nests the rest of the
+// sentence inside an element that should have closed. Providers do reorder
+// inline markup, so this has to be an error, not a surprise in the output.
+func validateTokens(translatedText string, issued map[string]*Placeholder) error {
+	seen := make(map[string]int, len(issued))
+	order := make([]*Placeholder, 0, len(issued))
+
 	for _, loc := range placeholderTokenPattern.FindAllStringSubmatchIndex(translatedText, -1) {
-		seen[translatedText[loc[2]:loc[3]]] = true
+		id := translatedText[loc[2]:loc[3]]
+		ph, ok := issued[id]
+		if !ok {
+			continue // not ours: the walk keeps it as literal text
+		}
+		seen[id]++
+		order = append(order, ph)
 	}
 
+	// Missing first: a dropped open token is also "out of order", but the
+	// useful diagnosis is that it is gone.
 	missing := 0
 	for id := range issued {
-		if !seen[id] {
+		if seen[id] == 0 {
 			missing++
 		}
 	}
-	return missing
+	if missing > 0 {
+		return fmt.Errorf("unable to restore %d placeholder(s), err: %w", missing, ErrMissingPlaceholder)
+	}
+	for id, count := range seen {
+		if count > 1 {
+			return fmt.Errorf("unable to restore %q: issued once, returned %d times, err: %w",
+				issued[id].Token, count, ErrMisorderedPlaceholder)
+		}
+	}
+
+	depth := 0
+	for _, ph := range order {
+		switch ph.role {
+		case roleOpen:
+			depth++
+		case roleClose:
+			if depth--; depth < 0 {
+				return fmt.Errorf("unable to restore %q: closed before it was opened, err: %w",
+					ph.Token, ErrMisorderedPlaceholder)
+			}
+		}
+	}
+	if depth != 0 {
+		return fmt.Errorf("unable to restore: %d inline element(s) left unclosed, err: %w",
+			depth, ErrMisorderedPlaceholder)
+	}
+	return nil
 }
 
 // detachChildren removes every child of n so they can be re-appended in a new

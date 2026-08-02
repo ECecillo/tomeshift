@@ -208,6 +208,34 @@ func TestRestore_Errors(t *testing.T) {
 		require.Equal(t, before, renderNode(t, node))
 	})
 
+	t.Run("reordered pair is rejected, not silently rebuilt", func(t *testing.T) {
+		t.Parallel()
+		// Both tokens are present, so a presence check passes. Rebuilding would
+		// pop nothing on the close and then nest " c" inside the <em>.
+		node := firstElement(t, "<p>a <em>b</em> c</p>", "p")
+		before := renderNode(t, node)
+
+		_, placeholders, err := pm.Tokenize(node)
+		require.NoError(t, err)
+
+		err = pm.Restore(`a <x id="2"/>b<x id="1"/> c`, placeholders, node)
+		require.ErrorIs(t, err, ErrMisorderedPlaceholder)
+		require.Equal(t, before, renderNode(t, node))
+	})
+
+	t.Run("duplicated token is rejected", func(t *testing.T) {
+		t.Parallel()
+		node := firstElement(t, "<p>a <em>b</em> c</p>", "p")
+		before := renderNode(t, node)
+
+		_, placeholders, err := pm.Tokenize(node)
+		require.NoError(t, err)
+
+		err = pm.Restore(`a <x id="1"/>b<x id="2"/> <x id="1"/>c<x id="2"/>`, placeholders, node)
+		require.ErrorIs(t, err, ErrMisorderedPlaceholder)
+		require.Equal(t, before, renderNode(t, node))
+	})
+
 	t.Run("partially dropped placeholder leaves the node untouched", func(t *testing.T) {
 		t.Parallel()
 		// The close token survives, the open token does not. Before the
