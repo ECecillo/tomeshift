@@ -2,8 +2,28 @@ package tm
 
 import (
 	"context"
+	"strings"
 	"time"
 )
+
+// Engine tags recorded on a TM entry. The distinction is load-bearing: a hit on
+// a raw draft must never be served as a finished translation, or the segment
+// skips refinement on every subsequent run.
+//
+// The NMT adapters in internal/translate name themselves with EngineNMTPrefix
+// (nmt-http, nmt-libretranslate, nmt-google); the refined paths use the two
+// constants below.
+const (
+	EngineNMTPrefix   = "nmt-"
+	EngineLiterary    = "literary"
+	EngineLLMPostEdit = "llm-postedit"
+)
+
+// IsDraftEngine reports whether an engine tag marks a raw machine translation
+// rather than a finished one.
+func IsDraftEngine(engine string) bool {
+	return strings.HasPrefix(engine, EngineNMTPrefix)
+}
 
 // Entry is a single translation-memory record.
 type Entry struct {
@@ -18,11 +38,18 @@ type Entry struct {
 
 // RunSpend records the realized cost of a completed run for budget accounting.
 type RunSpend struct {
-	RunID         string
-	BookID        string
-	StartedAt     time.Time
-	EndedAt       time.Time
+	RunID     string
+	BookID    string
+	StartedAt time.Time
+	EndedAt   time.Time
+	// ActualCostUSD is what the run was billed, free tier already deducted.
 	ActualCostUSD float64
+	// NMTChars is how many source characters the run sent to the NMT provider.
+	// It is tracked separately from cost because the provider's free tier is
+	// denominated in characters per calendar month, not in dollars: a run that
+	// cost nothing still consumes the allowance the next one will be billed
+	// against.
+	NMTChars int
 }
 
 // Store is the exact-match translation memory and spend ledger used by the
@@ -36,6 +63,9 @@ type Store interface {
 	RecordRun(ctx context.Context, spend RunSpend) error
 	// SpendSince returns the total realized spend recorded at or after since.
 	SpendSince(ctx context.Context, since time.Time) (float64, error)
+	// CharsSince returns the total NMT characters recorded at or after since,
+	// which is how much of the provider's monthly free allowance is gone.
+	CharsSince(ctx context.Context, since time.Time) (int, error)
 	// Close releases the underlying database handle.
 	Close() error
 }

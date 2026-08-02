@@ -94,6 +94,36 @@ func TestSQLiteStore_RecordRunAndSpendSince(t *testing.T) {
 	require.InDelta(t, 0.0, future, 0.0001)
 }
 
+func TestSQLiteStore_CharsSince(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := t.Context()
+	now := time.Now().UTC()
+
+	// A run inside the provider's free tier costs nothing yet still consumes
+	// the monthly character allowance the next run is billed against, so the
+	// two are tracked independently.
+	require.NoError(t, store.RecordRun(ctx, RunSpend{
+		RunID: "r1", BookID: "b", StartedAt: now, EndedAt: now, ActualCostUSD: 0, NMTChars: 472_509,
+	}))
+	require.NoError(t, store.RecordRun(ctx, RunSpend{
+		RunID: "r2", BookID: "b", StartedAt: now, EndedAt: now, ActualCostUSD: 0, NMTChars: 414_044,
+	}))
+
+	total, err := store.CharsSince(ctx, now.Add(-time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, 886_553, total)
+
+	spend, err := store.SpendSince(ctx, now.Add(-time.Hour))
+	require.NoError(t, err)
+	require.InDelta(t, 0.0, spend, 0.0001)
+
+	future, err := store.CharsSince(ctx, now.Add(time.Hour))
+	require.NoError(t, err)
+	require.Equal(t, 0, future)
+}
+
 func TestSQLiteStore_RecordRunUpserts(t *testing.T) {
 	t.Parallel()
 
