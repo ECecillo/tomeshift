@@ -80,12 +80,12 @@ func TestLiterary_LocalMistral_CompletesEverySegment(t *testing.T) {
 			defer cancel()
 
 			segs := syntheticChapter(tt.segments)
-			usage, err := tr.TranslateChapter(ctx,
+			outcome, err := tr.TranslateChapter(ctx,
 				narrative.Bible{StyleGuide: "Prose littéraire sobre, phrases courtes."},
 				"ch_0001", segs, "", "")
 			require.NoError(t, err)
 
-			t.Logf("tokens — input: %d, output: %d", usage.InputTokens, usage.OutputTokens)
+			t.Logf("tokens — input: %d, output: %d", outcome.Usage.InputTokens, outcome.Usage.OutputTokens)
 
 			untranslated := 0
 			for _, seg := range segs {

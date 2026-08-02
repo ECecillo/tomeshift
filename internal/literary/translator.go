@@ -74,6 +74,18 @@ type segmentState struct {
 	subs   map[string]string
 }
 
+// Outcome is what a chapter's pass produced besides the translations
+// themselves.
+type Outcome struct {
+	Usage Usage
+	// Degraded holds the failures of batches that did not stop the chapter:
+	// their segments kept their NMT draft while other batches succeeded. It is
+	// not an error — the chapter produced output — but it is the only record of
+	// why part of it went unrefined, and the named refusal and truncation
+	// errors are worth nothing if they are dropped here.
+	Degraded []error
+}
+
 // Usage aggregates token accounting for a chapter's LLM call. CacheRead and
 // CacheCreation expose prompt-cache activity so callers can verify caching and
 // price reads at the cache rate.
@@ -160,12 +172,12 @@ func (t *Translator) TranslateChapter(
 	segs []*segment.Segment,
 	prevCtx string,
 	chapterSource string,
-) (Usage, error) {
+) (Outcome, error) {
 	if t.Chat == nil {
-		return Usage{}, ErrNilChatClient
+		return Outcome{}, ErrNilChatClient
 	}
 	if len(segs) == 0 {
-		return Usage{}, nil
+		return Outcome{}, nil
 	}
 
 	items, states := t.buildPayload(segs)
@@ -191,9 +203,9 @@ func (t *Translator) TranslateChapter(
 	}
 	if len(missingItems(items, run.targets)) == len(items) {
 		if len(batchErrs) > 0 {
-			return run.usage, errors.Join(batchErrs...)
+			return Outcome{Usage: run.usage}, errors.Join(batchErrs...)
 		}
-		return run.usage, ErrEmptyResponse
+		return Outcome{Usage: run.usage}, ErrEmptyResponse
 	}
 
 	for i, seg := range segs {
@@ -213,7 +225,7 @@ func (t *Translator) TranslateChapter(
 		seg.Status = segment.StatusPostEdited
 	}
 
-	return run.usage, nil
+	return Outcome{Usage: run.usage, Degraded: batchErrs}, nil
 }
 
 // translateBatch translates b in a single LLM call and merges the results into

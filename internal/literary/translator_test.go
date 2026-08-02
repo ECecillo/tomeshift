@@ -234,7 +234,7 @@ func TestTranslator_SplitsChapterIntoBatchesAndSumsUsage(t *testing.T) {
 	chat := &echoChat{}
 	tr := literary.Translator{Chat: chat, BatchSize: 10}
 
-	usage, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
 
 	require.Len(t, chat.batches, 3, "25 segments at BatchSize 10 must be 3 calls")
@@ -254,10 +254,10 @@ func TestTranslator_SplitsChapterIntoBatchesAndSumsUsage(t *testing.T) {
 	}
 
 	// Usage is summed over the three calls rather than taken from the last one.
-	require.Equal(t, 300, usage.InputTokens)
-	require.Equal(t, 30, usage.OutputTokens)
-	require.Equal(t, 3, usage.CacheReadTokens)
-	require.Equal(t, 6, usage.CacheCreationTokens)
+	require.Equal(t, 300, outcome.Usage.InputTokens)
+	require.Equal(t, 30, outcome.Usage.OutputTokens)
+	require.Equal(t, 3, outcome.Usage.CacheReadTokens)
+	require.Equal(t, 6, outcome.Usage.CacheCreationTokens)
 }
 
 func TestTranslator_RetriesSegmentsTheModelStoppedShortOf(t *testing.T) {
@@ -347,6 +347,24 @@ func TestTranslator_TruncationOnASingleSegmentIsNamed(t *testing.T) {
 	require.ErrorIs(t, err, literary.ErrIncompleteResponse)
 	require.Equal(t, "brouillon", segs[0].TargetText,
 		"a chapter where nothing was translated leaves its drafts untouched")
+}
+
+func TestTranslator_DegradedBatchesAreReported(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(20)
+	// One of two batches fails; the other succeeds, so the chapter is not an
+	// error. The reason must still reach the caller — collecting the named
+	// refusal and truncation errors and then dropping them would be the same
+	// silence they were added to end.
+	chat := &echoChat{errOnCall: 2}
+	tr := literary.Translator{Chat: chat, BatchSize: 10}
+
+	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "src")
+
+	require.NoError(t, err)
+	require.Len(t, outcome.Degraded, 1)
+	require.ErrorContains(t, outcome.Degraded[0], "provider unavailable")
 }
 
 func TestTranslator_ChapterSurvivesOneFailedBatch(t *testing.T) {

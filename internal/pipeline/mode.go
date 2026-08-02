@@ -259,16 +259,25 @@ func (m *literaryMode) refine(
 	// TranslateChapter rewrites the segments in place. The chapter's whole
 	// source goes in the cacheable prefix; only the tail of the previous
 	// chapter still has to travel per call.
-	usage, err := m.orch.LiteraryTranslator.TranslateChapter(
+	outcome, err := m.orch.LiteraryTranslator.TranslateChapter(
 		ctx, m.bible, chapter.ID, fresh,
 		adjacentChapterText(chapters, idx-1), chapterSourceText(chapter.Segments))
 	if err != nil {
 		return err
 	}
-	result.LLMInputTokens += usage.InputTokens
-	result.LLMOutputTokens += usage.OutputTokens
-	result.LLMCacheReadTokens += usage.CacheReadTokens
-	result.LLMCacheCreationTokens += usage.CacheCreationTokens
+	result.LLMInputTokens += outcome.Usage.InputTokens
+	result.LLMOutputTokens += outcome.Usage.OutputTokens
+	result.LLMCacheReadTokens += outcome.Usage.CacheReadTokens
+	result.LLMCacheCreationTokens += outcome.Usage.CacheCreationTokens
+
+	// A batch that failed while others succeeded leaves its segments on their
+	// draft and does not fail the chapter. Without this the named refusal and
+	// truncation errors would be collected and then dropped, which is the same
+	// silence they were introduced to end.
+	for _, degraded := range outcome.Degraded {
+		log.Warn("literary batch kept its draft",
+			zap.String("chapter_id", chapter.ID), zap.Error(degraded))
+	}
 
 	// Only a segment the LLM actually rewrote is worth persisting; the rest
 	// kept their draft, and a draft must never become a TM hit.
