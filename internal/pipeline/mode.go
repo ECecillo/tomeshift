@@ -156,11 +156,12 @@ func (m *literaryMode) pass(chapters []chapterSegments, segments []segment.Segme
 	}
 
 	return cost.LLMPass{
-		Segments:    len(segments),
-		Chars:       segment.SourceChars(segments),
-		Calls:       cost.CallsForChapters(counts, batchSize),
-		PrefixChars: prefixChars,
-		Chapters:    shapes,
+		Segments:     len(segments),
+		Chars:        segment.SourceChars(segments),
+		Calls:        cost.CallsForChapters(counts, batchSize),
+		PrefixChars:  prefixChars,
+		Chapters:     shapes,
+		ContextRunes: cost.LiteraryContextRunes,
 	}
 }
 
@@ -233,11 +234,14 @@ func (m *literaryMode) Translate(
 			}
 			// Restore is atomic: on failure the node keeps its original source
 			// markup, so the segment degrades to untranslated instead of losing
-			// content. QA counts it; the chapter carries on.
+			// content. QA counts it; the chapter carries on — and the
+			// translation is not persisted, so it cannot come back as a hit.
 			if err := o.placeholders().Restore(seg.TargetText, seg.Placeholders, seg.Node); err != nil {
 				log.Warn("placeholder restore failed",
 					zap.String("segment_id", seg.ID), zap.Error(err))
+				continue
 			}
+			m.persist(ctx, log, seg)
 		}
 
 		// Frozen by default: keep the bible (and thus the system prefix / prompt
@@ -289,30 +293,38 @@ func (m *literaryMode) refine(
 			zap.String("chapter_id", chapter.ID), zap.Error(degraded))
 	}
 
-	// Only a segment the LLM actually rewrote is worth persisting; the rest
-	// kept their draft, and a draft must never become a TM hit.
 	for _, seg := range fresh {
-		if seg.Status != segment.StatusPostEdited {
-			continue
-		}
-
-		result.LLMSegments++
-		if m.orch.TM == nil {
-			continue
-		}
-		if err := m.orch.TM.Save(ctx, tm.Entry{
-			SourceHash: seg.Hash,
-			SourceText: seg.SourceText,
-			TargetText: seg.TargetText,
-			SourceLang: m.cfg.SourceLang,
-			TargetLang: m.cfg.TargetLang,
-			Engine:     tm.EngineLiterary,
-		}); err != nil {
-			log.Warn("unable to persist literary TM entry",
-				zap.String("segment_id", seg.ID), zap.Error(err))
+		if seg.Status == segment.StatusPostEdited {
+			result.LLMSegments++
 		}
 	}
 	return nil
+}
+
+// persist writes a refined segment to the TM. It is called only after Restore
+// has accepted the translation.
+//
+// The ordering is the point. The literary precheck compares the *set* of
+// placeholder ids, so it cannot see a reordering; Restore can. Saving before
+// restoring would write a translation that rebuilds into wrong markup as a
+// finished "literary" entry, and the next run would serve it as a TM hit and
+// skip refinement — the shadowing defect this mode exists to prevent, arriving
+// through the back door.
+func (m *literaryMode) persist(ctx context.Context, log *zap.Logger, seg *segment.Segment) {
+	if m.orch.TM == nil || seg.Status != segment.StatusPostEdited {
+		return
+	}
+	if err := m.orch.TM.Save(ctx, tm.Entry{
+		SourceHash: seg.Hash,
+		SourceText: seg.SourceText,
+		TargetText: seg.TargetText,
+		SourceLang: m.cfg.SourceLang,
+		TargetLang: m.cfg.TargetLang,
+		Engine:     tm.EngineLiterary,
+	}); err != nil {
+		log.Warn("unable to persist literary TM entry",
+			zap.String("segment_id", seg.ID), zap.Error(err))
+	}
 }
 
 // draftSegments drafts segments in a single batched provider call, writing each

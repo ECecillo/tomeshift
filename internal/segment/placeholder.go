@@ -3,6 +3,7 @@ package segment
 import (
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"golang.org/x/net/html"
@@ -59,8 +60,10 @@ func (InlinePlaceholderManager) Tokenize(node *html.Node) (string, []Placeholder
 				return "", nil, fmt.Errorf("unable to render inline markup for placeholder, err: %w", err)
 			}
 
-			id++
-			open := placeholderToken(id)
+			openID, closeID := id+1, id+2
+			id += 2
+
+			open := placeholderToken(openID)
 			sb.WriteString(open)
 			placeholders = append(placeholders, Placeholder{
 				Token:    open,
@@ -68,14 +71,14 @@ func (InlinePlaceholderManager) Tokenize(node *html.Node) (string, []Placeholder
 				Type:     PlaceholderInline,
 				role:     roleOpen,
 				node:     shallowClone(c),
+				closeID:  strconv.Itoa(closeID),
 			})
 
 			for t := c.FirstChild; t != nil; t = t.NextSibling {
 				sb.WriteString(t.Data)
 			}
 
-			id++
-			closeTok := placeholderToken(id)
+			closeTok := placeholderToken(closeID)
 			sb.WriteString(closeTok)
 			placeholders = append(placeholders, Placeholder{
 				Token: closeTok,
@@ -255,21 +258,30 @@ func validateTokens(translatedText string, issued map[string]*Placeholder) error
 		}
 	}
 
-	depth := 0
+	// Match each close against the open it belongs to, not merely against the
+	// depth. open-1 open-3 close-2 close-4 is balanced and would rebuild with
+	// the two elements nested instead of adjacent.
+	var expected []*Placeholder
 	for _, ph := range order {
 		switch ph.role {
 		case roleOpen:
-			depth++
+			expected = append(expected, ph)
 		case roleClose:
-			if depth--; depth < 0 {
+			if len(expected) == 0 {
 				return fmt.Errorf("unable to restore %q: closed before it was opened, err: %w",
 					ph.Token, ErrMisorderedPlaceholder)
 			}
+			open := expected[len(expected)-1]
+			expected = expected[:len(expected)-1]
+			if open.closeID != tokenIDPattern.FindString(ph.Token) {
+				return fmt.Errorf("unable to restore %q: closes %q, which is not the innermost open element, err: %w",
+					ph.Token, open.Token, ErrMisorderedPlaceholder)
+			}
 		}
 	}
-	if depth != 0 {
+	if len(expected) > 0 {
 		return fmt.Errorf("unable to restore: %d inline element(s) left unclosed, err: %w",
-			depth, ErrMisorderedPlaceholder)
+			len(expected), ErrMisorderedPlaceholder)
 	}
 	return nil
 }

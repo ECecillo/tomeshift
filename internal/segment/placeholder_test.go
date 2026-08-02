@@ -236,6 +236,23 @@ func TestRestore_Errors(t *testing.T) {
 		require.Equal(t, before, renderNode(t, node))
 	})
 
+	t.Run("crossed pairs are rejected even though depth balances", func(t *testing.T) {
+		t.Parallel()
+		// open-1 open-3 close-2 close-4: every token present, exactly once, and
+		// the depth returns to zero. Only the pairing shows that close-2 does
+		// not close the innermost element, and rebuilding would nest the two
+		// adjacent elements inside one another.
+		node := firstElement(t, "<p>a <em>b</em> c <strong>d</strong> e</p>", "p")
+		before := renderNode(t, node)
+
+		_, placeholders, err := pm.Tokenize(node)
+		require.NoError(t, err)
+
+		err = pm.Restore(`a <x id="1"/>b <x id="3"/>c<x id="2"/> d<x id="4"/> e`, placeholders, node)
+		require.ErrorIs(t, err, ErrMisorderedPlaceholder)
+		require.Equal(t, before, renderNode(t, node))
+	})
+
 	t.Run("partially dropped placeholder leaves the node untouched", func(t *testing.T) {
 		t.Parallel()
 		// The close token survives, the open token does not. Before the

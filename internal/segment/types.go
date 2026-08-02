@@ -48,6 +48,10 @@ type Placeholder struct {
 	Type     PlaceholderType //
 	role     placeholderRole // how to splice back on Restore
 	node     *html.Node      // node re-attached on Restore (nil for roleClose)
+	// closeID is the id of the token that closes this one, set on roleOpen.
+	// Restore needs the pairing, not just the count: open-1 open-3 close-2
+	// close-4 is depth-balanced but closes the wrong elements.
+	closeID string
 }
 
 // Segment is a paragraph-level translatable unit.
