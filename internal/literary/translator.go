@@ -273,13 +273,17 @@ func (t *Translator) translateBatch(ctx context.Context, run *chapterRun, b batc
 		return nil
 	}
 	if len(b.items) == 1 {
-		// Nothing left to split. Say why the segment kept its draft instead of
-		// letting a truncation look like a malformed reply.
-		if resp.StopReason != "" && resp.StopReason != llm.StopReasonEndTurn {
-			return fmt.Errorf("unable to translate literary chapter %s batch %d: stop_reason %q (%s), err: %w",
-				run.chapterID, b.idx, resp.StopReason, resp.StopDetailsSummary(), ErrIncompleteResponse)
+		// Nothing left to split, and the segment still has no translation. Say
+		// so whatever the provider claimed: a reply that stopped cleanly but
+		// came back malformed, empty, or answering a different id leaves the
+		// segment on its draft just as a truncation does, and reporting only
+		// the truncation would keep the commoner case silent.
+		reason := resp.StopReason
+		if reason == "" {
+			reason = "no usable segment in the response"
 		}
-		return nil
+		return fmt.Errorf("unable to translate literary chapter %s batch %d (%s): %s, err: %w",
+			run.chapterID, b.idx, resp.StopDetailsSummary(), reason, ErrIncompleteResponse)
 	}
 
 	// missing is a subset of b.items and len(b.items) >= 2 here, so both halves
