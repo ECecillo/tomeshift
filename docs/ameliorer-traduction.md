@@ -46,15 +46,19 @@ SQLite scopée par `--series` (pas par volume). Trois colonnes utiles :
 | `characters_json` | personnages, voix, épithètes | l'incohérence de caractérisation |
 | `address_json` | matrice tu/vous + évolution | le mauvais niveau d'adresse |
 
-Amorcer / enrichir :
+Construire (une fois par tome publié, avant toute traduction) :
 ```bash
-style-profile --input vol1.epub --series <serie> --samples 8        # amorce (remplace)
-style-profile --input vol2.epub --series <serie> --samples 8 --merge # enrichit sans écraser
+series-bible --input-dir ./books/<serie> --series <serie> --samples 8
 ```
+Style, voix et adresse sont tirés de **tous** les tomes ; les résumés sont un
+synopsis par tome, bornés aux tomes 1..N dans la bible `<serie>@volume-NN`.
+
+`style-profile` reste disponible pour amorcer depuis un seul tome
+(`--merge` pour enrichir au lieu de remplacer).
+
 Relire la bible **avant** un run complet (une erreur s'y propage) :
 ```bash
-sqlite3 ./data/<serie>-series.sqlite \
-  "SELECT style_guide, characters_json, address_json FROM bibles WHERE series_id='<serie>';"
+just bible ./data/<serie>-series.sqlite <serie>
 ```
 
 ### 3. Garde-fous de style — borner les dérives récurrentes
@@ -83,8 +87,10 @@ sqlite3 ./data/<serie>-series.sqlite \
 
 - **Bible figée** (défaut) : tous les chapitres voient la même bible → prompts
   stables, re-runs reproductibles et **gratuits** (servis par le cache LLM).
-- **`--update-bible`** : la bible évolue chapitre par chapitre dans le run
-  (meilleure cohérence intra-tome, mais re-runs non gratuits).
+- **`--update-bible`** : déconseillé. La bible évolue chapitre par chapitre dans
+  le run, ce qui réécrit le préfixe cacheable à chaque chapitre et rend les
+  re-runs payants et non reproductibles. Construire la bible en amont avec
+  `series-bible`.
 
 **Important :** modifier le `style_guide`, le glossaire ou la bible **change le
 préfixe de prompt de *tous* les segments** → invalide le cache → le prochain run
@@ -101,28 +107,28 @@ Toujours estimer avant de payer :
 
 ## Continuité d'un tome à l'autre
 
-La bible étant **scopée par `--series`**, le tome 2 hérite automatiquement du
-`style_guide`, des `characters` et de la matrice `address` du tome 1. Pour que
-l'**intrigue** du tome 1 informe aussi le tome 2, deux choses :
-
-1. **Peupler la mémoire** : traduire le tome 1 avec `--update-bible`. À chaque
-   chapitre, un résumé est ajouté à `summaries_json` (et voix/adresse évoluent).
-2. **L'utiliser** : ces résumés sont injectés dans le prompt sous la section
-   `STORY_SO_FAR` → le LLM sait « ce qui s'est passé avant » en traduisant.
+La mémoire d'intrigue est construite **avant** de traduire, pas pendant. Un
+`series-bible` lit chaque chapitre de chaque tome, en tire un résumé, puis réduit
+ces résumés en un synopsis par tome. Ces synopsis alimentent la section
+`RESUME_DE_L_HISTOIRE` du préfixe → le LLM sait « ce qui s'est passé avant ».
 
 ```bash
-# Tome 1 — traduire en faisant évoluer la bible (peuple STORY_SO_FAR)
-./bin/epub-translator run --input vol1.epub --output-dir ./runs \
-  --mode literary --series lumen --update-bible --glossary ./data/lumen-glossary.json
+# Une fois, pour toute la série
+./bin/epub-translator series-bible --input-dir ./books/lumen --series lumen --samples 8
 
-# Tome 2 — hérite de la bible (style + perso + adresse + résumés)
-./bin/epub-translator style-profile --input vol2.epub --series lumen --samples 8 --merge
+# Tome 1 — bible bornée au tome 1
+./bin/epub-translator run --input vol1.epub --output-dir ./runs \
+  --mode literary --series lumen@volume-01 --glossary ./data/lumen-glossary.json
+
+# Tome 2 — bible bornée aux tomes 1 et 2
 ./bin/epub-translator run --input vol2.epub --output-dir ./runs \
-  --mode literary --series lumen --glossary ./data/lumen-glossary.json
+  --mode literary --series lumen@volume-02 --glossary ./data/lumen-glossary.json
 ```
 
-> Sans `--update-bible`, la bible reste **figée** : pas de nouveaux résumés, donc
-> `STORY_SO_FAR` ne grandit pas. Vérifie l'état avec `just bible <db> <série>`
+> `--update-bible` faisait ce travail pendant le run. C'est **déconseillé** : la
+> bible change à chaque chapitre, donc le préfixe cacheable est réécrit 68 fois
+> par tome (4,33 $ contre 0,25–0,41 $) et chaque re-run repaie tout. Vérifie
+> l'état avec `just bible <db> <série>`.
 > (colonne résumés) avant de lancer le tome suivant.
 
 ## Workflow type d'amélioration

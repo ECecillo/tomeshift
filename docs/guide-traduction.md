@@ -134,12 +134,18 @@ EPUB_TRANSLATOR_LLM_TOKEN_MULTIPLIER=1.30
 SERIES=lumen
 EN="books/.../Volume 01.epub"
 
-# (a) Amorcer la bible de série (1 appel LLM, ~0,10 $). Plus d'échantillons = bible plus complète.
-epub-translator style-profile --input "$EN" --series $SERIES --samples 8
+# (a) Construire la bible AVANT toute traduction, à partir de TOUS les tomes du
+#     répertoire. Style/voix/vouvoiement viennent de tous les tomes ; les résumés
+#     sont UN synopsis par tome, produit en map-reduce (1 résumé par chapitre,
+#     puis 1 réduction). Coût : ~0,10 $ (échantillonnage) + ~0,55 $ par tome,
+#     UNE fois, jamais rejoué.
+epub-translator series-bible --input-dir ./books/lumen --series $SERIES --samples 8
+#   → écrit lumen@volume-01, lumen@volume-02, … (résumés des tomes 1..N
+#     seulement, pour ne pas donner la fin d'une histoire qu'on commence)
+#     + lumen = la bible du tome le plus récent.
 
 # (b) Relire la bible (à faire AVANT un run complet — une erreur se propage)
-sqlite3 ./narrative.sqlite \
-  "SELECT style_guide, characters_json, address_json FROM bibles WHERE series_id='$SERIES';"
+just bible ./narrative.sqlite $SERIES
 
 # (c) Glossaire des noms propres (gratuit, heuristique) → squelette JSON à curer
 epub-translator glossary-suggest --input "$EN" --out ./glossary.json --min-count 5
@@ -151,10 +157,11 @@ epub-translator glossary-suggest --input "$EN" --out ./glossary.json --min-count
 #   sinon la projection vaut 0 $ et le plafond ne compare rien.
 epub-translator estimate --input "$EN"
 
-# (e) Traduire (bible figée → prompts stables + re-runs gratuits via cache)
+# (e) Traduire (bible figée → prompts stables + re-runs gratuits via cache).
+#     Viser la bible scopée du tome traduit.
 epub-translator run --input "$EN" --output-dir ./runs \
   --source-lang en --target-lang fr \
-  --mode literary --series $SERIES --glossary ./glossary.json
+  --mode literary --series $SERIES@volume-01 --glossary ./glossary.json
 ```
 
 Le résultat est dans `./runs/<run-id>/translated.epub` + artefacts (voir §8).
@@ -163,26 +170,41 @@ Le résultat est dans `./runs/<run-id>/translated.epub` + artefacts (voir §8).
 
 ## 5. Une série de plusieurs tomes
 
-La bible est **scopée par `--series`**, pas par volume.
+`series-bible` produit **une bible par tome**. Le style, les voix et les règles
+de vouvoiement viennent de **tous** les tomes disponibles — c'est là que la
+complétude est utile et quasi gratuite. Seuls les **résumés** sont scopés : la
+bible qui traduit le tome N ne contient que les synopsis des tomes 1..N.
+
+Pourquoi ce bornage : le style de la série repose sur la description factuelle
+dans les boucles de *Return by Ash*, un effet qui dépend de ne pas savoir. Un
+modèle au courant de la vraie nature d'un personnage colore ses dialogues du
+tome 1.
 
 ```bash
-# Tome 2 : réutiliser la MÊME série → hérite de la bible du tome 1
-epub-translator run --input vol2.epub --output-dir ./runs \
-  --mode literary --series lumen --glossary ./glossary.json
+# Un nouveau tome est publié → regénérer, une fois, depuis le répertoire complet
+epub-translator series-bible --input-dir ./books/lumen --series lumen --samples 8
 
-# Enrichir la bible avec le nouveau matériel du tome 2 SANS écraser le tome 1 :
-epub-translator style-profile --input vol2.epub --series lumen --samples 8 --merge
-# (sans --merge, style-profile REMPLACE la bible)
+# Traduire le tome 2 avec la bible bornée aux tomes 1 et 2
+epub-translator run --input vol2.epub --output-dir ./runs \
+  --mode literary --series lumen@volume-02 --glossary ./glossary.json
 
 # Compléter le glossaire avec les nouveaux noms du tome 2 :
 epub-translator glossary-suggest --input vol2.epub --out glossary-vol2.json
 ```
 
-**Bible figée vs évolutive :**
-- défaut **figée** : tous les chapitres voient la même bible → prompts stables,
-  re-runs reproductibles/gratuits (cache), idéal qualité homogène + coût.
-- `--update-bible` : la bible évolue chapitre par chapitre dans le run (meilleure
-  cohérence intra-tome, mais re-runs non gratuits).
+Regénérer change le préfixe, donc invalide `llm_cache.sqlite` **une fois** — coût
+ponctuel par regénération, pas par chapitre. Les tomes déjà traduits ne sont pas
+re-traduits automatiquement : les laisser en l'état est moins cher et
+reproductible.
+
+**Bible figée (défaut) vs `--update-bible` :**
+- **figée** : tous les chapitres voient la même bible → préfixe cacheable stable,
+  re-runs reproductibles et gratuits, 0,25–0,41 $ de préfixe par tome.
+- `--update-bible` : **déconseillé, incompatible avec un préfixe caché**. La
+  bible change à chaque chapitre, donc le préfixe est réécrit 68 fois au lieu
+  d'une (4,33 $ par tome), et la bible sur disque diffère de celle du run
+  précédent → chaque re-run repaie tout. L'option reste disponible mais ne fait
+  partie d'aucun workflow recommandé.
 
 ---
 
@@ -246,8 +268,9 @@ epub-translator batch --input-dir ./books/serie --output-dir ./runs \
 
 | Commande | Rôle |
 |---|---|
-| `run --mode nmt\|literary [--series] [--glossary] [--update-bible] [--resume]` | traduire un livre |
-| `style-profile --series <id> [--samples N] [--merge]` | amorcer/enrichir la bible |
+| `run --mode nmt\|literary [--series] [--glossary] [--resume]` | traduire un livre |
+| `series-bible --input-dir <dir> --series <id> [--samples N] [--merge]` | construire la bible de toute la série (avant traduction) |
+| `style-profile --input <f> --series <id> [--samples N] [--merge]` | amorcer/enrichir la bible depuis un seul tome |
 | `glossary-suggest [--out f] [--min-count N]` | extraire les noms propres |
 | `estimate` | projeter le coût (0 appel) |
 | `eval --candidate/--reference` \| `--segments` | chrF \| COMET-QE |

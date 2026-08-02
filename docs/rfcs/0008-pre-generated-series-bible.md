@@ -1,9 +1,9 @@
 # RFC 0008: Pre-Generated Series Bible as a Job Separate from Translation
 
-- Status: `proposed`
+- Status: `accepted`
 - Authors: ECecillo
 - Created: 2026-08-01
-- Updated: 2026-08-01
+- Updated: 2026-08-02
 - Related:
   - Architecture: `docs/ARCHITECTURE.md`
   - Evolves: [0006 - Faithful Multi-Volume Literary Translation via Persistent Narrative Memory](./0006-faithful-multivolume-translation.md)
@@ -357,6 +357,18 @@ content rather than translation commentary.
 
 ## Decision Log
 
+- 2026-08-02: implemented and accepted. `ChapterSummary` became `narrative.Summary`
+  with a `VolumeID`, keyed on the `(VolumeID, ChapterID)` pair; `MergeBibles` now
+  returns a `MergeStats` reporting dropped entries. The volume dimension lives
+  inside `summaries_json` rather than in a column, so pre-0008 rows need no DDL
+  migration — they load with an empty `VolumeID` and render under their own
+  label. The map step's per-chapter summaries go to a new `chapter_summaries`
+  table, deliberately outside the bible so they never reach the cacheable prefix.
+  Version assignment moved into `SQLiteStore.Save`, which compares stored content
+  and keeps the version when nothing changed. The new `series-bible` command
+  writes one bible per volume under `<series>@<volume>` plus the full series
+  under `<series>`; scoping by series ID avoided adding a `--volume` flag to
+  `run` and a scope column to the store.
 - 2026-08-01: synopsis generation settled on **map-reduce** (68 chapter summaries at 4:1,
   then one reduction at 47:1) over a single 298:1 pass. Cost was not the deciding factor —
   0.55 $ against 0.36 $ per volume, once — but silent mid-context degradation was: a

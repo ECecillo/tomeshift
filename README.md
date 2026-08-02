@@ -96,20 +96,27 @@ just run ./books/source.epub ./runs
 ```
 
 ### Literary mode with a series bible
-Seed or refresh the series bible first:
+Build the bible first, from every volume of the series. This is a job of its
+own, run once per published volume rather than once per translation:
 ```bash
-epub-translator style-profile --input ./books/volume-01.epub --series my-series --samples 3
+epub-translator series-bible --input-dir ./books/my-series --series my-series --samples 8
 ```
+It seeds style, character voices and address rules from **all** volumes, then
+writes one synopsis per volume via map-reduce (one summary per chapter, then one
+reduction over those summaries). It stores one bible per volume — `my-series@volume-01`,
+`my-series@volume-02`, … — each holding the synopses of volumes 1..N only, so the
+model never receives the ending of a story it is rendering the beginning of. The
+bare `my-series` ID is the newest volume's bible.
 
-Then run the sequential literary pipeline:
+Then run the sequential literary pipeline against the frozen bible:
 ```bash
 epub-translator run \
-  --input ./books/volume-01.epub \
+  --input ./books/my-series/volume-01.epub \
   --output-dir ./runs \
   --source-lang en \
   --target-lang fr \
   --mode literary \
-  --series my-series
+  --series my-series@volume-01
 ```
 
 Literary mode still uses NMT/translation memory for drafts, then calls the
@@ -119,17 +126,24 @@ context. Configure `EPUB_TRANSLATOR_NARRATIVE_PATH`,
 `EPUB_TRANSLATOR_LLM_BASE_URL`, `EPUB_TRANSLATOR_LLM_MODEL`, and
 `EPUB_TRANSLATOR_LLM_API_KEY`.
 
-By default the bible is **frozen for the run**: every chapter sees the same bible,
-so prompts (and the Anthropic prompt cache on the system prefix) stay stable and
-re-runs are reproducible/free (served from the SQLite LLM cache). Pass
-`--update-bible` to let the bible evolve chapter-by-chapter within the run
-(better intra-volume consistency, but re-runs re-translate). Recommended series
-workflow: `style-profile` once to seed the bible, then `run` frozen; for later
-volumes, reuse the same `--series` (the bible carries over) and enrich it with
-`style-profile --merge` (adds new characters/terms/address rules without
-overwriting prior volumes — without `--merge`, style-profile replaces the bible). The Anthropic adapter sets a `cache_control` breakpoint on the bible/style
-prefix; cache read/creation tokens are reported in `report.json` and
-`metrics.json` (`translation_llm_cache_read_tokens`, etc.).
+The bible is an **input** to a run, never an output: every chapter sees the same
+bible, so prompts (and the Anthropic prompt cache on the system prefix) stay
+stable and re-runs are reproducible and free (served from the SQLite LLM cache).
+Regenerate it with `series-bible` when a new volume is published — that
+invalidates the LLM cache once, by design, rather than once per chapter.
+
+`--update-bible` still exists but is **not part of any recommended workflow**: it
+is mutually exclusive with a cached prefix. Letting the bible evolve
+chapter-by-chapter rewrites the cacheable prefix once per chapter instead of
+once per run (4.33 $ per volume against 0.25–0.41 $), and leaves the bible on
+disk different from the one the next run starts with, so re-runs stop being free
+and stop being reproducible.
+
+`style-profile` remains available to seed style/voices/address from a single
+volume, with `--merge` to enrich rather than replace. `series-bible` supersedes
+it for series work. The Anthropic adapter sets a `cache_control` breakpoint on
+the bible/style prefix; cache read/creation tokens are reported in `report.json`
+and `metrics.json` (`translation_llm_cache_read_tokens`, etc.).
 
 ### Self-hosted local NMT (no external service)
 The default `EPUB_TRANSLATOR_NMT_ENDPOINT` points at a bundled local NMT dev
