@@ -40,7 +40,11 @@ FR_EXPANSION = 1.15
 # guillemets, échappements), mesuré sur le schéma de internal/literary.
 JSON_OVERHEAD_IN_CHARS = 40
 JSON_OVERHEAD_OUT_CHARS = 30
-# Contexte volatil actuel : contextRunes avant + contextRunes après.
+# Fenêtre de contexte volatil, en runes, alignée sur literary.contextRunes.
+# Avant le lot 3 de la RFC 0007 chaque appel en portait deux (avant et après) ;
+# depuis, la source du chapitre voyage dans le préfixe cachable et seule la
+# fenêtre *précédente* subsiste — la traduction française du lot précédent, qui
+# assure la couture entre lots et ne peut donc pas être mise en cache.
 CONTEXT_RUNES_EACH = 1200
 
 
@@ -193,6 +197,7 @@ def token_profile(
     prefix_tokens: float,
     extra_prefix_tokens: float = 0.0,
     prefix_per_chapter: bool = False,
+    context_windows: int = 2,
 ) -> Tokens:
     """Décompose la consommation de tokens d'une passe LLM complète.
 
@@ -213,12 +218,10 @@ def token_profile(
         + JSON_OVERHEAD_OUT_CHARS / CHARS_PER_TOKEN_FR
     )
 
-    # Quand le préfixe porte la source du chapitre, il remplace les deux fenêtres
-    # de contexte volatil et doit être réécrit en cache une fois par chapitre.
-    if extra_prefix_tokens:
-        context = 0.0
-    else:
-        context = calls * 2 * CONTEXT_RUNES_EACH / CHARS_PER_TOKEN_FR
+    # Le préfixe qui porte la source du chapitre remplace la fenêtre *suivante*,
+    # pas la précédente : celle-ci transporte le français déjà produit, qui
+    # change à chaque lot et n'est donc pas cachable.
+    context = calls * context_windows * CONTEXT_RUNES_EACH / CHARS_PER_TOKEN_FR
 
     return Tokens(
         calls=calls,
@@ -286,6 +289,11 @@ def main() -> None:
     prefix_tokens = prefix / CHARS_PER_TOKEN_FR
     book_tokens = sum(chapter_chars) / CHARS_PER_TOKEN_EN
     median_chapter_tokens = sorted(chapter_chars)[len(chapter_chars) // 2] / CHARS_PER_TOKEN_EN
+    # Le préfixe est réécrit une fois par chapitre, donc son coût total est une
+    # SOMME sur les chapitres : c'est la moyenne qui la reproduit, pas la
+    # médiane. La distribution est fortement asymétrique (médiane ~1 020 tokens,
+    # plus long chapitre ~6 400), donc la médiane sous-estimerait nettement.
+    mean_chapter_tokens = sum(chapter_chars) / len(chapter_chars) / CHARS_PER_TOKEN_EN
     batch_sizes = [int(value) for value in args.batch_sizes.split(",")]
 
     print(f"EPUB                : {os.path.basename(args.epub)}")
@@ -293,6 +301,7 @@ def main() -> None:
     print(f"segments / car.     : {args.segments:,} / {args.chars:,}")
     print(f"prefixe stable      : {prefix:,} car. ~ {prefix_tokens:,.0f} tokens")
     print(f"chapitre median     : ~{median_chapter_tokens:,.0f} tokens")
+    print(f"chapitre moyen      : ~{mean_chapter_tokens:,.0f} tokens (base du prefixe)")
     print(f"livre entier        : ~{book_tokens:,.0f} tokens")
     print()
     print(f"brouillon NMT (Google, {args.free_chars:,} car. gratuits restants) : "
@@ -300,9 +309,10 @@ def main() -> None:
     print()
 
     variants = [
-        ("actuel (2 x 1200 runes)", dict()),
-        ("+ source du chapitre", dict(extra_prefix_tokens=median_chapter_tokens, prefix_per_chapter=True)),
-        ("+ source du livre entier", dict(extra_prefix_tokens=book_tokens)),
+        ("avant lot 3 (2 x 1200 runes)", dict(context_windows=2)),
+        ("+ source du chapitre (livre)", dict(
+            extra_prefix_tokens=mean_chapter_tokens, prefix_per_chapter=True, context_windows=1)),
+        ("+ source du livre entier", dict(extra_prefix_tokens=book_tokens, context_windows=1)),
     ]
 
     for batch_size in batch_sizes:
@@ -324,7 +334,9 @@ def main() -> None:
     # le coût dépend d'un facteur qu'aucune projection ne connaît. À mesurer via
     # usage.output_tokens sur un chapitre réel.
     sonnet5 = next(r for r in DEFAULT_RATES if r.name == "Claude Sonnet 5")
-    tokens = token_profile(segments, args.segments, args.chars, batch_sizes[-1], prefix_tokens)
+    tokens = token_profile(segments, args.segments, args.chars, batch_sizes[-1], prefix_tokens,
+                           extra_prefix_tokens=mean_chapter_tokens, prefix_per_chapter=True,
+                           context_windows=1)
     print(f"--- sensibilite a la reflexion adaptative ({sonnet5.name}, lot {batch_sizes[-1]})")
     for multiplier, label in ((1.0, "thinking desactive"), (1.5, "+50% de sortie"), (2.0, "+100%"), (3.0, "+200%")):
         print(f"    {label:22s} {llm_cost(tokens, sonnet5, multiplier):6.2f} $")
