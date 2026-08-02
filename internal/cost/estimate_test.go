@@ -217,11 +217,12 @@ func TestEstimateAndGuardrailAgree(t *testing.T) {
 
 	estimated := m.EstimateScenarios(chapters, 50, 0, 0)[2]
 	guarded := m.Project(segs, LLMPass{
-		Segments:    len(segs),
-		Chars:       segment.SourceChars(segs),
-		Calls:       CallsForChapters(counts, 50),
-		PrefixChars: prefixChars,
-		Chapters:    shapes,
+		Segments:     len(segs),
+		Chars:        segment.SourceChars(segs),
+		Calls:        CallsForChapters(counts, 50),
+		PrefixChars:  prefixChars,
+		Chapters:     shapes,
+		ContextRunes: LiteraryContextRunes,
 	}, 0)
 
 	require.Equal(t, estimated.LLMCalls, guarded.LLMCalls)
@@ -280,6 +281,25 @@ func TestTokenRates_LongChaptersRepeatTheirBiggerPrefix(t *testing.T) {
 	_, _, skewedUSD := rates.Project(skewed)
 	require.Greater(t, skewedUSD, evenUSD,
 		"a skewed book costs more than its average shape suggests")
+}
+
+func TestEstimateScenarios_HybridCarriesNoContextWindow(t *testing.T) {
+	t.Parallel()
+
+	// The post-editor request holds a source segment, its draft and two
+	// language codes — no preceding prose. Charging a 1200-rune window per call
+	// once hybrid became one call per segment invented a window per segment.
+	m := Model{Tokens: TokenRates{InputPerMTokUSD: 3, OutputPerMTokUSD: 15, PromptOverheadTokens: 200}}
+	chapters := [][]segment.Segment{makeSegments(100, 400)}
+
+	hybrid := m.EstimateScenarios(chapters, 50, 1.0, 0)[1]
+	full := m.EstimateScenarios(chapters, 50, 1.0, 0)[2]
+
+	// Same segments and characters either way; hybrid makes 100 calls to
+	// full-llm's 2. Its input must still not include a context window at all.
+	_, _, want := m.Tokens.Project(LLMPass{Segments: 100, Chars: 40_000, Calls: 100})
+	require.InDelta(t, want, hybrid.LLMCostUSD, 1e-9)
+	require.Greater(t, full.InputTokens, 0)
 }
 
 func TestTokenRates_ZeroRatesProjectNothing(t *testing.T) {

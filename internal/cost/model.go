@@ -57,6 +57,12 @@ type LLMPass struct {
 	// that covariance and under-counts exactly where the cost concentrates.
 	// Empty means the pass carries no chapter source — the escalation path.
 	Chapters []ChapterShape
+	// ContextRunes is the volatile prose each call carries besides its payload.
+	// The literary pass sends the previous batch's French so register and
+	// pronouns survive the seam; the HTTP post-editor sends nothing but the
+	// segment, so it is 0 there. Charging it per call regardless would multiply
+	// a window that does not exist by one call per escalated segment.
+	ContextRunes int
 }
 
 // ChapterShape is one chapter's contribution to an LLM pass.

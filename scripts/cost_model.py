@@ -41,6 +41,8 @@ FR_EXPANSION = 1.15
 JSON_OVERHEAD_IN_CHARS = 40
 JSON_OVERHEAD_OUT_CHARS = 30
 # Fenêtre de contexte volatil, en runes, alignée sur literary.contextRunes.
+# Elle n'existe que pour la passe littéraire : la requête du post-éditeur HTTP
+# ne porte que le segment et son brouillon, donc context_windows=0 pour elle.
 # Avant le lot 3 de la RFC 0007 chaque appel en portait deux (avant et après) ;
 # depuis, la source du chapitre voyage dans le préfixe cachable et seule la
 # fenêtre *précédente* subsiste — la traduction française du lot précédent, qui

@@ -17,9 +17,11 @@ const (
 	// the JSON envelope (keys, quotes, escapes) in the literary schema.
 	jsonOverheadInChars  = 40.0
 	jsonOverheadOutChars = 30.0
-	// contextRunesPerCall is the preceding-context window each literary call
-	// carries alongside its batch, matching literary.contextRunes.
-	contextRunesPerCall = 1200.0
+
+	// LiteraryContextRunes is the preceding-context window a literary call
+	// carries alongside its batch, matching literary.contextRunes. It is
+	// exported because the pipeline builds the same pass shape.
+	LiteraryContextRunes = 1200
 
 	defaultOutputExpansion      = 1.15
 	defaultCacheWriteMultiplier = 1.25
@@ -142,7 +144,7 @@ func (r TokenRates) Project(pass LLMPass) (inputTokens, outputTokens int, usd fl
 	payload := float64(pass.Segments) * (charsPerSegment/charsPerTokenEN +
 		charsPerSegment*r.outputExpansion()/charsPerTokenFR +
 		jsonOverheadInChars/charsPerTokenEN)
-	volatile := payload + float64(pass.Calls)*contextRunesPerCall/charsPerTokenFR
+	volatile := payload + float64(pass.Calls)*float64(pass.ContextRunes)/charsPerTokenFR
 
 	output := float64(pass.Segments) * (charsPerSegment*r.outputExpansion()/charsPerTokenFR +
 		jsonOverheadOutChars/charsPerTokenFR)
@@ -229,8 +231,9 @@ func (m Model) EstimateScenarios(
 	literaryPass := func(segs, chars int, perChapter []int) LLMPass {
 		return LLMPass{
 			Segments: segs, Chars: chars,
-			Calls:    CallsForChapters(perChapter, batchSize),
-			Chapters: shapes,
+			Calls:        CallsForChapters(perChapter, batchSize),
+			Chapters:     shapes,
+			ContextRunes: LiteraryContextRunes,
 		}
 	}
 
