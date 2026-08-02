@@ -8,6 +8,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/kelseyhightower/envconfig"
 
@@ -106,10 +107,10 @@ func Load() (Config, error) {
 	if err := envconfig.Process(envPrefix, &cfg); err != nil {
 		return Config{}, fmt.Errorf("unable to load config from environment, err: %w", err)
 	}
-	if cfg.DailyBudgetUSD < 0 || cfg.MonthlyBudgetUSD < 0 || cfg.PerBookBudgetUSD < 0 {
-		return Config{}, fmt.Errorf("unable to validate budget config: values must be >= 0, err: %w", ErrNegativeBudget)
+	if err := cfg.applyProviderDefaults(envIsSet); err != nil {
+		return Config{}, err
 	}
-	if err := cfg.applyProviderDefaults(); err != nil {
+	if err := cfg.validate(); err != nil {
 		return Config{}, err
 	}
 	return cfg, nil
@@ -129,7 +130,16 @@ const (
 // that the per-book cap has something true to compare against; defaulting to
 // zero for the one provider that actually bills would reinstate exactly the
 // defect it set out to remove.
-func (c *Config) applyProviderDefaults() error {
+//
+// It fills only settings isSet says were not mentioned. Zero is a meaningful
+// value for both of these — "this project has no free allowance left", "I am
+// not tracking draft cost" — so treating an explicit 0 as unset would override
+// the operator instead of helping them.
+//
+// isSet is a parameter rather than a direct environment read because that read
+// would silently make this method correct only when called immediately after
+// envconfig, and wrong for any other caller.
+func (c *Config) applyProviderDefaults(isSet func(string) bool) error {
 	if c.NMTProvider != translate.ProviderGoogle {
 		return nil
 	}
@@ -137,11 +147,45 @@ func (c *Config) applyProviderDefaults() error {
 		return fmt.Errorf("unable to use the google NMT provider: set EPUB_TRANSLATOR_NMT_API_KEY, err: %w",
 			ErrMissingAPIKey)
 	}
-	if c.CostPer1000CharsUSD == 0 {
+	if !isSet("COST_PER_1000_CHARS_USD") {
 		c.CostPer1000CharsUSD = googlePer1000CharsUSD
 	}
-	if c.NMTFreeCharsPerMonth == 0 {
+	if !isSet("NMT_FREE_CHARS_PER_MONTH") {
 		c.NMTFreeCharsPerMonth = googleFreeCharsPerMonth
+	}
+	return nil
+}
+
+// envIsSet reports whether the operator mentioned a setting at all, which
+// envconfig itself does not expose once it has applied a default.
+func envIsSet(name string) bool {
+	_, ok := os.LookupEnv(envPrefix + "_" + name)
+	return ok
+}
+
+// validate rejects configurations that would make the guardrail lie. A negative
+// rate or allowance produces a negative projection, which passes every cap.
+func (c Config) validate() error {
+	nonNegative := map[string]float64{
+		"DAILY_BUDGET_USD":            c.DailyBudgetUSD,
+		"MONTHLY_BUDGET_USD":          c.MonthlyBudgetUSD,
+		"PER_BOOK_BUDGET_USD":         c.PerBookBudgetUSD,
+		"COST_PER_SEGMENT_USD":        c.CostPerSegmentUSD,
+		"COST_PER_1000_CHARS_USD":     c.CostPer1000CharsUSD,
+		"LLM_INPUT_PER_MTOK_USD":      c.LLMInputPerMTokUSD,
+		"LLM_OUTPUT_PER_MTOK_USD":     c.LLMOutputPerMTokUSD,
+		"LLM_CACHE_READ_PER_MTOK_USD": c.LLMCacheReadPerMTokUSD,
+		"LLM_CACHE_WRITE_MULTIPLIER":  c.LLMCacheWriteMult,
+		"LLM_OUTPUT_EXPANSION":        c.LLMOutputExpansion,
+		"LLM_TOKEN_MULTIPLIER":        c.LLMTokenMultiplier,
+		"NMT_FREE_CHARS_PER_MONTH":    float64(c.NMTFreeCharsPerMonth),
+		"LLM_PROMPT_OVERHEAD_TOKENS":  float64(c.LLMPromptOverheadToks),
+	}
+	for name, value := range nonNegative {
+		if value < 0 {
+			return fmt.Errorf("unable to validate %s%s: %v is negative, err: %w",
+				envPrefix+"_", name, value, ErrNegativeValue)
+		}
 	}
 	return nil
 }
