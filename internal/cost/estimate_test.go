@@ -227,6 +227,27 @@ func TestEstimateAndGuardrailAgree(t *testing.T) {
 	require.InDelta(t, estimated.EstimatedUSD, guarded.EstimatedUSD, 1e-9)
 }
 
+func TestEstimateScenarios_HybridPricesOneCallPerSegment(t *testing.T) {
+	t.Parallel()
+
+	// The hybrid scenario describes NMT-mode escalation, where the HTTP
+	// post-editor sends one segment per call. Pricing it with literary batching
+	// made `estimate` promise a figure no hybrid run could ever be charged.
+	m := Model{Tokens: TokenRates{InputPerMTokUSD: 3, OutputPerMTokUSD: 15, PromptOverheadTokens: 200}}
+
+	chapters := [][]segment.Segment{makeSegments(100, 400), makeSegments(100, 400)}
+	hybrid := m.EstimateScenarios(chapters, 50, 0.5, 0)[1]
+
+	require.Equal(t, 100, hybrid.LLMSegments)
+	require.Equal(t, hybrid.LLMSegments, hybrid.LLMCalls,
+		"one call per escalated segment, as the post-editor makes them")
+
+	// full-llm still batches, so it makes far fewer calls for twice the work.
+	full := m.EstimateScenarios(chapters, 50, 0.5, 0)[2]
+	require.Equal(t, 200, full.LLMSegments)
+	require.Equal(t, 4, full.LLMCalls)
+}
+
 func TestTokenRates_ZeroRatesProjectNothing(t *testing.T) {
 	t.Parallel()
 

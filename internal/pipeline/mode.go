@@ -60,9 +60,11 @@ type nmtMode struct {
 func (m *nmtMode) Init(result *RunResult) { result.Mode = ModeNMT }
 
 // postEditPass describes an escalation pass over segments totalling chars. The
-// HTTP post-editor sends one segment per call, so the stable prompt overhead is
-// paid once per segment — the opposite of the batched literary pass, and the
-// reason escalation is expensive per word.
+// HTTP post-editor sends one segment per call and carries neither the bible nor
+// the chapter source, so the stable prompt overhead is paid once per segment —
+// the opposite of the batched literary pass, and the reason escalation is
+// expensive per word. cost.EstimateScenarios builds the hybrid scenario the
+// same way, which is what makes `estimate` and this run agree.
 func postEditPass(segments, chars int) cost.LLMPass {
 	return cost.LLMPass{Segments: segments, Chars: chars, Calls: segments}
 }

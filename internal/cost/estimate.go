@@ -203,7 +203,9 @@ func (m Model) EstimateScenarios(
 	if len(chapters) > 0 {
 		meanChapterChars = totalChars / len(chapters)
 	}
-	pass := func(segs, chars int, perChapter []int) LLMPass {
+	// full-llm is the literary pass: segments batched per chapter, the chapter
+	// source in a cacheable prefix.
+	literaryPass := func(segs, chars int, perChapter []int) LLMPass {
 		return LLMPass{
 			Segments: segs, Chars: chars,
 			Calls:              CallsForChapters(perChapter, batchSize),
@@ -212,21 +214,23 @@ func (m Model) EstimateScenarios(
 		}
 	}
 
-	// Hybrid escalates a fraction of every chapter evenly, so its call count
-	// falls with the fraction.
+	// hybrid is the NMT-mode escalation, and it is a different animal: the HTTP
+	// post-editor sends one segment per call and carries neither the bible nor
+	// the chapter source. Pricing it like the literary pass made `estimate`
+	// disagree with what a hybrid run would actually be charged.
+	postEditPass := func(segs, chars int) LLMPass {
+		return LLMPass{Segments: segs, Chars: chars, Calls: segs}
+	}
+
 	hybridSegs := int(float64(total)*escalationRate + 0.5)
 	hybridChars := 0
 	if total > 0 {
 		hybridChars = int(float64(totalChars) * float64(hybridSegs) / float64(total))
 	}
-	hybridChapters := make([]int, len(counts))
-	for i, count := range counts {
-		hybridChapters[i] = int(float64(count)*escalationRate + 0.5)
-	}
 
 	return []ScenarioEstimate{
 		{Name: "nmt-only", Projection: m.Project(segments, LLMPass{}, usedFreeChars)},
-		{Name: "hybrid", Projection: m.Project(segments, pass(hybridSegs, hybridChars, hybridChapters), usedFreeChars)},
-		{Name: "full-llm", Projection: m.Project(segments, pass(total, totalChars, counts), usedFreeChars)},
+		{Name: "hybrid", Projection: m.Project(segments, postEditPass(hybridSegs, hybridChars), usedFreeChars)},
+		{Name: "full-llm", Projection: m.Project(segments, literaryPass(total, totalChars, counts), usedFreeChars)},
 	}
 }
