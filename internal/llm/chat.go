@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 )
 
 // ChatMessage is a single turn in a chat-completion request.
@@ -24,6 +25,14 @@ type ChatRequest struct {
 	JSONSchema json.RawMessage
 }
 
+// Stop reasons a provider can report. Anything other than StopReasonEndTurn
+// means the reply is not the complete answer that was asked for.
+const (
+	StopReasonEndTurn   = "end_turn"
+	StopReasonMaxTokens = "max_tokens"
+	StopReasonRefusal   = "refusal"
+)
+
 // ChatResponse is the assistant reply plus token accounting for the cost model.
 // InputTokens counts only uncached prompt tokens; cache reads/writes are
 // reported separately so callers can verify prompt caching and price reads at
@@ -34,6 +43,23 @@ type ChatResponse struct {
 	OutputTokens             int
 	CacheReadInputTokens     int // served from prompt cache (~0.1x input price)
 	CacheCreationInputTokens int // written to prompt cache (~1.25x input price)
+	// StopReason is why the model stopped generating, when the provider says.
+	// Empty means the provider does not report one. A refusal and a truncation
+	// both arrive as a successful HTTP response with unusable content, so
+	// without this they are indistinguishable from a malformed reply.
+	StopReason string
+	// StopDetails carries the provider's extra qualification of StopReason
+	// (Anthropic's stop_details), verbatim.
+	StopDetails map[string]any
+}
+
+// StopDetailsSummary renders StopReason and StopDetails for a log line or an
+// error message.
+func (r ChatResponse) StopDetailsSummary() string {
+	if len(r.StopDetails) == 0 {
+		return fmt.Sprintf("stop_reason=%q", r.StopReason)
+	}
+	return fmt.Sprintf("stop_reason=%q stop_details=%v", r.StopReason, r.StopDetails)
 }
 
 // ChatClient is the provider-agnostic chat-completion contract. The

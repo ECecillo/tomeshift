@@ -30,6 +30,9 @@ func TestAnthropicClient_ChatSendsHeadersAndCacheControl(t *testing.T) {
 			Role    string `json:"role"`
 			Content string `json:"content"`
 		} `json:"messages"`
+		Thinking *struct {
+			Type string `json:"type"`
+		} `json:"thinking"`
 	}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -70,6 +73,53 @@ func TestAnthropicClient_ChatSendsHeadersAndCacheControl(t *testing.T) {
 	require.Equal(t, "ephemeral", body.System[0].CacheControl.Type)
 	require.Len(t, body.Messages, 1)
 	require.Equal(t, "user", body.Messages[0].Role)
+
+	// Thinking must be disabled explicitly. Omitting the field means "no
+	// thinking" on Sonnet 4.6 but "adaptive thinking on" from Sonnet 5, where
+	// thinking tokens bill at the output rate and share the max_tokens ceiling
+	// with the JSON reply.
+	require.NotNil(t, body.Thinking, "thinking must be sent, not left to the model default")
+	require.Equal(t, "disabled", body.Thinking.Type)
+}
+
+func TestAnthropicClient_SurfacesStopReason(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[],"stop_reason":"refusal",` +
+			`"stop_details":{"type":"refusal"},"usage":{"input_tokens":10,"output_tokens":0}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	// A refusal is an HTTP 200 with empty content. It must not collapse into
+	// ErrEmptyResponse: the caller needs the stop reason to tell a refusal from
+	// a malformed reply.
+	resp, err := llm.NewAnthropicClient(srv.URL, "k").Chat(t.Context(),
+		llm.ChatRequest{Messages: []llm.ChatMessage{{Role: "user", Content: "x"}}})
+
+	require.NoError(t, err)
+	require.Equal(t, llm.StopReasonRefusal, resp.StopReason)
+	require.Equal(t, "refusal", resp.StopDetails["type"])
+	require.Empty(t, resp.Text)
+	require.Contains(t, resp.StopDetailsSummary(), "refusal")
+}
+
+func TestAnthropicClient_SurfacesTruncation(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"content":[{"type":"text","text":"{\"segments\":["}],` +
+			`"stop_reason":"max_tokens","usage":{"input_tokens":10,"output_tokens":16000}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	resp, err := llm.NewAnthropicClient(srv.URL, "k").Chat(t.Context(),
+		llm.ChatRequest{Messages: []llm.ChatMessage{{Role: "user", Content: "x"}}})
+
+	require.NoError(t, err)
+	require.Equal(t, llm.StopReasonMaxTokens, resp.StopReason)
 }
 
 func TestAnthropicClient_EmptyResponse(t *testing.T) {

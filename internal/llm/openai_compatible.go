@@ -36,7 +36,8 @@ type openAISchemaDef struct {
 
 type openAIChatResponse struct {
 	Choices []struct {
-		Message ChatMessage `json:"message"`
+		Message      ChatMessage `json:"message"`
+		FinishReason string      `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
@@ -131,7 +132,24 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, req ChatRequest) (Cha
 		Text:         decoded.Choices[0].Message.Content,
 		InputTokens:  decoded.Usage.PromptTokens,
 		OutputTokens: decoded.Usage.CompletionTokens,
+		StopReason:   normalizeFinishReason(decoded.Choices[0].FinishReason),
 	}, nil
+}
+
+// normalizeFinishReason maps OpenAI's finish_reason onto the stop reasons the
+// rest of the pipeline understands, so a truncation or a filtered reply reads
+// the same whichever provider produced it.
+func normalizeFinishReason(reason string) string {
+	switch reason {
+	case "stop":
+		return StopReasonEndTurn
+	case "length":
+		return StopReasonMaxTokens
+	case "content_filter":
+		return StopReasonRefusal
+	default:
+		return reason
+	}
 }
 
 var _ ChatClient = (*OpenAICompatibleClient)(nil)

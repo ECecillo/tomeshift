@@ -34,12 +34,24 @@ type anthropicMessage struct {
 	Content string `json:"content"`
 }
 
+// anthropicThinking controls extended thinking. Sending it is not optional
+// here: omitting the field means "no thinking" on Sonnet 4.6 but "adaptive
+// thinking on" from Sonnet 5, and that default change lands badly on this
+// pipeline. Thinking tokens bill at the output rate, and max_tokens caps
+// thinking plus response together — so on a 50-segment JSON reply the thinking
+// would compete with the answer, truncate it, and be silently absorbed (at
+// extra cost) by the halved-batch retry.
+type anthropicThinking struct {
+	Type string `json:"type"` // "disabled" | "enabled"
+}
+
 type anthropicRequest struct {
 	Model        string                 `json:"model"`
 	MaxTokens    int                    `json:"max_tokens"`
 	System       []anthropicSystemBlock `json:"system,omitempty"`
 	Messages     []anthropicMessage     `json:"messages"`
 	OutputConfig *anthropicOutputConfig `json:"output_config,omitempty"`
+	Thinking     *anthropicThinking     `json:"thinking,omitempty"`
 }
 
 type anthropicOutputConfig struct {
@@ -56,7 +68,9 @@ type anthropicResponse struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
 	} `json:"content"`
-	Usage struct {
+	StopReason  string         `json:"stop_reason"`
+	StopDetails map[string]any `json:"stop_details"`
+	Usage       struct {
 		InputTokens              int `json:"input_tokens"`
 		OutputTokens             int `json:"output_tokens"`
 		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
@@ -106,7 +120,12 @@ func (c *AnthropicClient) Chat(ctx context.Context, req ChatRequest) (ChatRespon
 		msgs = append(msgs, anthropicMessage(m))
 	}
 
-	body := anthropicRequest{Model: req.Model, MaxTokens: maxTokens, Messages: msgs}
+	body := anthropicRequest{
+		Model:     req.Model,
+		MaxTokens: maxTokens,
+		Messages:  msgs,
+		Thinking:  &anthropicThinking{Type: "disabled"},
+	}
 	if len(req.JSONSchema) > 0 {
 		body.OutputConfig = &anthropicOutputConfig{
 			Format: anthropicOutputFormat{Type: "json_schema", Schema: req.JSONSchema},
@@ -162,17 +181,26 @@ func (c *AnthropicClient) Chat(ctx context.Context, req ChatRequest) (ChatRespon
 			text.WriteString(block.Text)
 		}
 	}
-	if text.Len() == 0 {
-		return ChatResponse{}, ErrEmptyResponse
-	}
 
-	return ChatResponse{
+	out := ChatResponse{
 		Text:                     text.String(),
 		InputTokens:              decoded.Usage.InputTokens, // uncached only
 		OutputTokens:             decoded.Usage.OutputTokens,
 		CacheReadInputTokens:     decoded.Usage.CacheReadInputTokens,
 		CacheCreationInputTokens: decoded.Usage.CacheCreationInputTokens,
-	}, nil
+		StopReason:               decoded.StopReason,
+		StopDetails:              decoded.StopDetails,
+	}
+
+	// An empty reply is only a protocol error when the provider claims it ended
+	// normally. A refusal or a truncation also arrives empty, and the caller
+	// needs the stop reason to tell those apart rather than a bare
+	// ErrEmptyResponse.
+	if text.Len() == 0 && (decoded.StopReason == "" || decoded.StopReason == StopReasonEndTurn) {
+		return ChatResponse{}, ErrEmptyResponse
+	}
+
+	return out, nil
 }
 
 var _ ChatClient = (*AnthropicClient)(nil)
