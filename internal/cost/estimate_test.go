@@ -123,7 +123,7 @@ func TestTokenRates_CacheReadRateLowersPrefixCost(t *testing.T) {
 	cached := base
 	cached.CacheReadPerMTokUSD = 0.30
 
-	pass := LLMPass{Segments: 100, Chars: 40_000, Calls: 100, CacheWrites: 1}
+	pass := LLMPass{Segments: 100, Chars: 40_000, Calls: 100, Chapters: []ChapterShape{{Calls: 100}}}
 	_, _, uncachedUSD := base.Project(pass)
 	_, _, cachedUSD := cached.Project(pass)
 
@@ -153,7 +153,8 @@ func TestTokenRates_TokenMultiplierScalesTokensNotRates(t *testing.T) {
 	sonnet5 := sonnet46
 	sonnet5.TokenMultiplier = 1.30
 
-	pass := LLMPass{Segments: 4269, Chars: 472_509, Calls: 130, CacheWrites: 68}
+	pass := LLMPass{Segments: 4269, Chars: 472_509, Calls: 130,
+		Chapters: chapterShapes(68, 0, 130)}
 	_, _, baseUSD := sonnet46.Project(pass)
 	_, _, denseUSD := sonnet5.Project(pass)
 
@@ -206,21 +207,21 @@ func TestEstimateAndGuardrailAgree(t *testing.T) {
 
 	chapters := make([][]segment.Segment, chaptersCount)
 	counts := make([]int, chaptersCount)
+	shapes := make([]ChapterShape, chaptersCount)
 	for i := range chapters {
 		chapters[i] = makeSegments(segsPerChap, charsPerSeg)
 		counts[i] = segsPerChap
+		shapes[i] = ChapterShape{SourceChars: segsPerChap * charsPerSeg, Calls: 1}
 	}
 	segs := makeSegments(chaptersCount*segsPerChap, charsPerSeg)
-	meanChapterChars := (chaptersCount * segsPerChap * charsPerSeg) / chaptersCount
 
 	estimated := m.EstimateScenarios(chapters, 50, 0, 0)[2]
 	guarded := m.Project(segs, LLMPass{
-		Segments:           len(segs),
-		Chars:              segment.SourceChars(segs),
-		Calls:              CallsForChapters(counts, 50),
-		PrefixChars:        prefixChars,
-		ChapterSourceChars: meanChapterChars,
-		CacheWrites:        chaptersCount,
+		Segments:    len(segs),
+		Chars:       segment.SourceChars(segs),
+		Calls:       CallsForChapters(counts, 50),
+		PrefixChars: prefixChars,
+		Chapters:    shapes,
 	}, 0)
 
 	require.Equal(t, estimated.LLMCalls, guarded.LLMCalls)
@@ -246,6 +247,39 @@ func TestEstimateScenarios_HybridPricesOneCallPerSegment(t *testing.T) {
 	full := m.EstimateScenarios(chapters, 50, 0.5, 0)[2]
 	require.Equal(t, 200, full.LLMSegments)
 	require.Equal(t, 4, full.LLMCalls)
+}
+
+// chapterShapes builds n chapters of equal source length sharing totalCalls.
+func chapterShapes(n, sourceChars, totalCalls int) []ChapterShape {
+	shapes := make([]ChapterShape, n)
+	for i := range shapes {
+		calls := totalCalls / n
+		if i < totalCalls%n {
+			calls++
+		}
+		shapes[i] = ChapterShape{SourceChars: sourceChars, Calls: calls}
+	}
+	return shapes
+}
+
+func TestTokenRates_LongChaptersRepeatTheirBiggerPrefix(t *testing.T) {
+	t.Parallel()
+
+	rates := TokenRates{InputPerMTokUSD: 3, OutputPerMTokUSD: 15, CacheReadPerMTokUSD: 0.30, PromptOverheadTokens: 3000}
+	base := LLMPass{Segments: 200, Chars: 80_000, Calls: 6}
+
+	// Same book, same total calls and characters, two ways of describing it.
+	// Averaging says every chapter is 40k; the truth is one long chapter that
+	// is chunked into more calls and repeats its larger prefix in each of them.
+	even := base
+	even.Chapters = []ChapterShape{{SourceChars: 40_000, Calls: 3}, {SourceChars: 40_000, Calls: 3}}
+	skewed := base
+	skewed.Chapters = []ChapterShape{{SourceChars: 70_000, Calls: 5}, {SourceChars: 10_000, Calls: 1}}
+
+	_, _, evenUSD := rates.Project(even)
+	_, _, skewedUSD := rates.Project(skewed)
+	require.Greater(t, skewedUSD, evenUSD,
+		"a skewed book costs more than its average shape suggests")
 }
 
 func TestTokenRates_ZeroRatesProjectNothing(t *testing.T) {

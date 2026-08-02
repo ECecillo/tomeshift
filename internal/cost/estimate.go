@@ -81,17 +81,45 @@ func (r TokenRates) IsZero() bool {
 	return r.InputPerMTokUSD == 0 && r.OutputPerMTokUSD == 0
 }
 
-// prefixTokens returns the per-call cacheable prefix in tokens. Its frozen part
-// is French prose (style guide, character voices, glossary) and converts at the
-// French ratio; the chapter source folded in after it is English. A run
-// measures the frozen part from the bible it loaded, and `estimate` falls back
-// to the configured constant because it has no bible.
-func (r TokenRates) prefixTokens(pass LLMPass) float64 {
-	frozen := float64(r.PromptOverheadTokens)
+// frozenPrefixTokens returns the part of the prefix that is identical in every
+// call of every chapter: French prose (style guide, character voices,
+// glossary), so it converts at the French ratio. A run measures it from the
+// bible it loaded; `estimate` falls back to the configured constant because it
+// has no bible.
+func (r TokenRates) frozenPrefixTokens(pass LLMPass) float64 {
 	if pass.PrefixChars > 0 {
-		frozen = float64(pass.PrefixChars) / charsPerTokenFR
+		return float64(pass.PrefixChars) / charsPerTokenFR
 	}
-	return frozen + float64(pass.ChapterSourceChars)/charsPerTokenEN
+	return float64(r.PromptOverheadTokens)
+}
+
+// prefixCost prices the cacheable prefix across the whole pass, chapter by
+// chapter: each writes its own prefix once and reads it back on every further
+// call. It also returns the input tokens those prefixes account for.
+func (r TokenRates) prefixCost(pass LLMPass, factor float64) (tokens, usd float64) {
+	frozen := r.frozenPrefixTokens(pass)
+
+	chapters := pass.Chapters
+	if len(chapters) == 0 {
+		// No chapter source: one uniform prefix repeated across every call.
+		chapters = []ChapterShape{{Calls: pass.Calls}}
+	}
+
+	for _, chapter := range chapters {
+		if chapter.Calls <= 0 {
+			continue
+		}
+		perCall := (frozen + float64(chapter.SourceChars)/charsPerTokenEN) * factor
+		tokens += perCall * float64(chapter.Calls)
+
+		if !r.caches() {
+			usd += float64(chapter.Calls) * perCall / 1e6 * r.InputPerMTokUSD
+			continue
+		}
+		usd += perCall / 1e6 * r.InputPerMTokUSD * r.cacheWriteMultiplier()
+		usd += float64(chapter.Calls-1) * perCall / 1e6 * r.CacheReadPerMTokUSD
+	}
+	return tokens, usd
 }
 
 // Project returns the input tokens, output tokens and USD cost of the LLM stage
@@ -119,18 +147,9 @@ func (r TokenRates) Project(pass LLMPass) (inputTokens, outputTokens int, usd fl
 	output := float64(pass.Segments) * (charsPerSegment*r.outputExpansion()/charsPerTokenFR +
 		jsonOverheadOutChars/charsPerTokenFR)
 
-	prefix := r.prefixTokens(pass) * factor
-	var prefixUSD float64
-	if r.caches() {
-		writes := min(max(pass.CacheWrites, 1), pass.Calls)
-		reads := pass.Calls - writes
-		prefixUSD = float64(writes)*prefix/1e6*r.InputPerMTokUSD*r.cacheWriteMultiplier() +
-			float64(reads)*prefix/1e6*r.CacheReadPerMTokUSD
-	} else {
-		prefixUSD = float64(pass.Calls) * prefix / 1e6 * r.InputPerMTokUSD
-	}
+	prefixTokens, prefixUSD := r.prefixCost(pass, factor)
 
-	inputTokens = int(float64(pass.Calls)*prefix + volatile*factor + 0.5)
+	inputTokens = int(prefixTokens + volatile*factor + 0.5)
 	outputTokens = int(output*factor + 0.5)
 	usd = prefixUSD + volatile*factor/1e6*r.InputPerMTokUSD + output*factor/1e6*r.OutputPerMTokUSD
 	return inputTokens, outputTokens, usd
@@ -196,21 +215,22 @@ func (m Model) EstimateScenarios(
 	total, totalChars := len(segments), segment.SourceChars(segments)
 	escalationRate = min(max(escalationRate, 0), 1)
 
-	// The prefix carries the chapter source and is re-written to the cache once
-	// per chapter, exactly as it is at run time. Only its frozen part differs:
-	// `estimate` has no bible loaded and falls back to the configured constant.
-	meanChapterChars := 0
-	if len(chapters) > 0 {
-		meanChapterChars = totalChars / len(chapters)
+	// full-llm is the literary pass: segments batched per chapter, each
+	// chapter's own source in a cacheable prefix. Only the frozen part of that
+	// prefix differs from a run — `estimate` has no bible and falls back to the
+	// configured constant.
+	shapes := make([]ChapterShape, len(chapters))
+	for i, chapter := range chapters {
+		shapes[i] = ChapterShape{
+			SourceChars: segment.SourceChars(chapter),
+			Calls:       CallsForChapters([]int{len(chapter)}, batchSize),
+		}
 	}
-	// full-llm is the literary pass: segments batched per chapter, the chapter
-	// source in a cacheable prefix.
 	literaryPass := func(segs, chars int, perChapter []int) LLMPass {
 		return LLMPass{
 			Segments: segs, Chars: chars,
-			Calls:              CallsForChapters(perChapter, batchSize),
-			ChapterSourceChars: meanChapterChars,
-			CacheWrites:        len(perChapter),
+			Calls:    CallsForChapters(perChapter, batchSize),
+			Chapters: shapes,
 		}
 	}
 

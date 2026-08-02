@@ -180,13 +180,16 @@ def llm_calls(segments: list[int], batch_size: int) -> int:
 @dataclass(frozen=True)
 class Tokens:
     calls: int
-    prefix_per_call: float
-    cache_writes: int
+    # (prefixe par appel, nombre d'appels) pour chaque chapitre. Une liste, pas
+    # une moyenne : un chapitre long a un préfixe plus gros ET plus d'appels
+    # pour le répéter, donc multiplier un chapitre moyen par le total des
+    # appels ignore cette covariance et sous-estime là où le coût se concentre.
+    prefix_by_chapter: list[tuple[float, int]]
     volatile: float
     output: float
 
     def prefix_total(self) -> float:
-        return self.calls * self.prefix_per_call
+        return sum(prefix * calls for prefix, calls in self.prefix_by_chapter)
 
 
 def token_profile(
@@ -223,10 +226,20 @@ def token_profile(
     # change à chaque lot et n'est donc pas cachable.
     context = calls * context_windows * CONTEXT_RUNES_EACH / CHARS_PER_TOKEN_FR
 
+    if prefix_per_chapter:
+        # Chaque chapitre écrit son propre préfixe puis le relit à chaque appel
+        # suivant. extra_prefix_tokens vaut alors la source du chapitre courant.
+        per_chapter_source = [count / total_segments * total_chars / CHARS_PER_TOKEN_EN for count in segments]
+        prefix_by_chapter = [
+            (prefix_tokens + source, math.ceil(count / batch_size))
+            for source, count in zip(per_chapter_source, segments)
+        ]
+    else:
+        prefix_by_chapter = [(prefix_tokens + extra_prefix_tokens, calls)]
+
     return Tokens(
         calls=calls,
-        prefix_per_call=prefix_tokens + extra_prefix_tokens,
-        cache_writes=len(segments) if prefix_per_chapter else 1,
+        prefix_by_chapter=prefix_by_chapter,
         volatile=payload + context,
         output=output,
     )
@@ -241,17 +254,15 @@ def llm_cost(tokens: Tokens, rates: Rates, thinking_output_multiplier: float = 1
     hypothèse à mesurer, pas une projection fiable.
     """
     factor = rates.token_multiplier
-    prefix_per_call = tokens.prefix_per_call * factor
 
-    if not rates.caches():
-        prefix_cost = tokens.calls * prefix_per_call / 1e6 * rates.input_per_mtok
-    else:
-        writes = min(tokens.cache_writes, tokens.calls)
-        reads = tokens.calls - writes
-        prefix_cost = (
-            writes * prefix_per_call / 1e6 * rates.input_per_mtok * rates.cache_write_multiplier
-            + reads * prefix_per_call / 1e6 * rates.cache_read_per_mtok
-        )
+    prefix_cost = 0.0
+    for prefix, calls in tokens.prefix_by_chapter:
+        per_call = prefix * factor
+        if not rates.caches():
+            prefix_cost += calls * per_call / 1e6 * rates.input_per_mtok
+            continue
+        prefix_cost += per_call / 1e6 * rates.input_per_mtok * rates.cache_write_multiplier
+        prefix_cost += (calls - 1) * per_call / 1e6 * rates.cache_read_per_mtok
     return (
         prefix_cost
         + tokens.volatile * factor / 1e6 * rates.input_per_mtok
@@ -289,10 +300,8 @@ def main() -> None:
     prefix_tokens = prefix / CHARS_PER_TOKEN_FR
     book_tokens = sum(chapter_chars) / CHARS_PER_TOKEN_EN
     median_chapter_tokens = sorted(chapter_chars)[len(chapter_chars) // 2] / CHARS_PER_TOKEN_EN
-    # Le préfixe est réécrit une fois par chapitre, donc son coût total est une
-    # SOMME sur les chapitres : c'est la moyenne qui la reproduit, pas la
-    # médiane. La distribution est fortement asymétrique (médiane ~1 020 tokens,
-    # plus long chapitre ~6 400), donc la médiane sous-estimerait nettement.
+    # Conservé pour l'affichage seulement : le coût du préfixe est calculé
+    # chapitre par chapitre (cf. token_profile), pas depuis une moyenne.
     mean_chapter_tokens = sum(chapter_chars) / len(chapter_chars) / CHARS_PER_TOKEN_EN
     batch_sizes = [int(value) for value in args.batch_sizes.split(",")]
 
@@ -301,7 +310,7 @@ def main() -> None:
     print(f"segments / car.     : {args.segments:,} / {args.chars:,}")
     print(f"prefixe stable      : {prefix:,} car. ~ {prefix_tokens:,.0f} tokens")
     print(f"chapitre median     : ~{median_chapter_tokens:,.0f} tokens")
-    print(f"chapitre moyen      : ~{mean_chapter_tokens:,.0f} tokens (base du prefixe)")
+    print(f"chapitre moyen      : ~{mean_chapter_tokens:,.0f} tokens (indicatif)")
     print(f"livre entier        : ~{book_tokens:,.0f} tokens")
     print()
     print(f"brouillon NMT (Google, {args.free_chars:,} car. gratuits restants) : "
@@ -310,8 +319,7 @@ def main() -> None:
 
     variants = [
         ("avant lot 3 (2 x 1200 runes)", dict(context_windows=2)),
-        ("+ source du chapitre (livre)", dict(
-            extra_prefix_tokens=mean_chapter_tokens, prefix_per_chapter=True, context_windows=1)),
+        ("+ source du chapitre (livre)", dict(prefix_per_chapter=True, context_windows=1)),
         ("+ source du livre entier", dict(extra_prefix_tokens=book_tokens, context_windows=1)),
     ]
 
@@ -335,8 +343,7 @@ def main() -> None:
     # usage.output_tokens sur un chapitre réel.
     sonnet5 = next(r for r in DEFAULT_RATES if r.name == "Claude Sonnet 5")
     tokens = token_profile(segments, args.segments, args.chars, batch_sizes[-1], prefix_tokens,
-                           extra_prefix_tokens=mean_chapter_tokens, prefix_per_chapter=True,
-                           context_windows=1)
+                           prefix_per_chapter=True, context_windows=1)
     print(f"--- sensibilite a la reflexion adaptative ({sonnet5.name}, lot {batch_sizes[-1]})")
     for multiplier, label in ((1.0, "thinking desactive"), (1.5, "+50% de sortie"), (2.0, "+100%"), (3.0, "+200%")):
         print(f"    {label:22s} {llm_cost(tokens, sonnet5, multiplier):6.2f} $")

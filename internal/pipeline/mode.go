@@ -136,31 +136,31 @@ func (m *literaryMode) Project(chapters []chapterSegments, usedFreeChars int) co
 // repeats the stable prefix, so the shape of the chapters — not just the
 // segment count — decides the bill.
 func (m *literaryMode) pass(chapters []chapterSegments, segments []segment.Segment) cost.LLMPass {
-	counts := make([]int, len(chapters))
-	for i := range chapters {
-		counts[i] = len(chapters[i].Segments)
-	}
-	chapterChars := segment.SourceChars(segments)
-
 	batchSize, prefixChars := 0, 0
 	if m.orch.LiteraryTranslator != nil {
 		batchSize = m.orch.LiteraryTranslator.EffectiveBatchSize()
 		prefixChars = m.orch.LiteraryTranslator.StablePrefixChars(m.bible)
 	}
-	// The prefix also carries the chapter's own source, so it is sized on an
-	// average chapter and re-written to the prompt cache once per chapter.
-	meanChapterChars := 0
-	if len(chapters) > 0 {
-		meanChapterChars = chapterChars / len(chapters)
+
+	// Per chapter, not averaged: each one writes its own source into the
+	// cacheable prefix and reads it back on every further call, and the long
+	// chapters have more calls to read it in.
+	counts := make([]int, len(chapters))
+	shapes := make([]cost.ChapterShape, len(chapters))
+	for i := range chapters {
+		counts[i] = len(chapters[i].Segments)
+		shapes[i] = cost.ChapterShape{
+			SourceChars: segment.SourceChars(chapters[i].Segments),
+			Calls:       cost.CallsForChapters(counts[i:i+1], batchSize),
+		}
 	}
 
 	return cost.LLMPass{
-		Segments:           len(segments),
-		Chars:              chapterChars,
-		Calls:              cost.CallsForChapters(counts, batchSize),
-		PrefixChars:        prefixChars,
-		ChapterSourceChars: meanChapterChars,
-		CacheWrites:        len(chapters),
+		Segments:    len(segments),
+		Chars:       segment.SourceChars(segments),
+		Calls:       cost.CallsForChapters(counts, batchSize),
+		PrefixChars: prefixChars,
+		Chapters:    shapes,
 	}
 }
 

@@ -47,14 +47,26 @@ type LLMPass struct {
 	// 0 falls back to TokenRates.PromptOverheadTokens, which is what `estimate`
 	// uses: it has no bible to measure.
 	PrefixChars int
-	// ChapterSourceChars is the chapter source folded into that prefix, sized
-	// on an average chapter. It is English, so it converts at a different ratio
-	// from the French bible above.
-	ChapterSourceChars int
-	// CacheWrites is how many times that prefix changes and must be re-written
-	// to the cache: one per chapter once the prefix carries the chapter source,
-	// one for the whole book when it does not.
-	CacheWrites int
+	// Chapters is the per-chapter shape of the pass, when the prefix carries
+	// the chapter source. Each chapter writes its own prefix to the cache once
+	// and reads it back on every remaining call.
+	//
+	// It is a list rather than an average because the two quantities move
+	// together: a long chapter has both a bigger prefix and more calls to
+	// repeat it in. Multiplying a mean chapter by the total call count ignores
+	// that covariance and under-counts exactly where the cost concentrates.
+	// Empty means the pass carries no chapter source — the escalation path.
+	Chapters []ChapterShape
+}
+
+// ChapterShape is one chapter's contribution to an LLM pass.
+type ChapterShape struct {
+	// SourceChars is the chapter source folded into the cacheable prefix. It is
+	// English, so it converts at a different ratio from the French bible.
+	SourceChars int
+	// Calls is how many completions this chapter is chunked into: one cache
+	// write and Calls-1 reads.
+	Calls int
 }
 
 // TokenUsage is the LLM token consumption the provider actually reported. These

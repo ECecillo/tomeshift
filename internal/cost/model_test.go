@@ -59,7 +59,8 @@ func TestModel_ProjectAddsTheLLMPass(t *testing.T) {
 
 	draftOnly := m.Project(segs, LLMPass{}, 0)
 	literary := m.Project(segs, LLMPass{
-		Segments: len(segs), Chars: segment.SourceChars(segs), Calls: 2, CacheWrites: 1,
+		Segments: len(segs), Chars: segment.SourceChars(segs), Calls: 2,
+		Chapters: []ChapterShape{{SourceChars: 40_000, Calls: 2}},
 	}, 0)
 
 	require.InDelta(t, draftOnly.NMTCostUSD, literary.NMTCostUSD, 1e-9)
