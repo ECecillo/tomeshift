@@ -26,12 +26,16 @@ type translationMode interface {
 	// reuse. It runs before any provider call.
 	Project(chapters []chapterSegments, usedFreeChars int) cost.Projection
 	// Translate fills in the chapters' target text, restores placeholders into
-	// the node tree and records the token and cost counters on result. It
-	// returns the translated segments in spine order.
+	// the node tree and accumulates the consumption counters on result as it
+	// goes. It returns the translated segments in spine order.
 	Translate(
 		ctx context.Context, log *zap.Logger,
 		chapters []chapterSegments, usedFreeChars int, result *RunResult,
 	) ([]segment.Segment, error)
+	// Cost prices what result says has been consumed so far. It is pure and
+	// callable at any point, including after a failure, because a run that died
+	// halfway still has to answer for what it already spent.
+	Cost(result *RunResult, usedFreeChars int) float64
 }
 
 // newTranslationMode selects the pipeline for cfg. Literary mode loads the
@@ -81,6 +85,16 @@ func (m *nmtMode) Project(chapters []chapterSegments, usedFreeChars int) cost.Pr
 	return m.orch.CostModel.Project(segments, pass, usedFreeChars)
 }
 
+// Cost prices the draft plus the escalation. The HTTP post-editor reports no
+// token usage, so the escalation is priced from its shape through the same
+// model that projected it: counting the escalated segments but not their cost
+// would make the guardrail lie by exactly the amount the LLM costs.
+func (m *nmtMode) Cost(result *RunResult, usedFreeChars int) float64 {
+	_, _, llmUSD := m.orch.CostModel.Tokens.Project(postEditPass(result.LLMSegments, result.LLMChars))
+	return m.orch.CostModel.Actual(
+		result.NMTSegments, result.NMTChars, usedFreeChars, cost.TokenUsage{}) + llmUSD
+}
+
 func (m *nmtMode) Translate(
 	ctx context.Context, log *zap.Logger,
 	chapters []chapterSegments, usedFreeChars int, result *RunResult,
@@ -91,19 +105,9 @@ func (m *nmtMode) Translate(
 	// document either way, and Run recomposes from the returned slice. Anything
 	// added after Translate must read the return value, not chapters.
 	segments := flattenChapters(chapters)
-	nmtChars, llmChars, err := m.orch.translateSegments(ctx, m.cfg, log, segments, result)
-	if err != nil {
+	if err := m.orch.translateSegments(ctx, m.cfg, log, segments, result); err != nil {
 		return nil, err
 	}
-
-	// The HTTP post-editor reports no token usage, so the escalation is priced
-	// from its shape through the same model that projected it. Counting the
-	// escalated segments but not their cost would make the guardrail lie by
-	// exactly the amount the LLM costs.
-	result.NMTChars = nmtChars
-	_, _, llmUSD := m.orch.CostModel.Tokens.Project(postEditPass(result.LLMSegments, llmChars))
-	result.ActualCostUSD = m.orch.CostModel.Actual(
-		result.NMTSegments, nmtChars, usedFreeChars, cost.TokenUsage{}) + llmUSD
 	return segments, nil
 }
 
@@ -160,6 +164,17 @@ func (m *literaryMode) pass(chapters []chapterSegments, segments []segment.Segme
 	}
 }
 
+// Cost prices the draft plus the LLM pass from the tokens the provider actually
+// reported.
+func (m *literaryMode) Cost(result *RunResult, usedFreeChars int) float64 {
+	return m.orch.CostModel.Actual(result.NMTSegments, result.NMTChars, usedFreeChars, cost.TokenUsage{
+		InputTokens:         result.LLMInputTokens,
+		OutputTokens:        result.LLMOutputTokens,
+		CacheReadTokens:     result.LLMCacheReadTokens,
+		CacheCreationTokens: result.LLMCacheCreationTokens,
+	})
+}
+
 func (m *literaryMode) Translate(
 	ctx context.Context, log *zap.Logger,
 	chapters []chapterSegments, usedFreeChars int, result *RunResult,
@@ -169,7 +184,6 @@ func (m *literaryMode) Translate(
 		return nil, literary.ErrNilChatClient
 	}
 
-	nmtChars := 0
 	translated := make([]segment.Segment, 0, result.TotalSegments)
 	for i := range chapters {
 		if err := ctx.Err(); err != nil {
@@ -202,7 +216,10 @@ func (m *literaryMode) Translate(
 		for _, seg := range fresh {
 			seg.Status = segment.StatusTranslated
 			result.NMTSegments++
-			nmtChars += utf8.RuneCountInString(seg.SourceText)
+			// Accumulated as it happens, not totalled at the end: the provider
+			// has already been paid for these, and a chapter that fails later
+			// must not erase them from the ledger.
+			result.NMTChars += utf8.RuneCountInString(seg.SourceText)
 		}
 
 		if err := m.refine(ctx, log, chapters, i, fresh, result); err != nil {
@@ -235,13 +252,6 @@ func (m *literaryMode) Translate(
 		translated = append(translated, chapter.Segments...)
 	}
 
-	result.NMTChars = nmtChars
-	result.ActualCostUSD = o.CostModel.Actual(result.NMTSegments, nmtChars, usedFreeChars, cost.TokenUsage{
-		InputTokens:         result.LLMInputTokens,
-		OutputTokens:        result.LLMOutputTokens,
-		CacheReadTokens:     result.LLMCacheReadTokens,
-		CacheCreationTokens: result.LLMCacheCreationTokens,
-	})
 	return translated, nil
 }
 

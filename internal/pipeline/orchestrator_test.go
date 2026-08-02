@@ -195,6 +195,42 @@ func TestOrchestrator_Run_TMReuse(t *testing.T) {
 	require.InDelta(t, second.EstimatedCostUSD, second.CostSavingsUSD, 0.0001)
 }
 
+func TestOrchestrator_Run_FailedRunStillRecordsWhatItSpent(t *testing.T) {
+	t.Parallel()
+
+	srv := nmttest.NewServer(nil)
+	t.Cleanup(srv.Close)
+
+	store, err := tm.NewSQLiteStore(filepath.Join(t.TempDir(), "tm.sqlite"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	orch := newOrchestrator(t, translate.NewHTTPTranslator(srv.URL, ""))
+	orch.TM = store
+	orch.CostModel = cost.Model{Per1000CharsUSD: 2.0, FreeCharsPerMonth: 500_000}
+	// Recompose into a path that cannot exist, so the run fails *after* every
+	// segment has already been drafted and paid for.
+	outputDir := filepath.Join(t.TempDir(), "run")
+	cfg := pipeline.RunConfig{
+		InputPath:  writeFixtureEPUB(t),
+		OutputDir:  filepath.Join(outputDir, "no", "such", "dir", "\x00"),
+		SourceLang: "en", TargetLang: "fr", RunID: "died", BookID: "b",
+	}
+
+	_, err = orch.Run(t.Context(), cfg)
+	// Pin the stage: if this ever started failing earlier the test would still
+	// go red, but for the wrong reason — nothing would have been drafted.
+	var stageErr *pipeline.StageError
+	require.ErrorAs(t, err, &stageErr)
+	require.Equal(t, pipeline.StageRecompose, stageErr.Stage)
+
+	// The provider does not refund a run that died downstream. Losing this
+	// would leave the next run's free-tier projection short by the same amount.
+	used, err := store.CharsSince(t.Context(), time.Now().UTC().Add(-time.Hour), "nmt-http")
+	require.NoError(t, err)
+	require.Positive(t, used, "characters already sent must survive the failure")
+}
+
 func TestOrchestrator_Run_BudgetAbort(t *testing.T) {
 	t.Parallel()
 

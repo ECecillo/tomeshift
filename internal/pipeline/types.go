@@ -46,6 +46,7 @@ type RunResult struct {
 	NMTSegments            int       `json:"nmt_segments"`
 	NMTEngine              string    `json:"nmt_engine,omitempty"` // provider the chars below were sent to
 	NMTChars               int       `json:"nmt_chars"`            // source chars sent to it (free-tier accounting)
+	LLMChars               int       `json:"llm_chars"`            // source chars escalated to the LLM post-editor
 	LLMSegments            int       `json:"llm_segments"`
 	LLMEscalationRatio     float64   `json:"llm_escalation_ratio"`
 	LLMInputTokens         int       `json:"llm_input_tokens"`

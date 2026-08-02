@@ -23,6 +23,10 @@ import (
 
 const xhtmlMediaType = "application/xhtml+xml"
 
+// ledgerWriteTimeout bounds the detached write used when a run is recorded
+// after its context was cancelled.
+const ledgerWriteTimeout = 5 * time.Second
+
 type chapterSegments struct {
 	ID       string
 	Href     string
@@ -138,6 +142,13 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 		return result, err
 	}
 
+	// From here on the run can call paid providers, so its spend is recorded
+	// whatever happens next. A run that drafted half a book and then failed to
+	// recompose has still been billed for that half, and dropping the record
+	// would leave the next run's free-tier projection wrong by exactly that
+	// much.
+	defer o.recordSpend(ctx, cfg, log, mode, result, usedFreeChars)
+
 	segments, err := mode.Translate(ctx, log, chapters, usedFreeChars, result)
 	if err != nil {
 		return nil, &StageError{Stage: StageTranslate, Err: err}
@@ -158,6 +169,7 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	report.EPUBCheckSkipped = check.Skipped
 	result.QA = report
 
+	result.ActualCostUSD = mode.Cost(result, usedFreeChars)
 	if result.TotalSegments > 0 {
 		result.TMHitRatio = float64(result.TMHits) / float64(result.TotalSegments)
 		result.LLMEscalationRatio = float64(result.LLMSegments) / float64(result.TotalSegments)
@@ -166,22 +178,6 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 		result.CostSavingsUSD = savings
 	}
 	result.EndedAt = time.Now().UTC()
-
-	// Record realized spend for rolling-budget accounting (best effort: a
-	// ledger write failure should not fail an otherwise successful run).
-	if o.TM != nil {
-		if err := o.TM.RecordRun(ctx, tm.RunSpend{
-			RunID:         cfg.RunID,
-			BookID:        cfg.BookID,
-			StartedAt:     result.StartedAt,
-			EndedAt:       result.EndedAt,
-			ActualCostUSD: result.ActualCostUSD,
-			NMTEngine:     result.NMTEngine,
-			NMTChars:      result.NMTChars,
-		}); err != nil {
-			log.Warn("unable to record run spend", zap.Error(err))
-		}
-	}
 
 	// Artifacts are emitted regardless of the QA verdict so failed runs remain
 	// diagnosable.
@@ -218,6 +214,46 @@ func (o *Orchestrator) nmtEngine() string {
 		return ""
 	}
 	return o.Translator.Engine()
+}
+
+// recordSpend persists what the run consumed, for rolling-budget and free-tier
+// accounting. It is deferred, so it fires on the failure paths too — the
+// provider does not refund a run that died after it was called.
+//
+// Best effort: a ledger write failure must not turn an otherwise successful run
+// into a failed one.
+func (o *Orchestrator) recordSpend(
+	ctx context.Context, cfg RunConfig, log *zap.Logger,
+	mode translationMode, result *RunResult, usedFreeChars int,
+) {
+	if o.TM == nil {
+		return
+	}
+
+	result.ActualCostUSD = mode.Cost(result, usedFreeChars)
+	if result.EndedAt.IsZero() {
+		result.EndedAt = time.Now().UTC()
+	}
+
+	// A context that is already cancelled would reject the write, and losing
+	// the record is worse than the delay: fall back to a detached one.
+	if ctx.Err() != nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), ledgerWriteTimeout)
+		defer cancel()
+	}
+
+	if err := o.TM.RecordRun(ctx, tm.RunSpend{
+		RunID:         cfg.RunID,
+		BookID:        cfg.BookID,
+		StartedAt:     result.StartedAt,
+		EndedAt:       result.EndedAt,
+		ActualCostUSD: result.ActualCostUSD,
+		NMTEngine:     result.NMTEngine,
+		NMTChars:      result.NMTChars,
+	}); err != nil {
+		log.Warn("unable to record run spend", zap.Error(err))
+	}
 }
 
 // freeCharsUsed reports how much of this provider's monthly free character
@@ -440,12 +476,13 @@ func (o *Orchestrator) segmentBookByChapter(ctx context.Context, book *epub.Book
 
 // translateSegments resolves each segment via the TM cache first and the NMT
 // provider otherwise, then restores placeholders into the live node tree. It
-// returns the source characters sent to each provider so the caller can price
-// the run; pricing itself belongs to the mode, not to the translation loop.
+// accumulates the consumption counters onto result as it goes, so a failure
+// partway through still leaves an accurate record of what was paid for.
+// Pricing belongs to the mode, not to the translation loop.
 func (o *Orchestrator) translateSegments(
 	ctx context.Context, cfg RunConfig, log *zap.Logger,
 	segments []segment.Segment, result *RunResult,
-) (nmtChars, llmChars int, err error) {
+) error {
 	pm := o.Placeholders
 	if pm == nil {
 		pm = segment.InlinePlaceholderManager{}
@@ -455,14 +492,14 @@ func (o *Orchestrator) translateSegments(
 	qualityCount := 0
 	for i := range segments {
 		if err := ctx.Err(); err != nil {
-			return 0, 0, err
+			return err
 		}
 
 		seg := &segments[i]
 
 		target, reused, err := o.resolveTranslation(ctx, cfg, seg)
 		if err != nil {
-			return 0, 0, err
+			return err
 		}
 
 		seg.TargetText = target
@@ -472,7 +509,7 @@ func (o *Orchestrator) translateSegments(
 		} else {
 			seg.Status = segment.StatusTranslated
 			result.NMTSegments++
-			nmtChars += utf8.RuneCountInString(seg.SourceText)
+			result.NMTChars += utf8.RuneCountInString(seg.SourceText)
 
 			// Reference-free quality estimation (e.g. COMET-QE) on the NMT draft,
 			// used both to drive escalation and to report per-book quality.
@@ -503,7 +540,7 @@ func (o *Orchestrator) translateSegments(
 					seg.TargetText = target
 					seg.Status = segment.StatusPostEdited
 					result.LLMSegments++
-					llmChars += utf8.RuneCountInString(seg.SourceText)
+					result.LLMChars += utf8.RuneCountInString(seg.SourceText)
 					if o.TM != nil {
 						if err := o.TM.Save(ctx, tm.Entry{
 							SourceHash: seg.Hash, SourceText: seg.SourceText, TargetText: target,
@@ -534,7 +571,7 @@ func (o *Orchestrator) translateSegments(
 		result.AvgQualityScore = qualitySum / float64(qualityCount)
 		result.QualityScoredSegments = qualityCount
 	}
-	return nmtChars, llmChars, nil
+	return nil
 }
 
 // shouldEscalate decides whether a freshly translated segment is sent to the
