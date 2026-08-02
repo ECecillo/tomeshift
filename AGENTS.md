@@ -30,7 +30,7 @@ The application is built as a **Go CLI project** with:
 ├── AGENTS.md                         - canonical agent instructions
 ├── cmd/
 │   └── epub-translator/              - CLI entrypoint (`main.go`)
-├── internal/                         - implementation packages (epub, segment, tm, translate, qa)
+├── internal/                         - implementation packages (config, epub, segment, tm, translate, qa)
 ├── tests/
 │   └── integration/                  - integration tests and fixtures
 ├── docs/

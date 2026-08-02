@@ -37,9 +37,10 @@ hors dépôt et sourcez-le.
 
 | Variable | Rôle | Défaut |
 |---|---|---|
-| `NMT_PROVIDER` | `http` (dev) \| `libretranslate` | `http` |
-| `NMT_ENDPOINT` | URL du service NMT (**requis**) | — |
-| `NMT_API_KEY` | clé optionnelle du NMT | — |
+| `NMT_PROVIDER` | `http` (dev) \| `libretranslate` \| `google` | `http` |
+| `NMT_ENDPOINT` | URL du service NMT ; requis par `run`/`batch` sauf pour `google` | — |
+| `NMT_API_KEY` | clé optionnelle du NMT (requise pour `google`) | — |
+| `NMT_FREE_CHARS_PER_MONTH` | quota gratuit mensuel (`500000` pour Google) | 0 |
 | `TM_PATH` | mémoire de traduction (SQLite) | `./tm.sqlite` |
 | `NARRATIVE_PATH` | bible de série (SQLite) | `./narrative.sqlite` |
 | `LLM_CACHE_PATH` | cache des complétions LLM (SQLite) | `./llm_cache.sqlite` |
@@ -60,7 +61,22 @@ just nmt-dev      # écoute sur :8081
 # .env.local : EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:8081/translate
 ```
 
-**Option B — LibreTranslate (vrai NMT, local)** :
+**Option B — Google Cloud Translation v2 (recommandé)** : c'est le maillon
+faible de la chaîne qui change ici. Le brouillon Argos était la plus mauvaise
+étape du pipeline, et le remplacer coûte 0 $ au rythme d'un volume par mois.
+```bash
+# .env.local (NMT_ENDPOINT peut rester vide : l'adaptateur connaît l'hôte) :
+#   EPUB_TRANSLATOR_NMT_PROVIDER=google
+#   EPUB_TRANSLATOR_NMT_API_KEY=<clé API>
+#   EPUB_TRANSLATOR_NMT_FREE_CHARS_PER_MONTH=500000
+#   EPUB_TRANSLATOR_COST_PER_1000_CHARS_USD=0.02
+```
+Les segments d'un chapitre partent groupés (jusqu'à 128 textes ou 5000
+caractères par requête) : le brouillon d'un volume passe d'environ 14 minutes à
+une trentaine de secondes. Le retour en arrière tient en une variable
+d'environnement (`NMT_PROVIDER=libretranslate`).
+
+**Option C — LibreTranslate (vrai NMT, local)** :
 ```bash
 docker compose --profile real-nmt up -d libretranslate    # 1er lancement: télécharge le modèle
 # .env.local :
@@ -77,16 +93,34 @@ a son propre adaptateur. Choix par config :
 
 | Fournisseur | `LLM_CHAT_PROVIDER` | `LLM_BASE_URL` | `LLM_MODEL` (exemple) |
 |---|---|---|---|
-| Anthropic | `anthropic` | *(vide → api.anthropic.com)* | `claude-sonnet-4-6` |
+| Anthropic | `anthropic` | *(vide → api.anthropic.com)* | `claude-sonnet-5` |
 | OpenAI | `openai` | `https://api.openai.com/v1` | `gpt-5.4` |
 | DeepSeek | `deepseek` | `https://api.deepseek.com` | `deepseek-chat` |
 
 ```bash
 # .env.local (exemple Anthropic) :
 EPUB_TRANSLATOR_LLM_CHAT_PROVIDER=anthropic
-EPUB_TRANSLATOR_LLM_MODEL=claude-sonnet-4-6
+EPUB_TRANSLATOR_LLM_MODEL=claude-sonnet-5
 EPUB_TRANSLATOR_LLM_API_KEY=sk-ant-...
+
+# Tarifs, pour que le garde-fou budgétaire ait quelque chose à comparer.
+# Tarif standard Sonnet 5 (le tarif d'introduction 2 $/10 $ court jusqu'au
+# 31/08/2026 ; calibrez le plafond sur le tarif d'après, sinon il se mettra à
+# refuser des runs un mois plus tard sans raison visible).
+EPUB_TRANSLATOR_LLM_INPUT_PER_MTOK_USD=3.00
+EPUB_TRANSLATOR_LLM_OUTPUT_PER_MTOK_USD=15.00
+EPUB_TRANSLATOR_LLM_CACHE_READ_PER_MTOK_USD=0.30
+# Sonnet 5 utilise le tokenizer de la famille Opus 4.7 : ~30 % de tokens en plus
+# pour le même texte, à tarif affiché identique. Sans ce facteur la projection
+# sous-estime d'autant.
+EPUB_TRANSLATOR_LLM_TOKEN_MULTIPLIER=1.30
 ```
+
+> La réflexion adaptative est **désactivée explicitement** dans l'adaptateur
+> Anthropic. L'omettre l'activerait sur Sonnet 5 : les tokens de réflexion sont
+> facturés au tarif de sortie et partagent le plafond `max_tokens` avec la
+> réponse JSON, donc une réponse tronquée serait absorbée en silence — et
+> facturée — par le rattrapage en demi-lots.
 
 > ⚠️ Données : le texte source + la bible sont envoyés au fournisseur. Respectez
 > sa politique de rétention ; pour du contenu sensible, évitez les hébergeurs
@@ -112,7 +146,9 @@ epub-translator glossary-suggest --input "$EN" --out ./glossary.json --min-count
 #   éditer ./glossary.json : garder les vrais noms, term_fr correct, retirer le bruit
 
 # (d) Estimer le coût AVANT de payer (dry-run, zéro appel API)
-#   (renseigner LLM_INPUT_PER_MTOK_USD / LLM_OUTPUT_PER_MTOK_USD pour un chiffre réel)
+#   Même modèle de coût que le garde-fou du run : ce que `estimate` annonce est
+#   ce que le plafond par livre applique. Renseigner les tarifs LLM ci-dessus,
+#   sinon la projection vaut 0 $ et le plafond ne compare rien.
 epub-translator estimate --input "$EN"
 
 # (e) Traduire (bible figée → prompts stables + re-runs gratuits via cache)

@@ -194,9 +194,24 @@ EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
 # → COMET-QE avg = 0.xx (min ... over N segments); writes qe-eval-report.json
 ```
 
+### Real translations with Google Cloud Translation (recommended)
+The best draft quality, and free at roughly one volume per month:
+```bash
+EPUB_TRANSLATOR_NMT_PROVIDER=google
+EPUB_TRANSLATOR_NMT_API_KEY=<Cloud Translation API key>
+EPUB_TRANSLATOR_NMT_FREE_CHARS_PER_MONTH=500000
+EPUB_TRANSLATOR_COST_PER_1000_CHARS_USD=0.02          # 20 $ / M characters
+```
+This targets Cloud Translation **v2 (Basic)**, which authenticates with an API
+key — no service account to plumb through Docker and CI, and it supplies the
+public host itself, so `NMT_ENDPOINT` can stay empty. The adapter sends
+`format=html` and batches a chapter's segments (up to 128 texts or 5000
+characters per request). The GCP project needs billing enabled even for the free
+tier, and the free 500,000 characters per month are shared between Basic and
+Advanced across the whole project.
+
 ### Real translations with LibreTranslate (self-hosted)
-For actual EN→FR translation, run a real local engine. LibreTranslate is the
-simplest to self-host:
+To keep the draft local instead, LibreTranslate is the simplest to self-host:
 ```bash
 # Docker (first start downloads the en→fr model):
 docker compose --profile real-nmt up libretranslate

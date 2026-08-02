@@ -46,13 +46,17 @@ cp .env.example .env.local      # config locale, gitignorée
 
 | Variable | Rôle | Exemple |
 |---|---|---|
-| `NMT_PROVIDER` | `http` (dev) \| `libretranslate` | `http` |
-| `NMT_ENDPOINT` | service NMT (**requis**, même en mode littéraire) | `http://localhost:8081/translate` |
+| `NMT_PROVIDER` | `http` (dev) \| `libretranslate` \| `google` | `http` |
+| `NMT_ENDPOINT` | service NMT ; requis par `run`/`batch` sauf pour `google`, qui fournit son hôte | `http://localhost:8081/translate` |
+| `NMT_API_KEY` | clé API du NMT (Cloud Translation v2) | `AIza…` |
+| `NMT_FREE_CHARS_PER_MONTH` | quota gratuit mensuel du fournisseur (`500000` pour Google) | `0` |
 | `TM_PATH` | mémoire de traduction (SQLite) | `./data/tm.sqlite` |
 | `NARRATIVE_PATH` | bible de série (SQLite) | `./data/lumen-series.sqlite` |
 | `LLM_CACHE_PATH` | cache des complétions LLM | `./data/llm-cache.sqlite` |
 | `LLM_CHAT_PROVIDER` | `anthropic` \| `openai` \| `deepseek` | `anthropic` |
-| `LLM_MODEL` | modèle LLM (mode littéraire) | `claude-sonnet-4-6` |
+| `LLM_MODEL` | modèle LLM (mode littéraire) | `claude-sonnet-5` |
+| `LLM_TOKEN_MULTIPLIER` | densité du tokenizer (`1.30` pour `claude-sonnet-5`) | `1.0` |
+| `LLM_CACHE_READ_PER_MTOK_USD` | tarif de lecture du cache de prompt (`0` = pas de cache) | `0.30` |
 | `LLM_BATCH_SIZE` | segments par appel LLM littéraire (`0` = défaut interne) | `0` |
 | `LLM_API_KEY` | clé du fournisseur LLM | `sk-ant-…` |
 | `COMET_ENDPOINT` | service COMET-QE (éval) | `http://localhost:8000/score` |
@@ -82,14 +86,31 @@ env -u GOROOT /usr/local/go/bin/go test ./...
 ## 5. Lancer un service de traduction (NMT)
 
 Le pipeline a **toujours** besoin d'un endpoint NMT (brouillon, et repli en mode
-littéraire). Trois options :
+littéraire). Quatre options :
 
 **A. Serveur de dev intégré** (gratuit, zéro install ; qualité jouet) :
 ```bash
 just nmt-dev            # dictionnaire EN→FR sur :8081
 ```
 
-**B. LibreTranslate via Docker** (vrai NMT local) :
+**B. Google Cloud Translation v2** (recommandé — meilleure qualité de brouillon) :
+```bash
+# .env.local (NMT_ENDPOINT peut rester vide : l'adaptateur connaît l'hôte) :
+#   EPUB_TRANSLATOR_NMT_PROVIDER=google
+#   EPUB_TRANSLATOR_NMT_API_KEY=<clé API Cloud Translation>
+#   EPUB_TRANSLATOR_NMT_FREE_CHARS_PER_MONTH=500000
+#   EPUB_TRANSLATOR_COST_PER_1000_CHARS_USD=0.02        # 20 $ / M caractères
+```
+Le projet GCP doit avoir la facturation activée, **même pour le palier
+gratuit**. Ce palier vaut 500 000 caractères par mois, partagé entre Basic et
+Advanced, par projet : environ un volume. Au-delà, seul le dépassement est
+facturé, et le compteur est le ledger de runs (`nmt_chars`) — s'il a été
+consommé hors pipeline ce mois-ci, la projection sous-estime d'autant.
+
+Le texte du livre est envoyé à Google. C'est la même classe d'exposition que
+l'appel Anthropic déjà en place, mais Argos était local : le changement est réel.
+
+**C. LibreTranslate via Docker** (vrai NMT local) :
 ```bash
 docker compose --profile real-nmt up -d libretranslate   # 1er lancement: télécharge le modèle
 # .env.local :
@@ -97,7 +118,7 @@ docker compose --profile real-nmt up -d libretranslate   # 1er lancement: télé
 #   EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:5050/translate
 ```
 
-**C. Tout en Docker** (`app` + `nmt`) — voir [§ Docker](#7-docker) plus bas.
+**D. Tout en Docker** (`app` + `nmt`) — voir [§ Docker](#7-docker) plus bas.
 
 ---
 

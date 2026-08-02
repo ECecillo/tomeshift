@@ -253,12 +253,30 @@ Pros:
 
 ## 10. Reliability and Observability
 - Structured logs with `run_id`, `chapter_id`, `segment_id`.
-- Metrics:
+- Metrics, emitted as a flat `metrics.json` per run by
+  `internal/pipeline.writeMetrics`. This list is the contract: a metric added to
+  the code belongs here too.
+
+  Always present:
   - `translation_segments_total`
+  - `translation_nmt_chars_total` — source characters sent to the NMT provider.
+    Tracked separately from cost because the provider's free tier is
+    denominated in characters per calendar month: a run inside the allowance
+    costs nothing yet still consumes what the next run is billed against.
   - `translation_cache_hit_ratio`
   - `translation_llm_escalation_ratio`
   - `translation_cost_usd_total`
+  - `translation_placeholder_restore_ratio`
   - `epub_validation_failures_total`
+
+  Conditional:
+  - `translation_quality_score` — only when COMET-QE scored at least one
+    segment.
+  - `translation_llm_input_tokens`, `translation_llm_output_tokens`,
+    `translation_llm_cache_read_tokens`,
+    `translation_llm_cache_creation_tokens` — only when the run consumed LLM
+    tokens. A run served entirely from the completion cache consumed none, so
+    it reports none rather than replaying the counts of the run that paid.
 - Retry policy for transient API failures with idempotent segment processing.
 
 ## 11. Security

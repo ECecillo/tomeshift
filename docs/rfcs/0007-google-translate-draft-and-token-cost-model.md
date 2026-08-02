@@ -1,6 +1,7 @@
 # RFC 0007: Google Cloud Translation as the Draft Engine, and a Token-Based Budget Guardrail
 
-- Status: `proposed`
+- Status: `accepted` (batches 1–4 implemented; batches 1/3/4 checkpoints and
+  batch 5 are live measurements, still to run)
 - Authors: ECecillo
 - Created: 2026-08-01
 - Updated: 2026-08-01
@@ -486,3 +487,37 @@ post-August figure rather than on the introductory one.
 - 2026-08-01: the `--update-bible` open question quantified at 3.20 $ per volume and
   a lost re-run guarantee, and corrected — the cross-volume asymmetry it creates is
   not itself a defect.
+- 2026-08-01: batches 1 to 4 implemented. Two deviations from the plan, both
+  found while writing the acceptance tests:
+  - **Decision 4 needed a read-side rule as well as a write-side one.** Option A
+    ("stop persisting drafts") only stops *new* shadowing; a database written by
+    an earlier Argos run still holds drafts that would be served as finished
+    translations. The acceptance criterion — "a segment whose TM entry was
+    written by a previous Argos run is re-drafted and re-refined" — therefore
+    also requires the lookup to reject them. It does, by engine tag: `Lookup`
+    already returns `Entry.Engine`, so an entry tagged `nmt-*` is treated as a
+    miss in literary mode. This is the useful half of Option B at none of its
+    cost — no schema migration, no change to the `tm.Store` interface.
+  - **Refusal and truncation are handled differently.** The RFC asks for "a
+    non-empty `stop_reason` other than `end_turn`" to be a named failure. A
+    refusal fails its batch outright, because splitting will not change the
+    model's mind. A truncation does not: the halved-batch retry is the correct
+    response to it, so it is only named once the batch is a single segment and
+    there is nothing left to split. The batch-splitting recursion also stopped
+    abandoning the second half when the first one failed.
+  - Two smaller consequences: `COST_LLM_PER_SEGMENT_USD` is removed (option B of
+    the cost-model section, rejected), and the LLM completion cache no longer
+    stores abnormally-stopped replies — it does not carry `stop_reason`, so
+    caching one would replay it stripped of the field that explains it.
+- 2026-08-02: `scripts/cost_model.py` corrected — it had stopped modelling the
+  code it is cited as the reference for, on two counts. It zeroed the volatile
+  context under decision 10, but decision 10 removed the *following* window
+  only: the preceding one carries the French already produced, which changes per
+  batch and cannot be cached. And it sized the per-chapter prefix on the
+  **median** chapter, where the prefix cost is a sum over chapters and therefore
+  wants the **mean** — on WN vol. 1 the distribution is skewed enough (median
+  ~1,020 tokens, longest ~6,400) for that to matter. Both under-counted, so the
+  "with chapter context" column of the decision-12 table is low; the figures
+  need regenerating against the real EPUB at the batch 3 checkpoint, which the
+  measurement plan already calls for. `internal/cost` was unaffected — it models
+  one preceding window and the mean chapter, which is what the code does.
