@@ -30,6 +30,7 @@ func TestRun_LiteraryModeEndToEnd(t *testing.T) {
 	runsDir := filepath.Join(t.TempDir(), "runs")
 	narrativePath := filepath.Join(t.TempDir(), "narrative.sqlite")
 	tmPath := filepath.Join(t.TempDir(), "tm.sqlite")
+	seedLiteraryBible(t, narrativePath, "series-a")
 
 	nmt := nmttest.NewServer(func(text string) string { return "[nmt] " + text })
 	t.Cleanup(nmt.Close)
@@ -147,7 +148,7 @@ func TestRun_LiteraryModeEndToEnd(t *testing.T) {
 	bible, found, err := store.Load(t.Context(), "series-a")
 	require.NoError(t, err)
 	require.True(t, found)
-	require.Len(t, bible.Summaries, 2)
+	require.Equal(t, []narrative.Summary{{VolumeID: "volume-01", Summary: "Synopsis du tome."}}, bible.Summaries)
 	require.True(t, narrative.Consistent(bible, "Alice", "Bruno", "tu"))
 
 	// Decision 4: literary mode must not persist raw NMT drafts. Every row the
@@ -179,6 +180,7 @@ func TestRun_LiteraryRedraftsAnNMTDraftFromAPreviousRun(t *testing.T) {
 	runsDir := filepath.Join(t.TempDir(), "runs")
 	narrativePath := filepath.Join(t.TempDir(), "narrative.sqlite")
 	tmPath := filepath.Join(t.TempDir(), "tm.sqlite")
+	seedLiteraryBible(t, narrativePath, "series-a")
 
 	// Seed the TM the way a previous Argos run would have: a raw draft, keyed
 	// by the segment's source hash.
@@ -247,4 +249,16 @@ func TestRun_LiteraryRedraftsAnNMTDraftFromAPreviousRun(t *testing.T) {
 	chapter := readZipEntry(t, filepath.Join(runsDir, "lit", "translated.epub"), "OEBPS/chap1.xhtml")
 	require.Contains(t, chapter, "Alice rencontra Bruno.")
 	require.NotContains(t, chapter, "[argos]")
+}
+
+func seedLiteraryBible(t *testing.T, path, seriesID string) {
+	t.Helper()
+	store, err := narrative.NewSQLiteStore(path)
+	require.NoError(t, err)
+	require.NoError(t, store.Save(t.Context(), narrative.Bible{
+		SeriesID:   seriesID,
+		StyleGuide: "Use clear literary French.",
+		Summaries:  []narrative.Summary{{VolumeID: "volume-01", Summary: "Synopsis du tome."}},
+	}))
+	require.NoError(t, store.Close())
 }

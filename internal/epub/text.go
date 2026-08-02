@@ -10,19 +10,10 @@ import (
 // prose matters.
 func (b *Book) PlainText() string {
 	var sb strings.Builder
-	for _, item := range b.Spine {
-		mi, ok := b.Manifest.Items[item.IDRef]
-		if !ok || mi.MediaType != "application/xhtml+xml" {
-			continue
-		}
-		if mi.IsNav() {
-			continue
-		}
-		doc, ok := b.Contents[mi.Href]
-		if !ok || doc == nil {
-			continue
-		}
-		for _, n := range doc.Nodes {
+	for _, chapter := range b.Chapters() {
+		// Blank nodes are kept here, unlike Chapter.Text: chrF compares this
+		// output against a reference line by line.
+		for _, n := range chapter.Doc.Nodes {
 			sb.WriteString(n.Text)
 			sb.WriteByte('\n')
 		}

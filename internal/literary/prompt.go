@@ -80,7 +80,7 @@ func stablePrefix(bible narrative.Bible, terms []glossary.Term, chapterSource st
 		sb.WriteString("aucun")
 	} else {
 		for _, summary := range bible.Summaries {
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", summary.ChapterID, summary.Summary))
+			sb.WriteString(fmt.Sprintf("- %s: %s\n", summary.Label(), summary.Summary))
 		}
 	}
 

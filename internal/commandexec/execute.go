@@ -53,6 +53,11 @@ func Execute(args []string, stdout, stderr io.Writer, loadConfig ConfigLoader) i
 			func(cfg config.Config, cmd cli.StyleProfileCommand) int {
 				return runStyleProfile(stdout, stderr, cmd, cfg)
 			})
+	case "series-bible":
+		return dispatch(stderr, loadConfig, args, cli.ParseSeriesBibleArgs,
+			func(cfg config.Config, cmd cli.SeriesBibleCommand) int {
+				return runSeriesBible(stdout, stderr, cmd, cfg)
+			})
 	case "glossary-suggest":
 		// The one command that needs no configuration at all.
 		cmd, err := cli.ParseSuggestArgs(args[1:], stderr)

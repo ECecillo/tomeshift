@@ -124,6 +124,22 @@ seed-bible input series samples="8" merge="":
     if [ "{{merge}}" = "merge" ]; then args+=(--merge); fi
     go run ./cmd/epub-translator "${args[@]}"
 
+# Build the series bible BEFORE translating, from every volume in a directory
+# (RFC 0008). Style/voices/address are seeded from all volumes; summaries are one
+# synopsis per volume, produced by map-reduce, and scoped to volumes 1..N.
+# Writes one bible per volume under "<series>@<volume>", plus the full series
+# under "<series>". Re-run only when a new volume is published.
+# Cost: ~1 + (chapters + 1) per volume LLM calls, once, never replayed.
+#   just series-bible "books/lumen" lumen 8
+#   just series-bible "books/lumen" lumen 8 merge
+series-bible input_dir series samples="8" merge="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    set -a; source "{{env_file}}"; set +a
+    args=(series-bible --input-dir "{{input_dir}}" --series "{{series}}" --samples "{{samples}}")
+    if [ "{{merge}}" = "merge" ]; then args+=(--merge); fi
+    go run ./cmd/epub-translator "${args[@]}"
+
 # Pretty-print a series bible from a SQLite DB. Args: db path, series id.
 #   just bible ./data/lumen-series.sqlite lumen
 bible db series:
@@ -137,6 +153,10 @@ bible db series:
     sqlite3 "{{db}}" "SELECT characters_json FROM bibles WHERE series_id='{{series}}';" | python3 -m json.tool
     echo; echo "── address (tu/vous) ──"
     sqlite3 "{{db}}" "SELECT address_json FROM bibles WHERE series_id='{{series}}';" | python3 -m json.tool
+    echo; echo "── summaries (one synopsis per volume) ──"
+    sqlite3 "{{db}}" "SELECT summaries_json FROM bibles WHERE series_id='{{series}}';" | python3 -m json.tool
+    echo; echo "── chapter summaries kept as a by-product ──"
+    sqlite3 "{{db}}" "SELECT volume_id || ' ' || count(*) || ' chapters' FROM chapter_summaries WHERE series_id='{{series}}' GROUP BY volume_id;"
 
 # Extract proper-noun glossary candidates from a book (free, heuristic).
 # Args: input, optional output path, optional min occurrence count.

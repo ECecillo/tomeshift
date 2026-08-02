@@ -503,7 +503,7 @@ func bibleFixture() narrative.Bible {
 				Note:      "Formal distance.",
 			}},
 		}},
-		Summaries: []narrative.ChapterSummary{{
+		Summaries: []narrative.Summary{{
 			ChapterID: "ch_0001",
 			Summary:   "Alice meets Bruno at the gate.",
 		}},

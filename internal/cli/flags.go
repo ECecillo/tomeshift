@@ -30,9 +30,12 @@ type RunCommand struct {
 	// Series identifies the narrative bible for literary mode.
 	Series string
 	// UpdateBible, when set, lets literary mode evolve the series bible during
-	// the run (each chapter feeds the next). Off by default: the bible is frozen
-	// for the run, keeping prompts (and the prompt cache) stable and re-runs
-	// reproducible. Re-learn between volumes with an explicit style-profile.
+	// the run (each chapter feeds the next). Off by default and not part of any
+	// recommended workflow: it is mutually exclusive with a cached prefix. A
+	// bible that changes every chapter rewrites the cacheable prefix once per
+	// chapter instead of once per run, and leaves the bible on disk different
+	// from the one the next run starts with, so re-runs stop being free and
+	// stop being reproducible. Build the bible up front with `series-bible`.
 	UpdateBible bool
 	// Resume is set by --resume, used to request continuation from a prior
 	// run state instead of starting from scratch.
@@ -104,4 +107,5 @@ func PrintRootUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "  epub-translator eval --candidate <out.epub> --reference <human-fr.epub>")
 	_, _ = fmt.Fprintln(w, "  epub-translator glossary-suggest --input <file.epub> [--min-count 3] [--out glossary.json]")
 	_, _ = fmt.Fprintln(w, "  epub-translator style-profile --input <file.epub> --series <id> [--samples 3]")
+	_, _ = fmt.Fprintln(w, "  epub-translator series-bible --input-dir <dir> --series <id> [--samples 3] [--merge]")
 }

@@ -4,6 +4,7 @@ import (
 	"archive/zip"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -19,6 +20,7 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/epub"
 	"github.com/ECecillo/ebooks-translator/internal/llm"
 	"github.com/ECecillo/ebooks-translator/internal/llm/llmtest"
+	"github.com/ECecillo/ebooks-translator/internal/narrative"
 	"github.com/ECecillo/ebooks-translator/internal/pipeline"
 	"github.com/ECecillo/ebooks-translator/internal/qa"
 	"github.com/ECecillo/ebooks-translator/internal/segment"
@@ -146,6 +148,56 @@ func TestOrchestrator_Run_EndToEnd(t *testing.T) {
 	chapter := readZipEntry(t, filepath.Join(outputDir, "translated.epub"), "OEBPS/chapter1.xhtml")
 	require.Contains(t, chapter, "[fr] Hello world.")
 	require.Contains(t, chapter, "<em>bold</em>", "inline markup must be preserved")
+}
+
+func TestOrchestrator_LiteraryModeRequiresExistingValidBible(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name  string
+		store func(t *testing.T) narrative.Store
+		want  error
+	}{
+		{name: "store absent", want: narrative.ErrMissingBible},
+		{
+			name: "scope missing",
+			store: func(t *testing.T) narrative.Store {
+				return newNarrativeStore(t)
+			},
+			want: narrative.ErrMissingBible,
+		},
+		{
+			name: "invalid bible",
+			store: func(t *testing.T) narrative.Store {
+				store := newNarrativeStore(t)
+				require.NoError(t, store.Save(t.Context(), narrative.Bible{SeriesID: "series-a"}))
+				return store
+			},
+			want: narrative.ErrInvalidBible,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			orch := newOrchestrator(t, nil)
+			if tt.store != nil {
+				orch.NarrativeStore = tt.store(t)
+			}
+			_, err := orch.Run(t.Context(), pipeline.RunConfig{
+				InputPath: writeFixtureEPUB(t), Mode: pipeline.ModeLiterary, SeriesID: "series-a",
+			})
+			require.Error(t, err)
+			require.True(t, errors.Is(err, tt.want), "error: %v", err)
+		})
+	}
+}
+
+func newNarrativeStore(t *testing.T) *narrative.SQLiteStore {
+	t.Helper()
+	store, err := narrative.NewSQLiteStore(filepath.Join(t.TempDir(), "narrative.sqlite"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+	return store
 }
 
 func TestOrchestrator_Run_TMReuse(t *testing.T) {

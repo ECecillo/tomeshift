@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"os"
-	"strings"
 
 	"github.com/ECecillo/ebooks-translator/internal/cli"
 	"github.com/ECecillo/ebooks-translator/internal/config"
@@ -61,7 +60,12 @@ func runStyleProfile(stdout, stderr io.Writer, cmd cli.StyleProfileCommand, cfg 
 			return exitcode.InvalidInputConfig
 		}
 		if found {
-			bible = narrative.MergeBibles(existing, bible)
+			var stats narrative.MergeStats
+			bible, stats = narrative.MergeBibles(existing, bible)
+			if stats.Lossy() {
+				writef(stderr, "warning: merge dropped %d summaries already present in %s\n",
+					stats.DroppedSummaries, cmd.Series)
+			}
 		}
 	}
 
@@ -97,25 +101,8 @@ func styleProfileSamples(ctx context.Context, path string, limit int) ([]string,
 	}
 
 	samples := make([]string, 0, limit)
-	for _, item := range book.Spine {
-		mi, ok := book.Manifest.Items[item.IDRef]
-		if !ok || mi.MediaType != "application/xhtml+xml" || mi.IsNav() {
-			continue
-		}
-		doc, ok := book.Contents[mi.Href]
-		if !ok || doc == nil {
-			continue
-		}
-
-		var sb strings.Builder
-		for _, node := range doc.Nodes {
-			if strings.TrimSpace(node.Text) == "" {
-				continue
-			}
-			sb.WriteString(node.Text)
-			sb.WriteByte('\n')
-		}
-		sample := strings.TrimSpace(sb.String())
+	for _, chapter := range book.Chapters() {
+		sample := chapter.Text()
 		if sample == "" {
 			continue
 		}

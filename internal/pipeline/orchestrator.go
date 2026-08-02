@@ -21,8 +21,6 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/translate"
 )
 
-const xhtmlMediaType = "application/xhtml+xml"
-
 // ledgerWriteTimeout bounds the detached write used when a run is recorded
 // after its context was cancelled.
 const ledgerWriteTimeout = 5 * time.Second
@@ -353,7 +351,7 @@ func (o *Orchestrator) loadBible(ctx context.Context, seriesID string) (narrativ
 		return narrative.Bible{}, narrative.ErrEmptySeriesID
 	}
 	if o.NarrativeStore == nil {
-		return narrative.Bible{SeriesID: seriesID}, nil
+		return narrative.Bible{}, fmt.Errorf("unable to load required narrative bible %q, err: %w", seriesID, narrative.ErrMissingBible)
 	}
 
 	bible, found, err := o.NarrativeStore.Load(ctx, seriesID)
@@ -361,7 +359,13 @@ func (o *Orchestrator) loadBible(ctx context.Context, seriesID string) (narrativ
 		return narrative.Bible{}, err
 	}
 	if !found {
-		return narrative.Bible{SeriesID: seriesID}, nil
+		return narrative.Bible{}, fmt.Errorf("unable to load required narrative bible %q, err: %w", seriesID, narrative.ErrMissingBible)
+	}
+	if bible.SeriesID != seriesID {
+		return narrative.Bible{}, fmt.Errorf("unable to validate narrative bible %q, err: %w", seriesID, narrative.ErrInvalidBible)
+	}
+	if err := narrative.ValidateBible(bible); err != nil {
+		return narrative.Bible{}, fmt.Errorf("unable to validate narrative bible %q, err: %w", seriesID, err)
 	}
 	return bible, nil
 }
@@ -375,22 +379,35 @@ func (o *Orchestrator) updateBible(ctx context.Context, seriesID string, bible *
 	if err != nil {
 		return err
 	}
-	if updated.SeriesID == "" {
-		updated.SeriesID = seriesID
-	}
+	updated.SeriesID = seriesID
+	updated.Summaries = append([]narrative.Summary(nil), bible.Summaries...)
+	// The version we loaded is the baseline, never the one the model volunteered
+	// in its JSON — the version identifies stored content, so the store is what
+	// assigns it. It now moves exactly when the content moves, which is what
+	// makes a reported version mean something.
 	updated.Version = bible.Version
 
 	if o.NarrativeStore != nil {
-		if err := o.NarrativeStore.Save(ctx, updated); err != nil {
-			return err
-		}
-		reloaded, found, err := o.NarrativeStore.Load(ctx, updated.SeriesID)
-		if err != nil {
-			return err
-		}
-		if found {
-			*bible = reloaded
-			return nil
+		for {
+			saved, err := o.NarrativeStore.SaveIfVersion(ctx, updated)
+			if err != nil {
+				return err
+			}
+			reloaded, found, err := o.NarrativeStore.Load(ctx, seriesID)
+			if err != nil {
+				return err
+			}
+			if !found {
+				return fmt.Errorf("unable to reload updated narrative bible %q, err: %w", seriesID, narrative.ErrMissingBible)
+			}
+			if saved {
+				*bible = reloaded
+				return nil
+			}
+			// A concurrent publisher won. Preserve its current synopsis snapshot
+			// and retry only the opted-in style/voice/address update.
+			updated.Version = reloaded.Version
+			updated.Summaries = append([]narrative.Summary(nil), reloaded.Summaries...)
 		}
 	}
 
@@ -469,36 +486,17 @@ func (o *Orchestrator) Plan(
 }
 
 func (o *Orchestrator) segmentBookByChapter(ctx context.Context, book *epub.Book) ([]chapterSegments, error) {
-	var chapters []chapterSegments
-	chapterIdx := 0
+	bookChapters := book.Chapters()
+	chapters := make([]chapterSegments, 0, len(bookChapters))
 
-	for _, item := range book.Spine {
-		manifestItem, ok := book.Manifest.Items[item.IDRef]
-		if !ok {
-			continue
-		}
-		if manifestItem.MediaType != xhtmlMediaType {
-			continue
-		}
-		if manifestItem.IsNav() {
-			continue
-		}
-
-		doc, ok := book.Contents[manifestItem.Href]
-		if !ok || doc == nil {
-			continue
-		}
-
-		chapterIdx++
-		chapterID := fmt.Sprintf("ch_%04d", chapterIdx)
-
-		segs, err := o.Segmenter.Segment(ctx, doc, chapterID)
+	for _, chapter := range bookChapters {
+		segs, err := o.Segmenter.Segment(ctx, chapter.Doc, chapter.ID)
 		if err != nil {
-			return nil, fmt.Errorf("unable to segment %q, err: %w", manifestItem.Href, err)
+			return nil, fmt.Errorf("unable to segment %q, err: %w", chapter.Href, err)
 		}
 		chapters = append(chapters, chapterSegments{
-			ID:       chapterID,
-			Href:     manifestItem.Href,
+			ID:       chapter.ID,
+			Href:     chapter.Href,
 			Segments: segs,
 		})
 	}

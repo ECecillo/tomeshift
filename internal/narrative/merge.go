@@ -1,8 +1,22 @@
 package narrative
 
-// MergeBibles returns base enriched with incoming, without losing base content.
-// It is pure and deterministic so incremental seeding (e.g. a later volume) can
-// be merged into an existing series bible instead of overwriting it.
+// MergeStats reports what a merge could not keep, so a lossy merge is visible
+// instead of silent. Dropping input used to be a no-op: merging volume 2 into a
+// bible holding volume 1 discarded every chapter of volume 2 because their IDs
+// collided, with no error, no warning and no count.
+type MergeStats struct {
+	// DroppedSummaries counts incoming entries skipped because base already
+	// held an entry with the same (volume, chapter) identity.
+	DroppedSummaries int
+}
+
+// Lossy reports whether the merge discarded any incoming content.
+func (s MergeStats) Lossy() bool { return s.DroppedSummaries > 0 }
+
+// MergeBibles returns base enriched with incoming, without losing base content,
+// plus a report of the incoming entries it could not keep. It is pure and
+// deterministic so incremental seeding (e.g. a later volume) can be merged into
+// an existing series bible instead of overwriting it.
 //
 // Rules:
 //   - StyleGuide: keep base's when non-empty (don't clobber a curated guide);
@@ -12,10 +26,11 @@ package narrative
 //     Unknown characters are appended.
 //   - Address: matched by (From,To). A changed Form updates the rule and appends
 //     incoming history; unknown pairs are appended.
-//   - Summaries: appended, deduped by ChapterID (base wins on conflict).
+//   - Summaries: appended, deduped by (VolumeID, ChapterID) — base wins on a
+//     true conflict, and the count of losers is reported.
 //
 // Version is not set here; the store assigns the next version on Save.
-func MergeBibles(base, incoming Bible) Bible {
+func MergeBibles(base, incoming Bible) (Bible, MergeStats) {
 	out := base
 	if out.SeriesID == "" {
 		out.SeriesID = incoming.SeriesID
@@ -26,8 +41,10 @@ func MergeBibles(base, incoming Bible) Bible {
 
 	out.Characters = mergeCharacters(base.Characters, incoming.Characters)
 	out.Address = mergeAddress(base.Address, incoming.Address)
-	out.Summaries = mergeSummaries(base.Summaries, incoming.Summaries)
-	return out
+
+	var stats MergeStats
+	out.Summaries, stats.DroppedSummaries = mergeSummaries(base.Summaries, incoming.Summaries)
+	return out, stats
 }
 
 func mergeCharacters(base, incoming []CharacterVoice) []CharacterVoice {
@@ -80,20 +97,25 @@ func mergeAddress(base, incoming []AddressRule) []AddressRule {
 	return out
 }
 
-func mergeSummaries(base, incoming []ChapterSummary) []ChapterSummary {
-	out := append([]ChapterSummary(nil), base...)
-	seen := make(map[string]bool, len(out))
+// mergeSummaries appends incoming entries base does not already hold, keyed by
+// (VolumeID, ChapterID), and returns how many it had to drop.
+func mergeSummaries(base, incoming []Summary) ([]Summary, int) {
+	out := append([]Summary(nil), base...)
+	seen := make(map[[2]string]bool, len(out))
 	for _, s := range out {
-		seen[s.ChapterID] = true
+		seen[s.Key()] = true
 	}
+
+	dropped := 0
 	for _, in := range incoming {
-		if seen[in.ChapterID] {
+		if seen[in.Key()] {
+			dropped++
 			continue
 		}
-		seen[in.ChapterID] = true
+		seen[in.Key()] = true
 		out = append(out, in)
 	}
-	return out
+	return out, dropped
 }
 
 func unionStrings(base, incoming []string) []string {
