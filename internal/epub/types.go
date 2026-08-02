@@ -1,6 +1,10 @@
 package epub
 
-import "golang.org/x/net/html"
+import (
+	"slices"
+
+	"golang.org/x/net/html"
+)
 
 type RawEPUB struct {
 	Mimetype   []byte
@@ -49,4 +53,11 @@ type ContentNode struct {
 	NodePath string     // XPath-like stable path, e.g. "/html[1]/body[1]/p[2]"
 	Text     string     // Inner text content, whitespace-trimmed
 	Node     *html.Node // Reference into XHTMLDocument.Root for recomposition
+}
+
+// IsNav reports whether the item is the EPUB navigation document. Nav is
+// structural rather than prose: it is never segmented, translated or scored,
+// and every stage of the pipeline has to skip it.
+func (i ManifestItem) IsNav() bool {
+	return slices.Contains(i.Properties, "nav")
 }

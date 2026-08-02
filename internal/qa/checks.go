@@ -1,7 +1,6 @@
 package qa
 
 import (
-	"slices"
 	"strings"
 
 	"github.com/ECecillo/ebooks-translator/internal/epub"
@@ -124,7 +123,7 @@ func checkSpine(report *Report, book *epub.Book) {
 		}
 
 		// Only content documents are expected in Contents; nav is structural.
-		if manifestItem.MediaType != xhtmlMediaType || slices.Contains(manifestItem.Properties, "nav") {
+		if manifestItem.MediaType != xhtmlMediaType || manifestItem.IsNav() {
 			continue
 		}
 

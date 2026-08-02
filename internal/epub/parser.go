@@ -5,7 +5,6 @@ import (
 	"encoding/xml"
 	"fmt"
 	"path"
-	"slices"
 	"strings"
 )
 
@@ -96,7 +95,7 @@ func (p OPFParser) Parse(ctx context.Context, rawEPUB *RawEPUB) (*Book, error) {
 		}
 
 		// nav documents are structural — not translated
-		if slices.Contains(manifestItem.Properties, "nav") {
+		if manifestItem.IsNav() {
 			continue
 		}
 

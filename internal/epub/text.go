@@ -1,7 +1,6 @@
 package epub
 
 import (
-	"slices"
 	"strings"
 )
 
@@ -16,7 +15,7 @@ func (b *Book) PlainText() string {
 		if !ok || mi.MediaType != "application/xhtml+xml" {
 			continue
 		}
-		if slices.Contains(mi.Properties, "nav") {
+		if mi.IsNav() {
 			continue
 		}
 		doc, ok := b.Contents[mi.Href]
