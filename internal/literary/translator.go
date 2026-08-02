@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/ECecillo/ebooks-translator/internal/glossary"
 	"github.com/ECecillo/ebooks-translator/internal/llm"
@@ -19,7 +20,7 @@ import (
 // defaultMaxTokens must comfortably fit a batch's JSON output.
 const defaultMaxTokens = 16000
 
-// defaultBatchSize is the number of segments in the first LLM call for a
+// DefaultBatchSize is the number of segments in the first LLM call for a
 // chapter. It is a throughput hint, not a correctness parameter: a response
 // that omits some of the requested segments is retried on smaller batches, so
 // an oversized value costs extra calls rather than untranslated text.
@@ -30,7 +31,7 @@ const defaultMaxTokens = 16000
 // against a local 7B model cost 4284 input tokens over four calls versus 2288
 // in one, with no difference in output and no retry triggered. Prompt caching
 // absorbs that on Anthropic but not on OpenAI-compatible hosts.
-const defaultBatchSize = 50
+const DefaultBatchSize = 50
 
 var inlineTokenPattern = regexp.MustCompile(`<x id="(\d+)"\s*/?>(?:\s*</x>)?`)
 
@@ -83,9 +84,10 @@ type Usage struct {
 	CacheCreationTokens int
 }
 
-// contextRunes bounds the prose sent alongside a batch. The model needs enough
-// to carry register, tense and pronouns across the boundary, not the whole
-// neighbouring chapter — which would otherwise be re-sent on every batch.
+// contextRunes bounds the French already produced that is re-sent ahead of a
+// batch. The model needs enough to carry register, tense and pronouns across
+// the seam, not the whole chapter — the chapter's source is in the cached
+// prefix, so only the translation of the batch before it has to be repeated.
 const contextRunes = 1200
 
 // chapterRun carries the state shared by every LLM call made for one chapter,
@@ -93,20 +95,21 @@ const contextRunes = 1200
 type chapterRun struct {
 	bible     narrative.Bible
 	chapterID string
-	prevCtx   string
-	nextCtx   string
+	// source is the chapter's full source text, sent once in the cacheable
+	// prefix rather than as windows around each batch.
+	source  string
+	prevCtx string
 	// targets holds the translations returned so far, keyed by segment ID.
 	targets map[string]string
 	usage   Usage
 }
 
-// batch is one unit of work: the segments to translate plus the prose that
-// surrounds them in the book.
+// batch is one unit of work: the segments to translate plus the French that
+// immediately precedes them.
 type batch struct {
 	idx   int
 	items []requestSegment
 	prev  string
-	next  string
 }
 
 // withItems returns b narrowed to items, keeping its surrounding prose so a
@@ -135,44 +138,34 @@ func (run *chapterRun) precedingContext(idx int, batches [][]requestSegment) str
 	return tailRunes(strings.TrimSpace(sb.String()), contextRunes)
 }
 
-// followingContext returns the prose immediately after batch idx: the source of
-// the next batch, or the chapter-level context for the last batch.
-func (run *chapterRun) followingContext(idx int, batches [][]requestSegment) string {
-	if idx == len(batches)-1 {
-		return headRunes(run.nextCtx, contextRunes)
-	}
-
-	var sb strings.Builder
-	for _, item := range batches[idx+1] {
-		sb.WriteString(item.SourceText)
-		sb.WriteByte('\n')
-	}
-	return headRunes(strings.TrimSpace(sb.String()), contextRunes)
-}
-
-// TranslateChapter returns a translated copy of segs plus the LLM token usage.
-// The current TargetText on each input segment is treated as the safe NMT draft
+// TranslateChapter rewrites segs in place and reports the LLM token usage. The
+// TargetText each segment arrives with is treated as the safe NMT draft
 // fallback. The chapter is split into batches of BatchSize segments so that
 // small models (≤8B) do not stop generating before all segments are done.
+//
+// It takes pointers because the caller owns the segments — they live in the
+// chapter the pipeline is going to recompose. Returning translated copies would
+// only oblige every caller to write them back by index.
 //
 // A batch that fails degrades rather than aborting the chapter: its segments
 // keep their draft and stay StatusTranslated, which the caller can count. Only
 // a chapter where no batch produced anything is returned as an error, so a
 // systematic failure (bad credentials, wrong model) stays loud while a single
-// bad batch does not discard the batches that already succeeded.
+// bad batch does not discard the batches that already succeeded. Nothing is
+// written in that case: the segments keep the drafts they came in with.
 func (t *Translator) TranslateChapter(
 	ctx context.Context,
 	bible narrative.Bible,
 	chapterID string,
-	segs []segment.Segment,
+	segs []*segment.Segment,
 	prevCtx string,
-	nextCtx string,
-) ([]segment.Segment, Usage, error) {
+	chapterSource string,
+) (Usage, error) {
 	if t.Chat == nil {
-		return nil, Usage{}, ErrNilChatClient
+		return Usage{}, ErrNilChatClient
 	}
 	if len(segs) == 0 {
-		return nil, Usage{}, nil
+		return Usage{}, nil
 	}
 
 	items, states := t.buildPayload(segs)
@@ -180,8 +173,8 @@ func (t *Translator) TranslateChapter(
 	run := &chapterRun{
 		bible:     bible,
 		chapterID: chapterID,
+		source:    chapterSource,
 		prevCtx:   prevCtx,
-		nextCtx:   nextCtx,
 		targets:   make(map[string]string, len(segs)),
 	}
 	batches := chunk(items, t.batchSize())
@@ -191,7 +184,6 @@ func (t *Translator) TranslateChapter(
 			idx:   idx,
 			items: batchItems,
 			prev:  run.precedingContext(idx, batches),
-			next:  run.followingContext(idx, batches),
 		})
 		if err != nil {
 			batchErrs = append(batchErrs, err)
@@ -199,34 +191,29 @@ func (t *Translator) TranslateChapter(
 	}
 	if len(missingItems(items, run.targets)) == len(items) {
 		if len(batchErrs) > 0 {
-			return nil, run.usage, errors.Join(batchErrs...)
+			return run.usage, errors.Join(batchErrs...)
 		}
-		return nil, run.usage, ErrEmptyResponse
+		return run.usage, ErrEmptyResponse
 	}
 
-	out := make([]segment.Segment, len(segs))
-	copy(out, segs)
-	for i := range out {
-		state := states[out[i].ID]
-		target, ok := run.targets[out[i].ID]
-		if !ok || strings.TrimSpace(target) == "" {
-			out[i].TargetText = state.draft
-			out[i].Status = segment.StatusTranslated
+	for i, seg := range segs {
+		state := states[i]
+
+		// An unanswered segment reads as the empty string here, which is the
+		// same predicate missingItems retries on: "retried" and "fell back to
+		// the draft" stay one condition.
+		target := t.Glossary.Apply(run.targets[seg.ID], state.subs)
+		if strings.TrimSpace(target) == "" || !inlinePlaceholdersPreserved(state.source, target) {
+			seg.TargetText = state.draft
+			seg.Status = segment.StatusTranslated
 			continue
 		}
 
-		target = t.Glossary.Apply(target, state.subs)
-		if !inlinePlaceholdersPreserved(state.source, target) {
-			out[i].TargetText = state.draft
-			out[i].Status = segment.StatusTranslated
-			continue
-		}
-
-		out[i].TargetText = target
-		out[i].Status = segment.StatusPostEdited
+		seg.TargetText = target
+		seg.Status = segment.StatusPostEdited
 	}
 
-	return out, run.usage, nil
+	return run.usage, nil
 }
 
 // translateBatch translates b in a single LLM call and merges the results into
@@ -245,7 +232,7 @@ func (t *Translator) translateBatch(ctx context.Context, run *chapterRun, b batc
 	resp, err := t.Chat.Chat(ctx, llm.ChatRequest{
 		Model:      t.Model,
 		MaxTokens:  t.maxTokens(),
-		Messages:   composeMessages(run.bible, t.glossaryTerms(), encodePayload(b.items), b.prev, b.next),
+		Messages:   composeMessages(run.bible, t.glossaryTerms(), run.source, encodePayload(b.items), b.prev),
 		JSONSchema: responseSchema,
 	})
 	if err != nil {
@@ -257,26 +244,42 @@ func (t *Translator) translateBatch(ctx context.Context, run *chapterRun, b batc
 	run.usage.CacheReadTokens += resp.CacheReadInputTokens
 	run.usage.CacheCreationTokens += resp.CacheCreationInputTokens
 
+	// A refusal and a truncated reply both arrive as HTTP 200 with unusable
+	// content, and both used to surface only as "decodeResponse failed, retry
+	// on halved batches". Naming them keeps the two apart in the logs.
+	if resp.StopReason == llm.StopReasonRefusal {
+		return fmt.Errorf("unable to translate literary chapter %s batch %d (%s), err: %w",
+			run.chapterID, b.idx, resp.StopDetailsSummary(), ErrProviderRefusal)
+	}
+
 	if decoded, err := decodeResponse(resp.Text); err == nil {
 		run.mergeTargets(b.items, decoded.Segments)
 	}
 
 	missing := missingItems(b.items, run.targets)
-	if len(missing) == 0 || len(b.items) == 1 {
+	if len(missing) == 0 {
+		return nil
+	}
+	if len(b.items) == 1 {
+		// Nothing left to split. Say why the segment kept its draft instead of
+		// letting a truncation look like a malformed reply.
+		if resp.StopReason != "" && resp.StopReason != llm.StopReasonEndTurn {
+			return fmt.Errorf("unable to translate literary chapter %s batch %d: stop_reason %q (%s), err: %w",
+				run.chapterID, b.idx, resp.StopReason, resp.StopDetailsSummary(), ErrIncompleteResponse)
+		}
 		return nil
 	}
 
 	// missing is a subset of b.items and len(b.items) >= 2 here, so both halves
 	// are strictly shorter: the recursion terminates, after at most one call per
-	// segment in the batch.
+	// segment in the batch. Both halves are attempted even if the first fails —
+	// a bad half must not discard the segments the other one could still get.
 	half := (len(missing) + 1) / 2
-	if err := t.translateBatch(ctx, run, b.withItems(missing[:half])); err != nil {
-		return err
-	}
+	firstErr := t.translateBatch(ctx, run, b.withItems(missing[:half]))
 	if half == len(missing) {
-		return nil
+		return firstErr
 	}
-	return t.translateBatch(ctx, run, b.withItems(missing[half:]))
+	return errors.Join(firstErr, t.translateBatch(ctx, run, b.withItems(missing[half:])))
 }
 
 // mergeTargets records the answers for items. A batch only answers its own
@@ -307,9 +310,13 @@ func missingItems(items []requestSegment, targets map[string]string) []requestSe
 	return missing
 }
 
-func (t *Translator) buildPayload(segs []segment.Segment) ([]requestSegment, map[string]segmentState) {
+// buildPayload renders the request items and, alongside them, what has to be
+// remembered to interpret the answers: the unprotected source, the draft to
+// fall back to, and the glossary substitutions to undo. Both slices are in segs
+// order, so a state is found by position rather than by segment ID.
+func (t *Translator) buildPayload(segs []*segment.Segment) ([]requestSegment, []segmentState) {
 	items := make([]requestSegment, 0, len(segs))
-	states := make(map[string]segmentState, len(segs))
+	states := make([]segmentState, 0, len(segs))
 
 	for _, seg := range segs {
 		source := seg.SourceText
@@ -324,11 +331,11 @@ func (t *Translator) buildPayload(segs []segment.Segment) ([]requestSegment, map
 			SourceText: source,
 			DraftText:  draft,
 		})
-		states[seg.ID] = segmentState{
+		states = append(states, segmentState{
 			source: seg.SourceText,
 			draft:  draft,
 			subs:   subs,
-		}
+		})
 	}
 
 	return items, states
@@ -366,11 +373,28 @@ func (t *Translator) maxTokens() int {
 	return defaultMaxTokens
 }
 
-func (t *Translator) batchSize() int {
-	if t.BatchSize > 0 {
-		return t.BatchSize
+// ResolveBatchSize turns a configured batch size into the one that will be
+// used. It is exported because the cost projection has to count the calls the
+// run will actually make, and `estimate` projects without building a
+// Translator at all.
+func ResolveBatchSize(configured int) int {
+	if configured > 0 {
+		return configured
 	}
-	return defaultBatchSize
+	return DefaultBatchSize
+}
+
+func (t *Translator) batchSize() int { return ResolveBatchSize(t.BatchSize) }
+
+// EffectiveBatchSize reports the batch size this translator will actually use.
+func (t *Translator) EffectiveBatchSize() int { return t.batchSize() }
+
+// StablePrefixChars measures the cacheable prefix this translator repeats on
+// every call, excluding the per-chapter source. The budget guardrail measures
+// it rather than trusting a configured constant: the prefix is the dominant
+// share of input cost, and it grows with the bible.
+func (t *Translator) StablePrefixChars(bible narrative.Bible) int {
+	return utf8.RuneCountInString(stablePrefix(bible, t.glossaryTerms(), ""))
 }
 
 func (t *Translator) glossaryTerms() []glossary.Term {
@@ -429,15 +453,7 @@ func extractJSONObject(raw string) string {
 	return raw[start:]
 }
 
-// headRunes returns the first n runes of s, and tailRunes the last n.
-func headRunes(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return strings.TrimSpace(string(runes[:n]))
-}
-
+// tailRunes returns the last n runes of s.
 func tailRunes(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) <= n {
@@ -446,7 +462,7 @@ func tailRunes(s string, n int) string {
 	return strings.TrimSpace(string(runes[len(runes)-n:]))
 }
 
-func fallbackText(seg segment.Segment) string {
+func fallbackText(seg *segment.Segment) string {
 	if seg.TargetText != "" {
 		return seg.TargetText
 	}

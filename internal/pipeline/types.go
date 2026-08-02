@@ -44,6 +44,7 @@ type RunResult struct {
 	TMHits                 int       `json:"tm_hits"`
 	TMHitRatio             float64   `json:"tm_hit_ratio"`
 	NMTSegments            int       `json:"nmt_segments"`
+	NMTChars               int       `json:"nmt_chars"` // source chars sent to the NMT provider (free-tier accounting)
 	LLMSegments            int       `json:"llm_segments"`
 	LLMEscalationRatio     float64   `json:"llm_escalation_ratio"`
 	LLMInputTokens         int       `json:"llm_input_tokens"`

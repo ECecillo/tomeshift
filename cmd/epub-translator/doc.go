@@ -1,9 +1,9 @@
 // Package main wires the epub-translator CLI process entrypoint.
 //
-// It contains bootstrap-only concerns:
-//   - loading runtime config from environment
-//   - adapting config into command execution contracts
-//   - delegating command dispatch to internal/commandexec
+// It is bootstrap only: read the configuration from the environment, hand
+// dispatch to internal/commandexec, exit with the code it returns. The typed
+// configuration itself lives in internal/config so the command layer and the
+// entrypoint share one struct rather than a copy each.
 //
 // This package is not intended to be imported by other packages. Reusable
 // command logic is exposed from internal/commandexec instead.

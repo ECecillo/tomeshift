@@ -65,14 +65,15 @@ type Orchestrator struct {
 // Run executes the full pipeline and always attempts to emit run artifacts. It
 // returns a *StageError on stage failure and a wrapped ErrQAGateFailed when the
 // output is produced but fails QA.
+//
+// The NMT and literary pipelines share this whole body: they differ only in how
+// they project cost and how they translate, which is what translationMode
+// abstracts.
 func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, error) {
-	if runMode(cfg) == ModeLiterary {
-		return o.runLiterary(ctx, cfg)
-	}
-
 	log := o.logger().With(
 		zap.String("run_id", cfg.RunID),
 		zap.String("book_id", cfg.BookID),
+		zap.String("mode", runMode(cfg)),
 		zap.Bool("resume", cfg.Resume),
 	)
 	started := time.Now().UTC()
@@ -87,25 +88,44 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 		return nil, &StageError{Stage: StageParse, Err: err}
 	}
 
-	segments, err := o.segmentBook(ctx, book)
+	chapters, err := o.segmentBookByChapter(ctx, book)
 	if err != nil {
 		return nil, &StageError{Stage: StageSegment, Err: err}
 	}
-	log.Info("segmented book", zap.Int("segments", len(segments)))
+	log.Info("segmented book",
+		zap.Int("segments", countSegments(chapters)), zap.Int("chapters", len(chapters)))
+
+	mode, err := o.newTranslationMode(ctx, cfg)
+	if err != nil {
+		return nil, &StageError{Stage: StageTranslate, Err: err}
+	}
 
 	result := &RunResult{
 		SchemaVersion: 1,
 		RunID:         cfg.RunID,
 		BookID:        cfg.BookID,
-		Mode:          ModeNMT,
 		StartedAt:     started,
-		TotalSegments: len(segments),
+		TotalSegments: countSegments(chapters),
 	}
+	mode.Init(result)
 
 	// Pre-run budget guardrail: project worst-case (no-reuse) spend and abort
-	// before any provider calls if it exceeds the per-book cap.
-	projection := o.CostModel.Project(segments)
+	// before any provider call if it exceeds the per-book cap.
+	usedFreeChars, err := o.freeCharsUsed(ctx, started)
+	if err != nil {
+		return nil, &StageError{Stage: StageTranslate, Err: err}
+	}
+
+	projection := mode.Project(chapters, usedFreeChars)
 	result.EstimatedCostUSD = projection.EstimatedUSD
+	log.Info("projected run cost",
+		zap.Int("llm_calls", projection.LLMCalls),
+		zap.Int("billable_nmt_chars", projection.BillableChars),
+		zap.Int("llm_input_tokens", projection.InputTokens),
+		zap.Int("llm_output_tokens", projection.OutputTokens),
+		zap.Float64("nmt_usd", projection.NMTCostUSD),
+		zap.Float64("llm_usd", projection.LLMCostUSD),
+		zap.Float64("estimated_usd", projection.EstimatedUSD))
 	if o.BudgetUSD > 0 && projection.EstimatedUSD > o.BudgetUSD {
 		log.Warn("projected spend exceeds per-book budget cap",
 			zap.Float64("estimated_usd", projection.EstimatedUSD),
@@ -117,7 +137,8 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 		return result, err
 	}
 
-	if err := o.translateSegments(ctx, cfg, log, segments, result); err != nil {
+	segments, err := mode.Translate(ctx, log, chapters, usedFreeChars, result)
+	if err != nil {
 		return nil, &StageError{Stage: StageTranslate, Err: err}
 	}
 
@@ -154,6 +175,7 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 			StartedAt:     result.StartedAt,
 			EndedAt:       result.EndedAt,
 			ActualCostUSD: result.ActualCostUSD,
+			NMTChars:      result.NMTChars,
 		}); err != nil {
 			log.Warn("unable to record run spend", zap.Error(err))
 		}
@@ -180,134 +202,28 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	log.Info("run completed",
 		zap.Int("tm_hits", result.TMHits),
 		zap.Int("nmt_segments", result.NMTSegments),
-		zap.String("output", outputEPUB),
-	)
-	return result, nil
-}
-
-func (o *Orchestrator) runLiterary(ctx context.Context, cfg RunConfig) (*RunResult, error) {
-	log := o.logger().With(
-		zap.String("run_id", cfg.RunID),
-		zap.String("book_id", cfg.BookID),
-		zap.String("series_id", cfg.SeriesID),
-		zap.Bool("resume", cfg.Resume),
-	)
-	started := time.Now().UTC()
-
-	raw, err := o.Extractor.Extract(ctx, cfg.InputPath)
-	if err != nil {
-		return nil, &StageError{Stage: StageExtract, Err: err}
-	}
-
-	book, err := o.Parser.Parse(ctx, raw)
-	if err != nil {
-		return nil, &StageError{Stage: StageParse, Err: err}
-	}
-
-	chapters, err := o.segmentBookByChapter(ctx, book)
-	if err != nil {
-		return nil, &StageError{Stage: StageSegment, Err: err}
-	}
-
-	segments := flattenChapters(chapters)
-	log.Info("segmented book", zap.Int("segments", len(segments)), zap.Int("chapters", len(chapters)))
-
-	bible, err := o.loadBible(ctx, cfg.SeriesID)
-	if err != nil {
-		return nil, &StageError{Stage: StageTranslate, Err: err}
-	}
-
-	result := &RunResult{
-		SchemaVersion: 1,
-		RunID:         cfg.RunID,
-		BookID:        cfg.BookID,
-		Mode:          ModeLiterary,
-		SeriesID:      cfg.SeriesID,
-		BibleVersion:  bible.Version,
-		StartedAt:     started,
-		TotalSegments: len(segments),
-	}
-
-	projection := o.CostModel.Project(segments)
-	projection.EstimatedUSD += float64(len(segments)) * o.CostModel.LLMPerSegmentUSD
-	result.EstimatedCostUSD = projection.EstimatedUSD
-	if o.BudgetUSD > 0 && projection.EstimatedUSD > o.BudgetUSD {
-		log.Warn("projected spend exceeds per-book budget cap",
-			zap.Float64("estimated_usd", projection.EstimatedUSD),
-			zap.Float64("budget_usd", o.BudgetUSD))
-		return result, fmt.Errorf("unable to start run (estimated $%.4f > per-book cap $%.4f), err: %w",
-			projection.EstimatedUSD, o.BudgetUSD, cost.ErrBudgetExceeded)
-	}
-	if err := o.checkRollingBudgets(ctx, log, projection.EstimatedUSD, started); err != nil {
-		return result, err
-	}
-
-	segments, err = o.translateLiteraryChapters(ctx, cfg, log, chapters, &bible, result)
-	if err != nil {
-		return nil, &StageError{Stage: StageTranslate, Err: err}
-	}
-	result.BibleVersion = bible.Version
-
-	outputEPUB := fmt.Sprintf("%s/translated.epub", cfg.OutputDir)
-	if err := o.Recomposer.Recompose(ctx, raw, book, outputEPUB); err != nil {
-		return nil, &StageError{Stage: StageRecompose, Err: err}
-	}
-	result.OutputEPUB = outputEPUB
-
-	report := qa.Evaluate(book, segments)
-	check, err := o.EPUBCheck.Check(ctx, outputEPUB)
-	if err != nil {
-		return nil, &StageError{Stage: StageQA, Err: err}
-	}
-	report.EPUBCheckPassed = check.Passed
-	report.EPUBCheckSkipped = check.Skipped
-	result.QA = report
-
-	if result.TotalSegments > 0 {
-		result.TMHitRatio = float64(result.TMHits) / float64(result.TotalSegments)
-		result.LLMEscalationRatio = float64(result.LLMSegments) / float64(result.TotalSegments)
-	}
-	if savings := result.EstimatedCostUSD - result.ActualCostUSD; savings > 0 {
-		result.CostSavingsUSD = savings
-	}
-	result.EndedAt = time.Now().UTC()
-
-	if o.TM != nil {
-		if err := o.TM.RecordRun(ctx, tm.RunSpend{
-			RunID:         cfg.RunID,
-			BookID:        cfg.BookID,
-			StartedAt:     result.StartedAt,
-			EndedAt:       result.EndedAt,
-			ActualCostUSD: result.ActualCostUSD,
-		}); err != nil {
-			log.Warn("unable to record run spend", zap.Error(err))
-		}
-	}
-
-	if err := WriteArtifacts(cfg, result, segments); err != nil {
-		return result, &StageError{Stage: StageQA, Err: err}
-	}
-
-	if !qaGatePassed(report) || result.GlossaryViolations > 0 {
-		log.Warn("QA gate failed",
-			zap.Float64("placeholder_restore_ratio", report.PlaceholderRestoreRatio),
-			zap.Int("missing_spine_docs", report.MissingSpineDocs),
-			zap.Int("untranslated_segments", report.UntranslatedSegments),
-			zap.Int("glossary_violations", result.GlossaryViolations),
-			zap.Bool("epubcheck_passed", report.EPUBCheckPassed),
-			zap.Bool("epubcheck_skipped", report.EPUBCheckSkipped),
-		)
-		return result, fmt.Errorf("unable to pass QA gate, err: %w", ErrQAGateFailed)
-	}
-
-	log.Info("literary run completed",
-		zap.Int("tm_hits", result.TMHits),
-		zap.Int("nmt_segments", result.NMTSegments),
 		zap.Int("llm_segments", result.LLMSegments),
 		zap.Int("bible_version", result.BibleVersion),
 		zap.String("output", outputEPUB),
 	)
 	return result, nil
+}
+
+// freeCharsUsed reports how much of the provider's monthly free character
+// allowance this calendar month has already consumed, so the projection bills
+// only the overflow. It fails closed: a ledger read error aborts the run rather
+// than silently projecting a free draft.
+func (o *Orchestrator) freeCharsUsed(ctx context.Context, now time.Time) (int, error) {
+	if o.TM == nil || o.CostModel.FreeCharsPerMonth <= 0 {
+		return 0, nil
+	}
+
+	since := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
+	used, err := o.TM.CharsSince(ctx, since)
+	if err != nil {
+		return 0, fmt.Errorf("unable to read this month's NMT characters, err: %w", err)
+	}
+	return used, nil
 }
 
 // checkRollingBudgets enforces daily and monthly spend caps against the ledger
@@ -367,119 +283,6 @@ func (o *Orchestrator) loadBible(ctx context.Context, seriesID string) (narrativ
 	return bible, nil
 }
 
-func (o *Orchestrator) translateLiteraryChapters(
-	ctx context.Context,
-	cfg RunConfig,
-	log *zap.Logger,
-	chapters []chapterSegments,
-	bible *narrative.Bible,
-	result *RunResult,
-) ([]segment.Segment, error) {
-	if o.LiteraryTranslator == nil {
-		return nil, literary.ErrNilChatClient
-	}
-
-	pm := o.Placeholders
-	if pm == nil {
-		pm = segment.InlinePlaceholderManager{}
-	}
-
-	nmtChars := 0
-	translatedSegments := make([]segment.Segment, 0, result.TotalSegments)
-	for i := range chapters {
-		if err := ctx.Err(); err != nil {
-			return nil, err
-		}
-
-		chapter := &chapters[i]
-		var (
-			fresh        []segment.Segment
-			freshIndices []int
-		)
-
-		for j := range chapter.Segments {
-			seg := &chapter.Segments[j]
-			target, reused, err := o.resolveTranslation(ctx, cfg, seg)
-			if err != nil {
-				return nil, err
-			}
-
-			seg.TargetText = target
-			if reused {
-				seg.Status = segment.StatusReused
-				result.TMHits++
-				continue
-			}
-
-			seg.Status = segment.StatusTranslated
-			result.NMTSegments++
-			nmtChars += utf8.RuneCountInString(seg.SourceText)
-			fresh = append(fresh, *seg)
-			freshIndices = append(freshIndices, j)
-		}
-
-		if len(fresh) > 0 {
-			prevCtx := adjacentChapterText(chapters, i-1)
-			nextCtx := adjacentChapterText(chapters, i+1)
-			literarySegments, usage, err := o.LiteraryTranslator.TranslateChapter(ctx, *bible, chapter.ID, fresh, prevCtx, nextCtx)
-			if err != nil {
-				return nil, err
-			}
-			result.LLMInputTokens += usage.InputTokens
-			result.LLMOutputTokens += usage.OutputTokens
-			result.LLMCacheReadTokens += usage.CacheReadTokens
-			result.LLMCacheCreationTokens += usage.CacheCreationTokens
-
-			for j, literarySeg := range literarySegments {
-				idx := freshIndices[j]
-				chapter.Segments[idx].TargetText = literarySeg.TargetText
-				chapter.Segments[idx].Status = literarySeg.Status
-				if literarySeg.Status == segment.StatusPostEdited {
-					result.LLMSegments++
-					if o.TM != nil {
-						if err := o.TM.Save(ctx, tm.Entry{
-							SourceHash: chapter.Segments[idx].Hash,
-							SourceText: chapter.Segments[idx].SourceText,
-							TargetText: chapter.Segments[idx].TargetText,
-							SourceLang: cfg.SourceLang,
-							TargetLang: cfg.TargetLang,
-							Engine:     "literary",
-						}); err != nil {
-							log.Warn("unable to persist literary TM entry",
-								zap.String("segment_id", chapter.Segments[idx].ID), zap.Error(err))
-						}
-					}
-				}
-			}
-		}
-
-		for j := range chapter.Segments {
-			seg := &chapter.Segments[j]
-			if o.Glossary != nil {
-				result.GlossaryViolations += o.Glossary.Violations(seg.SourceText, seg.TargetText)
-			}
-			if err := pm.Restore(seg.TargetText, seg.Placeholders, seg.Node); err != nil {
-				log.Warn("placeholder restore failed",
-					zap.String("segment_id", seg.ID), zap.Error(err))
-			}
-		}
-
-		// Frozen by default: keep the bible (and thus the system prefix / prompt
-		// cache) stable across chapters and re-runs. Evolve it only when the run
-		// explicitly opts in.
-		if cfg.UpdateBible {
-			if err := o.updateBible(ctx, cfg.SeriesID, bible, chapter); err != nil {
-				return nil, err
-			}
-			result.BibleVersion = bible.Version
-		}
-		translatedSegments = append(translatedSegments, chapter.Segments...)
-	}
-
-	result.ActualCostUSD = o.CostModel.Actual(result.NMTSegments, nmtChars, result.LLMSegments)
-	return translatedSegments, nil
-}
-
 func (o *Orchestrator) updateBible(ctx context.Context, seriesID string, bible *narrative.Bible, chapter *chapterSegments) error {
 	if o.NarrativeProfiler == nil {
 		return nil
@@ -530,6 +333,8 @@ type PlanResult struct {
 	BookID           string                  `json:"book_id"`
 	TotalSegments    int                     `json:"total_segments"`
 	TotalSourceChars int                     `json:"total_source_chars"`
+	Chapters         int                     `json:"chapters"`
+	BatchSize        int                     `json:"batch_size"`
 	EscalationRate   float64                 `json:"escalation_rate"`
 	Scenarios        []cost.ScenarioEstimate `json:"scenarios"`
 }
@@ -537,7 +342,14 @@ type PlanResult struct {
 // Plan runs extract → parse → segment WITHOUT translating, then projects cost
 // across NMT-only / hybrid / full-LLM strategies. It only needs the Extractor,
 // Parser, Segmenter and CostModel to be set.
-func (o *Orchestrator) Plan(ctx context.Context, cfg RunConfig, rates cost.TokenRates, escalationRate float64) (*PlanResult, error) {
+//
+// It segments by chapter, not just by book, because prompt overhead is charged
+// per LLM call and calls are chunked per chapter. That is also what makes this
+// projection comparable with the one the run-time guardrail enforces — down to
+// reading the same free-tier counter off the same ledger.
+func (o *Orchestrator) Plan(
+	ctx context.Context, cfg RunConfig, batchSize int, escalationRate float64,
+) (*PlanResult, error) {
 	raw, err := o.Extractor.Extract(ctx, cfg.InputPath)
 	if err != nil {
 		return nil, &StageError{Stage: StageExtract, Err: err}
@@ -546,38 +358,31 @@ func (o *Orchestrator) Plan(ctx context.Context, cfg RunConfig, rates cost.Token
 	if err != nil {
 		return nil, &StageError{Stage: StageParse, Err: err}
 	}
-	segments, err := o.segmentBook(ctx, book)
+	chapters, err := o.segmentBookByChapter(ctx, book)
 	if err != nil {
 		return nil, &StageError{Stage: StageSegment, Err: err}
 	}
 
-	chars := 0
-	for i := range segments {
-		chars += utf8.RuneCountInString(segments[i].SourceText)
+	usedFreeChars, err := o.freeCharsUsed(ctx, time.Now().UTC())
+	if err != nil {
+		return nil, &StageError{Stage: StageSegment, Err: err}
 	}
+
+	grouped := make([][]segment.Segment, len(chapters))
+	for i := range chapters {
+		grouped[i] = chapters[i].Segments
+	}
+	segments := flattenChapters(chapters)
 
 	return &PlanResult{
 		BookID:           cfg.BookID,
 		TotalSegments:    len(segments),
-		TotalSourceChars: chars,
+		TotalSourceChars: segment.SourceChars(segments),
+		Chapters:         len(chapters),
+		BatchSize:        batchSize,
 		EscalationRate:   escalationRate,
-		Scenarios:        o.CostModel.EstimateScenarios(segments, rates, escalationRate),
+		Scenarios:        o.CostModel.EstimateScenarios(grouped, batchSize, escalationRate, usedFreeChars),
 	}, nil
-}
-
-// segmentBook segments every content document in spine order, assigning stable
-// chapter IDs.
-func (o *Orchestrator) segmentBook(ctx context.Context, book *epub.Book) ([]segment.Segment, error) {
-	chapters, err := o.segmentBookByChapter(ctx, book)
-	if err != nil {
-		return nil, err
-	}
-
-	var all []segment.Segment
-	for _, chapter := range chapters {
-		all = append(all, chapter.Segments...)
-	}
-	return all, nil
 }
 
 func (o *Orchestrator) segmentBookByChapter(ctx context.Context, book *epub.Book) ([]chapterSegments, error) {
@@ -592,7 +397,7 @@ func (o *Orchestrator) segmentBookByChapter(ctx context.Context, book *epub.Book
 		if manifestItem.MediaType != xhtmlMediaType {
 			continue
 		}
-		if isNav(manifestItem) {
+		if manifestItem.IsNav() {
 			continue
 		}
 
@@ -619,29 +424,30 @@ func (o *Orchestrator) segmentBookByChapter(ctx context.Context, book *epub.Book
 }
 
 // translateSegments resolves each segment via the TM cache first and the NMT
-// provider otherwise, then restores placeholders into the live node tree.
+// provider otherwise, then restores placeholders into the live node tree. It
+// returns the source characters sent to each provider so the caller can price
+// the run; pricing itself belongs to the mode, not to the translation loop.
 func (o *Orchestrator) translateSegments(
 	ctx context.Context, cfg RunConfig, log *zap.Logger,
 	segments []segment.Segment, result *RunResult,
-) error {
+) (nmtChars, llmChars int, err error) {
 	pm := o.Placeholders
 	if pm == nil {
 		pm = segment.InlinePlaceholderManager{}
 	}
 
-	nmtChars := 0
 	var qualitySum float64
 	qualityCount := 0
 	for i := range segments {
 		if err := ctx.Err(); err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		seg := &segments[i]
 
 		target, reused, err := o.resolveTranslation(ctx, cfg, seg)
 		if err != nil {
-			return err
+			return 0, 0, err
 		}
 
 		seg.TargetText = target
@@ -682,10 +488,11 @@ func (o *Orchestrator) translateSegments(
 					seg.TargetText = target
 					seg.Status = segment.StatusPostEdited
 					result.LLMSegments++
+					llmChars += utf8.RuneCountInString(seg.SourceText)
 					if o.TM != nil {
 						if err := o.TM.Save(ctx, tm.Entry{
 							SourceHash: seg.Hash, SourceText: seg.SourceText, TargetText: target,
-							SourceLang: cfg.SourceLang, TargetLang: cfg.TargetLang, Engine: "llm-postedit",
+							SourceLang: cfg.SourceLang, TargetLang: cfg.TargetLang, Engine: tm.EngineLLMPostEdit,
 						}); err != nil {
 							log.Warn("unable to persist post-edited TM entry",
 								zap.String("segment_id", seg.ID), zap.Error(err))
@@ -700,19 +507,19 @@ func (o *Orchestrator) translateSegments(
 		}
 
 		if err := pm.Restore(target, seg.Placeholders, seg.Node); err != nil {
-			// A restore failure leaves the original (source) markup in place;
-			// QA will flag the dropped placeholder. Do not abort the whole run.
+			// Restore validates every issued token before it touches the node,
+			// so a failure genuinely leaves the original (source) markup in
+			// place; QA flags the dropped placeholder. Do not abort the run.
 			log.Warn("placeholder restore failed",
 				zap.String("segment_id", seg.ID), zap.Error(err))
 		}
 	}
 
-	result.ActualCostUSD = o.CostModel.Actual(result.NMTSegments, nmtChars, result.LLMSegments)
 	if qualityCount > 0 {
 		result.AvgQualityScore = qualitySum / float64(qualityCount)
 		result.QualityScoredSegments = qualityCount
 	}
-	return nil
+	return nmtChars, llmChars, nil
 }
 
 // shouldEscalate decides whether a freshly translated segment is sent to the
@@ -734,8 +541,38 @@ func (o *Orchestrator) shouldEscalate(seg *segment.Segment, qeScore float64, hav
 	return utf8.RuneCountInString(seg.SourceText) >= o.EscalateMinChars
 }
 
+// lookupTranslation fills seg.TargetText from an exact TM hit and reports
+// whether one was found. Unlike resolveTranslation it never calls the provider
+// and never writes, which is what lets the literary path batch its misses.
+//
+// A raw draft is not a hit here. Literary mode stopped persisting drafts, but
+// databases written by earlier runs still hold them, and serving one would skip
+// refinement for that segment permanently — the exact defect the change was
+// made to remove. Such an entry is treated as a miss: the segment is re-drafted
+// and re-refined, and the finished translation replaces it.
+func (o *Orchestrator) lookupTranslation(ctx context.Context, seg *segment.Segment) (bool, error) {
+	if o.TM == nil {
+		return false, nil
+	}
+
+	entry, found, err := o.TM.Lookup(ctx, seg.Hash)
+	if err != nil {
+		return false, fmt.Errorf("unable to look up TM for %s, err: %w", seg.ID, err)
+	}
+	if !found || tm.IsDraftEngine(entry.Engine) {
+		return false, nil
+	}
+
+	seg.TargetText = entry.TargetText
+	return true, nil
+}
+
 // resolveTranslation returns the target text for a segment, preferring an exact
 // TM hit and falling back to the NMT provider (persisting the new translation).
+//
+// Unlike lookupTranslation it accepts a draft as a hit, and saves one. That is
+// correct here and only here: in NMT mode the draft is the final output for a
+// segment that is not escalated, so refusing it would throw away all TM reuse.
 func (o *Orchestrator) resolveTranslation(ctx context.Context, cfg RunConfig, seg *segment.Segment) (string, bool, error) {
 	if o.TM != nil {
 		entry, found, err := o.TM.Lookup(ctx, seg.Hash)
@@ -785,6 +622,15 @@ func (o *Orchestrator) resolveTranslation(ctx context.Context, cfg RunConfig, se
 	return target, false, nil
 }
 
+// placeholders returns the configured placeholder manager, defaulting to the
+// inline one.
+func (o *Orchestrator) placeholders() segment.PlaceholderManager {
+	if o.Placeholders != nil {
+		return o.Placeholders
+	}
+	return segment.InlinePlaceholderManager{}
+}
+
 func (o *Orchestrator) logger() *zap.Logger {
 	if o.Logger != nil {
 		return o.Logger
@@ -792,13 +638,13 @@ func (o *Orchestrator) logger() *zap.Logger {
 	return zap.NewNop()
 }
 
-func isNav(item epub.ManifestItem) bool {
-	for _, p := range item.Properties {
-		if p == "nav" {
-			return true
-		}
+// countSegments totals a book's segments without materialising the flat slice.
+func countSegments(chapters []chapterSegments) int {
+	total := 0
+	for i := range chapters {
+		total += len(chapters[i].Segments)
 	}
-	return false
+	return total
 }
 
 func flattenChapters(chapters []chapterSegments) []segment.Segment {

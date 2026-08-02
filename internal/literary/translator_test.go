@@ -137,11 +137,11 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Bonjour."}]}`)
 	tr := literary.Translator{Chat: chat, Model: "model-a", Glossary: gloss}
 
-	_, _, err = tr.TranslateChapter(t.Context(), bibleFixture(), "ch_0001", []segment.Segment{{
+	_, err = tr.TranslateChapter(t.Context(), bibleFixture(), "ch_0001", chapterOf(segment.Segment{
 		ID:         "s1",
 		SourceText: "Bilbo arrived.",
 		TargetText: "Bilbon arriva.",
-	}}, "previous", "next")
+	}), "previous", "Bilbo arrived. And then he left.")
 	require.NoError(t, err)
 
 	require.Len(t, chat.lastReq().Messages, 2)
@@ -153,9 +153,13 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	require.Contains(t, stable, "RESUME_DE_L_HISTOIRE")
 	require.Contains(t, stable, "Alice meets Bruno at the gate.")
 	require.Contains(t, stable, "Bilbo => Bilbon")
+	// The chapter's own source rides in the cacheable prefix, not in the
+	// per-batch turn: it is identical across every batch of the chapter.
+	require.Contains(t, stable, "SOURCE_INTEGRALE_DU_CHAPITRE")
+	require.Contains(t, stable, "And then he left.")
 	require.Contains(t, volatile, "SEGMENTS_DU_CHAPITRE_JSON")
 	require.Contains(t, volatile, "previous")
-	require.Contains(t, volatile, "next")
+	require.NotContains(t, volatile, "CONTEXTE_SUIVANT")
 
 	combined := stable + volatile
 	require.Less(t,
@@ -174,13 +178,13 @@ func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
 	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Une affirmation <x id=\"1\"/>grasse<x id=\"2\"/>."}]}`)
 	tr := literary.Translator{Chat: chat}
 
-	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
+	segs := chapterOf(seg)
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
-	require.Len(t, out, 1)
-	require.Equal(t, segment.StatusPostEdited, out[0].Status)
+	require.Equal(t, segment.StatusPostEdited, segs[0].Status)
 
-	require.NoError(t, segment.InlinePlaceholderManager{}.Restore(out[0].TargetText, out[0].Placeholders, out[0].Node))
-	rendered := renderNode(t, out[0].Node)
+	require.NoError(t, segment.InlinePlaceholderManager{}.Restore(segs[0].TargetText, segs[0].Placeholders, segs[0].Node))
+	rendered := renderNode(t, segs[0].Node)
 	require.Contains(t, rendered, "<em>grasse</em>")
 	require.Contains(t, rendered, "Une affirmation")
 }
@@ -196,10 +200,11 @@ func TestTranslator_FallsBackWhenPlaceholderDropped(t *testing.T) {
 	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Texte sans jeton."}]}`)
 	tr := literary.Translator{Chat: chat}
 
-	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{seg}, "", "")
+	segs := chapterOf(seg)
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
-	require.Equal(t, `Brouillon <x id="1"/> sûr.`, out[0].TargetText)
-	require.Equal(t, segment.StatusTranslated, out[0].Status)
+	require.Equal(t, `Brouillon <x id="1"/> sûr.`, segs[0].TargetText)
+	require.Equal(t, segment.StatusTranslated, segs[0].Status)
 }
 
 func TestTranslator_GlossaryLockedTermEnforced(t *testing.T) {
@@ -211,13 +216,14 @@ func TestTranslator_GlossaryLockedTermEnforced(t *testing.T) {
 	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Bonjour <g id=\"1\"/>."}]}`)
 	tr := literary.Translator{Chat: chat, Glossary: gloss}
 
-	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", []segment.Segment{{
+	segs := chapterOf(segment.Segment{
 		ID:         "s1",
 		SourceText: "Bilbo waved.",
 		TargetText: "Bilbon salua.",
-	}}, "", "")
+	})
+	_, err = tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
-	require.Equal(t, "Bonjour Bilbon.", out[0].TargetText)
+	require.Equal(t, "Bonjour Bilbon.", segs[0].TargetText)
 	require.Contains(t, chat.lastReq().Messages[1].Content, `<g id=\"1\"/>`)
 }
 
@@ -228,7 +234,7 @@ func TestTranslator_SplitsChapterIntoBatchesAndSumsUsage(t *testing.T) {
 	chat := &echoChat{}
 	tr := literary.Translator{Chat: chat, BatchSize: 10}
 
-	out, usage, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	usage, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
 
 	require.Len(t, chat.batches, 3, "25 segments at BatchSize 10 must be 3 calls")
@@ -242,7 +248,7 @@ func TestTranslator_SplitsChapterIntoBatchesAndSumsUsage(t *testing.T) {
 	}
 	require.ElementsMatch(t, segmentIDs(segs), requested, "batches must partition the chapter without overlap")
 
-	for _, seg := range out {
+	for _, seg := range segs {
 		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
 		require.Equal(t, segment.StatusPostEdited, seg.Status)
 	}
@@ -264,14 +270,14 @@ func TestTranslator_RetriesSegmentsTheModelStoppedShortOf(t *testing.T) {
 	chat := &echoChat{maxSegments: 3}
 	tr := literary.Translator{Chat: chat, BatchSize: len(segs)}
 
-	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
 
 	require.Greater(t, len(chat.batches), 1, "an incomplete batch must be retried on smaller batches")
 	for _, batch := range chat.batches[1:] {
 		require.Less(t, len(batch), len(segs), "retries must be smaller than the batch that failed")
 	}
-	for _, seg := range out {
+	for _, seg := range segs {
 		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
 		require.Equal(t, segment.StatusPostEdited, seg.Status)
 	}
@@ -284,24 +290,63 @@ func TestTranslator_ContextFollowsTheBatchBoundary(t *testing.T) {
 	chat := &echoChat{}
 	tr := literary.Translator{Chat: chat, BatchSize: 10}
 
-	_, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
-		segs, "AVANT_LE_CHAPITRE", "APRES_LE_CHAPITRE")
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
+		segs, "AVANT_LE_CHAPITRE", "SOURCE_DU_CHAPITRE_ENTIER")
 	require.NoError(t, err)
 	require.Len(t, chat.reqs, 2)
 
-	// The first batch opens the chapter, so it gets the caller's context before
-	// it and the second batch's source after it.
-	first := volatileSections(t, chat.reqs[0])
-	require.Contains(t, first.prev, "AVANT_LE_CHAPITRE")
-	require.Contains(t, first.next, "Claim s011", "a batch must see the source that follows it")
-	require.NotContains(t, first.next, "APRES_LE_CHAPITRE")
+	// What follows a batch no longer travels per call: the chapter's whole
+	// source sits in the cached prefix, identical for both batches.
+	for _, req := range chat.reqs {
+		require.Contains(t, req.Messages[0].Content, "SOURCE_DU_CHAPITRE_ENTIER")
+	}
+	require.Equal(t, chat.reqs[0].Messages[0].Content, chat.reqs[1].Messages[0].Content,
+		"the cacheable prefix must be byte-identical across a chapter's batches")
+
+	// The first batch opens the chapter, so it gets the caller's context.
+	require.Contains(t, precedingContext(t, chat.reqs[0]), "AVANT_LE_CHAPITRE")
 
 	// The second batch continues from the French just produced, not from the
-	// previous chapter, and closes the chapter so it gets the caller's tail.
-	second := volatileSections(t, chat.reqs[1])
-	require.Contains(t, second.prev, "traduction s010", "a batch must see the translation that precedes it")
-	require.NotContains(t, second.prev, "AVANT_LE_CHAPITRE")
-	require.Contains(t, second.next, "APRES_LE_CHAPITRE")
+	// previous chapter.
+	second := precedingContext(t, chat.reqs[1])
+	require.Contains(t, second, "traduction s010", "a batch must see the translation that precedes it")
+	require.NotContains(t, second, "AVANT_LE_CHAPITRE")
+}
+
+func TestTranslator_RefusalIsANamedFailure(t *testing.T) {
+	t.Parallel()
+
+	// An HTTP 200 with empty content and stop_reason=refusal. Splitting the
+	// batch will not change the model's mind, so it must fail loudly rather
+	// than look like a malformed reply and trigger the halving retry.
+	chat := &stubChat{replies: []llm.ChatResponse{{StopReason: llm.StopReasonRefusal}}}
+	tr := literary.Translator{Chat: chat, BatchSize: 10}
+
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
+		numberedSegments(20), "", "source")
+
+	require.ErrorIs(t, err, literary.ErrProviderRefusal)
+	require.Len(t, chat.reqs, 2, "a refusal must fail its batch outright, not split it")
+}
+
+func TestTranslator_TruncationOnASingleSegmentIsNamed(t *testing.T) {
+	t.Parallel()
+
+	// One segment, cut off mid-JSON with stop_reason=max_tokens. There is
+	// nothing left to split, so the segment keeps its draft — but the reason is
+	// reported instead of silently reading as a decode failure.
+	chat := &stubChat{replies: []llm.ChatResponse{{
+		Text:       `{"segments":[{"id":"s001","target_`,
+		StopReason: llm.StopReasonMaxTokens,
+	}}}
+	tr := literary.Translator{Chat: chat}
+
+	segs := chapterOf(segment.Segment{ID: "s001", SourceText: "Claim.", TargetText: "brouillon"})
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "source")
+
+	require.ErrorIs(t, err, literary.ErrIncompleteResponse)
+	require.Equal(t, "brouillon", segs[0].TargetText,
+		"a chapter where nothing was translated leaves its drafts untouched")
 }
 
 func TestTranslator_ChapterSurvivesOneFailedBatch(t *testing.T) {
@@ -312,14 +357,14 @@ func TestTranslator_ChapterSurvivesOneFailedBatch(t *testing.T) {
 	chat := &echoChat{errOnCall: 2}
 	tr := literary.Translator{Chat: chat, BatchSize: 10}
 
-	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err, "one bad batch must not discard the batch that succeeded")
 
-	for _, seg := range out[:10] {
+	for _, seg := range segs[:10] {
 		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
 		require.Equal(t, segment.StatusPostEdited, seg.Status)
 	}
-	for _, seg := range out[10:] {
+	for _, seg := range segs[10:] {
 		// Same degradation as a segment the model simply did not answer: the
 		// draft survives and the status tells the caller it was not post-edited.
 		require.Equal(t, "Claim "+seg.ID, seg.TargetText)
@@ -333,7 +378,7 @@ func TestTranslator_ErrorsWhenNoBatchProducesAnything(t *testing.T) {
 	chat := &echoChat{errOnCall: 1}
 	tr := literary.Translator{Chat: chat, BatchSize: 10}
 
-	_, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", numberedSegments(5), "", "")
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", numberedSegments(5), "", "")
 	require.ErrorContains(t, err, "provider unavailable",
 		"a chapter that produced nothing must fail loudly, not return English")
 }
@@ -347,11 +392,11 @@ func TestTranslator_RetriesUnparseableResponseOnSmallerBatches(t *testing.T) {
 	chat := &echoChat{truncateOver: 3}
 	tr := literary.Translator{Chat: chat, BatchSize: len(segs)}
 
-	out, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
 
 	require.Greater(t, len(chat.batches), 1, "a truncated response must be retried on smaller batches")
-	for _, seg := range out {
+	for _, seg := range segs {
 		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
 		require.Equal(t, segment.StatusPostEdited, seg.Status)
 	}
@@ -361,38 +406,43 @@ func TestTranslator_NilChat(t *testing.T) {
 	t.Parallel()
 
 	tr := literary.Translator{}
-	_, _, err := tr.TranslateChapter(t.Context(), narrative.Bible{}, "ch_0001", []segment.Segment{{ID: "s1"}}, "", "")
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{}, "ch_0001", chapterOf(segment.Segment{ID: "s1"}), "", "")
 	require.ErrorIs(t, err, literary.ErrNilChatClient)
 }
 
-func numberedSegments(n int) []segment.Segment {
+// chapterOf builds the pointer slice TranslateChapter rewrites in place.
+func chapterOf(segs ...segment.Segment) []*segment.Segment {
+	out := make([]*segment.Segment, len(segs))
+	for i := range segs {
+		out[i] = &segs[i]
+	}
+	return out
+}
+
+func numberedSegments(n int) []*segment.Segment {
 	segs := make([]segment.Segment, n)
 	for i := range segs {
 		id := fmt.Sprintf("s%03d", i+1)
 		segs[i] = segment.Segment{ID: id, SourceText: "Claim " + id}
 	}
-	return segs
+	return chapterOf(segs...)
 }
 
-// volatileSections splits the volatile message into the context blocks the
-// translator sends around a batch.
-func volatileSections(t *testing.T, req llm.ChatRequest) struct{ prev, next string } {
+// precedingContext returns the context block the translator sends ahead of a
+// batch in the volatile message.
+func precedingContext(t *testing.T, req llm.ChatRequest) string {
 	t.Helper()
 
 	content := req.Messages[len(req.Messages)-1].Content
 	prevStart := strings.Index(content, "CONTEXTE_PRECEDENT:")
-	nextStart := strings.Index(content, "CONTEXTE_SUIVANT:")
 	payloadStart := strings.Index(content, "SEGMENTS_DU_CHAPITRE_JSON:")
-	require.True(t, prevStart >= 0 && prevStart < nextStart && nextStart < payloadStart,
-		"volatile message must carry both context blocks before the payload")
+	require.True(t, prevStart >= 0 && prevStart < payloadStart,
+		"volatile message must carry the preceding context before the payload")
 
-	return struct{ prev, next string }{
-		prev: content[prevStart:nextStart],
-		next: content[nextStart:payloadStart],
-	}
+	return content[prevStart:payloadStart]
 }
 
-func segmentIDs(segs []segment.Segment) []string {
+func segmentIDs(segs []*segment.Segment) []string {
 	ids := make([]string, 0, len(segs))
 	for _, seg := range segs {
 		ids = append(ids, seg.ID)

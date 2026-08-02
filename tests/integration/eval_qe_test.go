@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ECecillo/ebooks-translator/internal/commandexec"
+	"github.com/ECecillo/ebooks-translator/internal/config"
 	"github.com/ECecillo/ebooks-translator/internal/eval/comettest"
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 )
@@ -32,9 +33,8 @@ func TestEval_QEMode(t *testing.T) {
 		`{"source_text":"Hello <x id=\"1\"/> world","target_text":"Bonjour <x id=\"1\"/> le monde"}`+"\n"+
 			`{"source_text":"The end.","target_text":"La fin."}`+"\n"), 0o600))
 
-	loader := func() (commandexec.RuntimeConfig, error) {
-		return commandexec.RuntimeConfig{
-			Env: "test", NMTProvider: "http", NMTEndpoint: "http://unused",
+	loader := func() (config.Config, error) {
+		return config.Config{
 			CometEndpoint: srv.URL,
 		}, nil
 	}
@@ -54,8 +54,8 @@ func TestEval_QEMode_NoEndpoint(t *testing.T) {
 	segments := filepath.Join(dir, "segments.jsonl")
 	require.NoError(t, os.WriteFile(segments, []byte(`{"source_text":"x","target_text":"y"}`+"\n"), 0o600))
 
-	loader := func() (commandexec.RuntimeConfig, error) {
-		return commandexec.RuntimeConfig{Env: "test", NMTProvider: "http", NMTEndpoint: "http://unused"}, nil
+	loader := func() (config.Config, error) {
+		return config.Config{}, nil
 	}
 
 	var stdout, stderr bytes.Buffer

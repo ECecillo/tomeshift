@@ -56,7 +56,12 @@ func writeMetrics(path string, result *RunResult) error {
 	}
 
 	metrics := map[string]float64{
-		"translation_segments_total":            float64(result.TotalSegments),
+		"translation_segments_total": float64(result.TotalSegments),
+		// The provider's free tier is denominated in characters per calendar
+		// month, not in dollars, so a run inside it costs nothing while still
+		// consuming the allowance the next one is billed against. Cost alone
+		// cannot show that burn.
+		"translation_nmt_chars_total":           float64(result.NMTChars),
 		"translation_cache_hit_ratio":           result.TMHitRatio,
 		"translation_llm_escalation_ratio":      result.LLMEscalationRatio,
 		"translation_cost_usd_total":            result.ActualCostUSD,

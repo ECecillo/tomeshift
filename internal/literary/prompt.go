@@ -19,14 +19,29 @@ RÈGLES ABSOLUES :
 FORMAT ATTENDU :
 {"segments":[{"id":"ID_DU_SEGMENT","target_text":"texte traduit en français parfait"}]}`
 
-func composeMessages(bible narrative.Bible, terms []glossary.Term, chapterPayload, prevCtx, nextCtx string) []llm.ChatMessage {
+func composeMessages(bible narrative.Bible, terms []glossary.Term, chapterSource, chapterPayload, prevCtx string) []llm.ChatMessage {
 	return []llm.ChatMessage{
-		{Role: "system", Content: stablePrefix(bible, terms)},
-		{Role: "user", Content: volatilePrompt(chapterPayload, prevCtx, nextCtx)},
+		{Role: "system", Content: stablePrefix(bible, terms, chapterSource)},
+		{Role: "user", Content: volatilePrompt(chapterPayload, prevCtx)},
 	}
 }
 
-func stablePrefix(bible narrative.Bible, terms []glossary.Term) string {
+// stablePrefix builds the cacheable system block: the frozen specification
+// (style guide, character voices, address rules, glossary) plus the full source
+// of the chapter being corrected.
+//
+// The chapter source is here rather than in the user turn on purpose. It is
+// constant across every batch of a chapter, so the prompt cache absorbs it
+// after the first call; putting it in the volatile turn would re-send it on
+// each batch at full input price. It replaces the two 1200-rune windows that
+// used to bracket each batch: the model now sees the whole chapter it is
+// correcting, which is what answers a pronoun referent or a callback.
+//
+// It does not carry style coherence. That comes from the frozen specification
+// above, which is byte-identical in every call of every chapter, and from the
+// glossary, enforced mechanically by Protect/Apply rather than entrusted to the
+// model.
+func stablePrefix(bible narrative.Bible, terms []glossary.Term, chapterSource string) string {
 	var sb strings.Builder
 	sb.WriteString(systemInstruction)
 	sb.WriteString("\n\nGUIDE_DE_STYLE:\n")
@@ -78,18 +93,23 @@ func stablePrefix(bible narrative.Bible, terms []glossary.Term) string {
 		}
 	}
 
+	sb.WriteString("\nSOURCE_INTEGRALE_DU_CHAPITRE:\n")
+	sb.WriteString(emptyAsNone(chapterSource))
+
 	return sb.String()
 }
 
-func volatilePrompt(chapterPayload, prevCtx, nextCtx string) string {
+// volatilePrompt is the per-batch turn. It carries only what changes between
+// batches: the segments to correct, and the French already produced for the
+// batch before them so register and pronouns carry across the seam. What
+// follows the batch is no longer sent — the chapter source in the prefix covers
+// it, and cached.
+func volatilePrompt(chapterPayload, prevCtx string) string {
 	return fmt.Sprintf(`CONTEXTE_PRECEDENT:
 %s
 
-CONTEXTE_SUIVANT:
-%s
-
 SEGMENTS_DU_CHAPITRE_JSON:
-%s`, emptyAsNone(prevCtx), emptyAsNone(nextCtx), chapterPayload)
+%s`, emptyAsNone(prevCtx), chapterPayload)
 }
 
 func emptyAsNone(s string) string {

@@ -80,7 +80,7 @@ func TestLiterary_LocalMistral_CompletesEverySegment(t *testing.T) {
 			defer cancel()
 
 			segs := syntheticChapter(tt.segments)
-			out, usage, err := tr.TranslateChapter(ctx,
+			usage, err := tr.TranslateChapter(ctx,
 				narrative.Bible{StyleGuide: "Prose littéraire sobre, phrases courtes."},
 				"ch_0001", segs, "", "")
 			require.NoError(t, err)
@@ -88,7 +88,7 @@ func TestLiterary_LocalMistral_CompletesEverySegment(t *testing.T) {
 			t.Logf("tokens — input: %d, output: %d", usage.InputTokens, usage.OutputTokens)
 
 			untranslated := 0
-			for _, seg := range out {
+			for _, seg := range segs {
 				// A segment is considered untranslated when its target equals its
 				// source (English) — exactly the fallback behaviour we are guarding.
 				if strings.EqualFold(strings.TrimSpace(seg.TargetText), strings.TrimSpace(seg.SourceText)) {
@@ -101,7 +101,7 @@ func TestLiterary_LocalMistral_CompletesEverySegment(t *testing.T) {
 	}
 }
 
-func syntheticChapter(n int) []segment.Segment {
+func syntheticChapter(n int) []*segment.Segment {
 	sentences := []string{
 		"The wind howled through the broken towers.",
 		"Kael pressed his back against the cold stone wall.",
@@ -115,9 +115,9 @@ func syntheticChapter(n int) []segment.Segment {
 		"Nothing had survived the last incursion.",
 	}
 
-	segs := make([]segment.Segment, n)
+	segs := make([]*segment.Segment, n)
 	for i := range segs {
-		segs[i] = segment.Segment{
+		segs[i] = &segment.Segment{
 			ID:         fmt.Sprintf("ch_0001_s%04d", i+1),
 			SourceText: sentences[i%len(sentences)],
 		}

@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ECecillo/ebooks-translator/internal/commandexec"
+	"github.com/ECecillo/ebooks-translator/internal/config"
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 )
 
@@ -26,7 +27,7 @@ func TestGlossarySuggest_WritesSkeleton(t *testing.T) {
 	code := commandexec.Execute(
 		[]string{"glossary-suggest", "--input", book, "--min-count", "2", "--out", out},
 		&stdout, &stderr,
-		func() (commandexec.RuntimeConfig, error) { return commandexec.RuntimeConfig{}, nil },
+		func() (config.Config, error) { return config.Config{}, nil },
 	)
 	require.Equal(t, exitcode.Success, code, "stderr: %s", stderr.String())
 	require.Contains(t, stdout.String(), "Gandalf")

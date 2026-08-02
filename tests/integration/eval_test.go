@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ECecillo/ebooks-translator/internal/commandexec"
+	"github.com/ECecillo/ebooks-translator/internal/config"
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 )
 
@@ -19,7 +20,7 @@ func runEvalCmd(t *testing.T, candidate, reference string) (string, string, int)
 	code := commandexec.Execute(
 		[]string{"eval", "--candidate", candidate, "--reference", reference},
 		&stdout, &stderr,
-		func() (commandexec.RuntimeConfig, error) { return commandexec.RuntimeConfig{}, nil },
+		func() (config.Config, error) { return config.Config{}, nil },
 	)
 	return stdout.String(), stderr.String(), code
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ECecillo/ebooks-translator/internal/commandexec"
+	"github.com/ECecillo/ebooks-translator/internal/config"
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 	"github.com/ECecillo/ebooks-translator/internal/llm/openaitest"
 	"github.com/ECecillo/ebooks-translator/internal/narrative"
@@ -35,8 +36,8 @@ func TestStyleProfile_WritesNarrativeBible(t *testing.T) {
 	})
 	t.Cleanup(srv.Close)
 
-	loader := func() (commandexec.RuntimeConfig, error) {
-		return commandexec.RuntimeConfig{
+	loader := func() (config.Config, error) {
+		return config.Config{
 			NarrativePath:   dbPath,
 			LLMChatProvider: "openai",
 			LLMBaseURL:      srv.URL + "/v1",

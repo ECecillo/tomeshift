@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ECecillo/ebooks-translator/internal/commandexec"
+	"github.com/ECecillo/ebooks-translator/internal/config"
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 	"github.com/ECecillo/ebooks-translator/internal/pipeline"
 	"github.com/ECecillo/ebooks-translator/internal/translate/nmttest"
@@ -102,9 +103,8 @@ func TestRun_FixtureEPUBs(t *testing.T) {
 			input := writeEPUB(t, chapters)
 			runsDir := filepath.Join(t.TempDir(), "runs")
 
-			loader := func() (commandexec.RuntimeConfig, error) {
-				return commandexec.RuntimeConfig{
-					Env:         "test",
+			loader := func() (config.Config, error) {
+				return config.Config{
 					NMTProvider: "http",
 					NMTEndpoint: srv.URL,
 					LogLevel:    "info",
@@ -138,6 +138,24 @@ func TestRun_FixtureEPUBs(t *testing.T) {
 			require.GreaterOrEqual(t, report.TotalSegments, len(chapters))
 			require.Equal(t, "itest", report.RunID)
 
+			// The metrics list in docs/ARCHITECTURE.md §10 is a contract; this
+			// is what keeps it one. nmt_chars in particular is not derivable
+			// from cost: the provider's free tier is denominated in characters.
+			metrics := readMetrics(t, filepath.Join(outDir, "metrics.json"))
+			for _, name := range []string{
+				"translation_segments_total",
+				"translation_nmt_chars_total",
+				"translation_cache_hit_ratio",
+				"translation_llm_escalation_ratio",
+				"translation_cost_usd_total",
+				"translation_placeholder_restore_ratio",
+				"epub_validation_failures_total",
+			} {
+				require.Contains(t, metrics, name, "metrics.json must always carry %s", name)
+			}
+			require.Equal(t, float64(report.NMTChars), metrics["translation_nmt_chars_total"])
+			require.Positive(t, metrics["translation_nmt_chars_total"])
+
 			// Translated text is present and inline markup survived.
 			chapter := readZipEntry(t, filepath.Join(outDir, "translated.epub"), "OEBPS/chap1.xhtml")
 			require.Contains(t, chapter, "[fr] ")
@@ -166,9 +184,9 @@ func TestRun_GlossaryEnforcement(t *testing.T) {
 	require.NoError(t, os.WriteFile(glossaryPath,
 		[]byte(`[{"term_en":"Bilbo","term_fr":"Bilbon","locked":true}]`), 0o600))
 
-	loader := func() (commandexec.RuntimeConfig, error) {
-		return commandexec.RuntimeConfig{
-			Env: "test", NMTProvider: "http", NMTEndpoint: srv.URL,
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NMTProvider: "http", NMTEndpoint: srv.URL,
 			LogLevel: "info", TMPath: filepath.Join(t.TempDir(), "tm.sqlite"),
 		}, nil
 	}
@@ -206,9 +224,9 @@ func TestRun_ResumeIsIdempotent(t *testing.T) {
 	runsDir := filepath.Join(t.TempDir(), "runs")
 	sharedTM := filepath.Join(t.TempDir(), "tm.sqlite") // persists across runs
 
-	loader := func() (commandexec.RuntimeConfig, error) {
-		return commandexec.RuntimeConfig{
-			Env: "test", NMTProvider: "http", NMTEndpoint: srv.URL,
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NMTProvider: "http", NMTEndpoint: srv.URL,
 			LogLevel: "info", TMPath: sharedTM,
 		}, nil
 	}
@@ -245,14 +263,15 @@ func TestRun_ResumeIsIdempotent(t *testing.T) {
 	)
 }
 
+// TestEstimate_DryRun also pins that a dry run needs no NMT endpoint: it never
+// translates, so requiring one only ever refused to start.
 func TestEstimate_DryRun(t *testing.T) {
 	t.Parallel()
 
 	input := writeEPUB(t, []string{`<h1>One</h1><p>Hello world.</p><p>Second paragraph here.</p>`})
 
-	loader := func() (commandexec.RuntimeConfig, error) {
-		return commandexec.RuntimeConfig{
-			Env: "test", NMTProvider: "http", NMTEndpoint: "http://unused",
+	loader := func() (config.Config, error) {
+		return config.Config{
 			LLMInputPerMTokUSD: 3, LLMOutputPerMTokUSD: 15, LLMOutputExpansion: 1.15,
 			LLMPromptOverheadToks: 100,
 		}, nil
@@ -271,6 +290,17 @@ func TestEstimate_DryRun(t *testing.T) {
 	require.Contains(t, out, "hybrid")
 	require.Contains(t, out, "full-llm")
 	require.Contains(t, out, "segments")
+}
+
+func readMetrics(t *testing.T, path string) map[string]float64 {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
+	require.NoError(t, err)
+
+	var metrics map[string]float64
+	require.NoError(t, json.Unmarshal(raw, &metrics))
+	return metrics
 }
 
 func readReport(t *testing.T, path string) pipeline.RunResult {
@@ -303,4 +333,23 @@ func readZipEntry(t *testing.T, zipPath, entry string) string {
 	}
 	t.Fatalf("entry %q not found", entry)
 	return ""
+}
+
+func TestRun_MissingNMTEndpointFailsBeforeTranslating(t *testing.T) {
+	t.Parallel()
+
+	input := writeEPUB(t, []string{`<h1>One</h1><p>Hello world.</p>`})
+	loader := func() (config.Config, error) {
+		return config.Config{NMTProvider: "http", TMPath: filepath.Join(t.TempDir(), "tm.sqlite")}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := commandexec.Execute([]string{
+		"run", "--input", input, "--output-dir", filepath.Join(t.TempDir(), "runs"),
+		"--source-lang", "en", "--target-lang", "fr",
+	}, &stdout, &stderr, loader)
+
+	// The setting is named, and nothing was extracted or parsed first.
+	require.Equal(t, exitcode.InvalidInputConfig, code)
+	require.Contains(t, stderr.String(), "EPUB_TRANSLATOR_NMT_ENDPOINT")
 }

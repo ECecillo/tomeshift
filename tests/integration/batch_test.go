@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/ECecillo/ebooks-translator/internal/commandexec"
+	"github.com/ECecillo/ebooks-translator/internal/config"
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 	"github.com/ECecillo/ebooks-translator/internal/pipeline"
 	"github.com/ECecillo/ebooks-translator/internal/translate/nmttest"
@@ -31,9 +32,9 @@ func TestBatch_SharedTMAcrossBooks(t *testing.T) {
 		[]string{`<h1>B</h1><p>A shared sentence across the series.</p><p>Unique to B.</p>`})
 
 	outputDir := filepath.Join(t.TempDir(), "runs")
-	loader := func() (commandexec.RuntimeConfig, error) {
-		return commandexec.RuntimeConfig{
-			Env: "test", NMTProvider: "http", NMTEndpoint: srv.URL,
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NMTProvider: "http", NMTEndpoint: srv.URL,
 			LogLevel: "info", TMPath: filepath.Join(t.TempDir(), "shared-tm.sqlite"),
 		}, nil
 	}
@@ -80,9 +81,9 @@ func TestBatch_WithReferenceScoring(t *testing.T) {
 		[]string{`<h1>Titre</h1><p>[fr] Hello world.</p>`})
 
 	outputDir := filepath.Join(t.TempDir(), "runs")
-	loader := func() (commandexec.RuntimeConfig, error) {
-		return commandexec.RuntimeConfig{
-			Env: "test", NMTProvider: "http", NMTEndpoint: srv.URL,
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NMTProvider: "http", NMTEndpoint: srv.URL,
 			LogLevel: "info", TMPath: filepath.Join(t.TempDir(), "tm.sqlite"),
 		}, nil
 	}
