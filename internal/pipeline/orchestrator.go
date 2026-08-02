@@ -142,12 +142,28 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 		return result, err
 	}
 
-	// From here on the run can call paid providers, so its spend is recorded
-	// whatever happens next. A run that drafted half a book and then failed to
-	// recompose has still been billed for that half, and dropping the record
-	// would leave the next run's free-tier projection wrong by exactly that
-	// much.
-	defer o.recordSpend(ctx, cfg, log, mode, result, usedFreeChars)
+	// From here on the run can call paid providers, so its consumption is
+	// totalled and recorded whatever happens next. A run that drafted half a
+	// book and then failed to recompose has still been billed for that half,
+	// and dropping the record would leave the next run's free-tier projection
+	// wrong by exactly that much.
+	//
+	// finalise is single-shot: the success path calls it before writing the
+	// report so the artifacts carry the same figures the ledger does, and the
+	// deferred call covers every path that never got there.
+	var finalised bool
+	finalise := func() {
+		if finalised {
+			return
+		}
+		finalised = true
+		result.NMTChars = o.billableNMTChars(result.NMTChars)
+		result.ActualCostUSD = mode.Cost(result, usedFreeChars)
+	}
+	defer func() {
+		finalise()
+		o.recordSpend(ctx, cfg, log, result)
+	}()
 
 	segments, err := mode.Translate(ctx, log, chapters, usedFreeChars, result)
 	if err != nil {
@@ -169,7 +185,7 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	report.EPUBCheckSkipped = check.Skipped
 	result.QA = report
 
-	result.ActualCostUSD = mode.Cost(result, usedFreeChars)
+	finalise()
 	if result.TotalSegments > 0 {
 		result.TMHitRatio = float64(result.TMHits) / float64(result.TotalSegments)
 		result.LLMEscalationRatio = float64(result.LLMSegments) / float64(result.TotalSegments)
@@ -216,21 +232,35 @@ func (o *Orchestrator) nmtEngine() string {
 	return o.Translator.Engine()
 }
 
+// retryReporter is implemented by translators that re-send text on a transient
+// failure. It is optional: an adapter with no retries has nothing to report.
+type retryReporter interface {
+	RetriedChars() int
+}
+
+// billableNMTChars is what the provider actually charged for: the characters
+// translated, plus the ones re-sent by retried attempts. The pipeline only ever
+// sees one translation per segment, so without this a run retried into success
+// under-reports its consumption of a per-character allowance.
+func (o *Orchestrator) billableNMTChars(translated int) int {
+	reporter, ok := o.Translator.(retryReporter)
+	if !ok {
+		return translated
+	}
+	return translated + reporter.RetriedChars()
+}
+
 // recordSpend persists what the run consumed, for rolling-budget and free-tier
 // accounting. It is deferred, so it fires on the failure paths too — the
 // provider does not refund a run that died after it was called.
 //
 // Best effort: a ledger write failure must not turn an otherwise successful run
 // into a failed one.
-func (o *Orchestrator) recordSpend(
-	ctx context.Context, cfg RunConfig, log *zap.Logger,
-	mode translationMode, result *RunResult, usedFreeChars int,
-) {
+func (o *Orchestrator) recordSpend(ctx context.Context, cfg RunConfig, log *zap.Logger, result *RunResult) {
 	if o.TM == nil {
 		return
 	}
 
-	result.ActualCostUSD = mode.Cost(result, usedFreeChars)
 	if result.EndedAt.IsZero() {
 		result.EndedAt = time.Now().UTC()
 	}

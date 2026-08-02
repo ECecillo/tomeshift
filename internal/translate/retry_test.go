@@ -100,3 +100,29 @@ func TestNewRetryingTranslator_Defaults(t *testing.T) {
 	require.Equal(t, 3, rt.MaxAttempts)
 	require.Equal(t, 200*time.Millisecond, rt.BaseDelay)
 }
+
+func TestRetryingTranslator_CountsRetriedCharacters(t *testing.T) {
+	t.Parallel()
+
+	// The provider bills per character per request, so a batch that only
+	// succeeds on the third attempt was paid for three times even though the
+	// caller sees one translation of it.
+	inner := &fakeTranslator{failUpTo: 2, err: errors.New("transient")}
+	rt := translate.NewRetryingTranslator(inner, 3, time.Millisecond)
+
+	_, err := rt.TranslateBatch(t.Context(), translate.BatchRequest{Texts: []string{"abcde", "fghij"}})
+	require.NoError(t, err)
+
+	// Two failed attempts re-sent all 10 characters each.
+	require.Equal(t, 20, rt.RetriedChars())
+}
+
+func TestRetryingTranslator_NoRetriesCostNothingExtra(t *testing.T) {
+	t.Parallel()
+
+	rt := translate.NewRetryingTranslator(&fakeTranslator{}, 3, time.Millisecond)
+	_, err := rt.TranslateBatch(t.Context(), translate.BatchRequest{Texts: []string{"abcde"}})
+
+	require.NoError(t, err)
+	require.Zero(t, rt.RetriedChars())
+}
