@@ -97,4 +97,11 @@ func (t *LibreTranslator) Translate(ctx context.Context, req Request) (Response,
 	return Response{Text: decoded.TranslatedText, Engine: engineLibreTranslate}, nil
 }
 
+// TranslateBatch loops over Translate. LibreTranslate accepts an array in `q`,
+// but the self-hosted Argos path is being retired in favour of Google, so the
+// loop is kept rather than adding a second wire shape to maintain.
+func (t *LibreTranslator) TranslateBatch(ctx context.Context, req BatchRequest) ([]Response, error) {
+	return translateEach(ctx, t, req)
+}
+
 var _ Translator = (*LibreTranslator)(nil)

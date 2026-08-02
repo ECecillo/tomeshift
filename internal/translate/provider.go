@@ -5,7 +5,17 @@ package translate
 const (
 	ProviderHTTP           = "http"           // our own {text,source_lang,target_lang} dev contract
 	ProviderLibreTranslate = "libretranslate" // self-hosted LibreTranslate / Argos
+	ProviderGoogle         = "google"         // Google Cloud Translation v2 (Basic)
 )
+
+// RequiresEndpoint reports whether a provider needs an explicit endpoint.
+// Cloud Translation has one public host, so the Google adapter supplies it and
+// the setting is optional there; the self-hosted engines have nowhere to
+// default to. Callers use this to fail before a run rather than at the first
+// segment.
+func RequiresEndpoint(provider string) bool {
+	return provider != ProviderGoogle
+}
 
 // NewProvider builds the NMT Translator for the configured provider. Unknown
 // providers fall back to the default HTTP adapter so a typo never disables
@@ -13,6 +23,8 @@ const (
 // required.
 func NewProvider(provider, endpoint, apiKey string) Translator {
 	switch provider {
+	case ProviderGoogle:
+		return NewGoogleTranslator(endpoint, apiKey)
 	case ProviderLibreTranslate:
 		return NewLibreTranslator(endpoint, apiKey)
 	default:

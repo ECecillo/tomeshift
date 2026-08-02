@@ -97,4 +97,10 @@ func (t *HTTPTranslator) Translate(ctx context.Context, req Request) (Response, 
 	return Response{Text: decoded.TranslatedText, Engine: engineHTTP}, nil
 }
 
+// TranslateBatch loops over Translate: this dev contract carries one text per
+// call, so batching only saves the caller from writing the loop.
+func (t *HTTPTranslator) TranslateBatch(ctx context.Context, req BatchRequest) ([]Response, error) {
+	return translateEach(ctx, t, req)
+}
+
 var _ Translator = (*HTTPTranslator)(nil)

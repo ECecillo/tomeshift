@@ -37,6 +37,21 @@ func (r *RetryingTranslator) Engine() string { return r.Inner.Engine() }
 // Translate retries the wrapped call up to MaxAttempts, sleeping between
 // attempts. It aborts immediately if the context is cancelled.
 func (r *RetryingTranslator) Translate(ctx context.Context, req Request) (Response, error) {
+	return retryCall(ctx, r, func() (Response, error) { return r.Inner.Translate(ctx, req) })
+}
+
+// TranslateBatch retries the whole batch. Translation is idempotent and the
+// providers charge per character, so a retry costs the batch again rather than
+// risking a partially-applied chapter.
+func (r *RetryingTranslator) TranslateBatch(ctx context.Context, req BatchRequest) ([]Response, error) {
+	return retryCall(ctx, r, func() ([]Response, error) { return r.Inner.TranslateBatch(ctx, req) })
+}
+
+// retryCall runs call up to MaxAttempts times with linear backoff, aborting
+// immediately if the context is cancelled.
+func retryCall[T any](ctx context.Context, r *RetryingTranslator, call func() (T, error)) (T, error) {
+	var zero T
+
 	attempts := r.MaxAttempts
 	if attempts <= 0 {
 		attempts = defaultMaxAttempts
@@ -44,7 +59,7 @@ func (r *RetryingTranslator) Translate(ctx context.Context, req Request) (Respon
 
 	var lastErr error
 	for attempt := 1; attempt <= attempts; attempt++ {
-		resp, err := r.Inner.Translate(ctx, req)
+		resp, err := call()
 		if err == nil {
 			return resp, nil
 		}
@@ -56,12 +71,12 @@ func (r *RetryingTranslator) Translate(ctx context.Context, req Request) (Respon
 
 		select {
 		case <-ctx.Done():
-			return Response{}, ctx.Err()
+			return zero, ctx.Err()
 		case <-time.After(time.Duration(attempt) * r.BaseDelay):
 		}
 	}
 
-	return Response{}, fmt.Errorf("unable to translate after %d attempts, err: %w", attempts, lastErr)
+	return zero, fmt.Errorf("unable to translate after %d attempts, err: %w", attempts, lastErr)
 }
 
 var _ Translator = (*RetryingTranslator)(nil)

@@ -28,6 +28,30 @@ func (f *fakeTranslator) Translate(_ context.Context, _ translate.Request) (tran
 	return translate.Response{Text: "ok", Engine: "fake"}, nil
 }
 
+func (f *fakeTranslator) TranslateBatch(_ context.Context, req translate.BatchRequest) ([]translate.Response, error) {
+	f.calls++
+	if f.calls <= f.failUpTo {
+		return nil, f.err
+	}
+	out := make([]translate.Response, len(req.Texts))
+	for i := range out {
+		out[i] = translate.Response{Text: "ok", Engine: "fake"}
+	}
+	return out, nil
+}
+
+func TestRetryingTranslator_RetriesBatch(t *testing.T) {
+	t.Parallel()
+
+	inner := &fakeTranslator{failUpTo: 2, err: errors.New("transient")}
+	rt := translate.NewRetryingTranslator(inner, 3, time.Millisecond)
+
+	resps, err := rt.TranslateBatch(t.Context(), translate.BatchRequest{Texts: []string{"a", "b"}})
+	require.NoError(t, err)
+	require.Len(t, resps, 2)
+	require.Equal(t, 3, inner.calls)
+}
+
 func TestRetryingTranslator_SucceedsAfterRetries(t *testing.T) {
 	t.Parallel()
 
