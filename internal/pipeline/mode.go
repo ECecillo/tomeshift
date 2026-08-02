@@ -271,13 +271,19 @@ func (m *literaryMode) refine(
 	outcome, err := m.orch.LiteraryTranslator.TranslateChapter(
 		ctx, m.bible, chapter.ID, fresh,
 		adjacentChapterText(chapters, idx-1), chapterSourceText(chapter.Segments))
-	if err != nil {
-		return err
-	}
+
+	// Before the error check, deliberately. A chapter where every batch failed
+	// still returns the usage it consumed getting there — a refusal and a
+	// truncation are both billable responses — and the deferred spend recorder
+	// would otherwise price that chapter as if the calls never happened.
 	result.LLMInputTokens += outcome.Usage.InputTokens
 	result.LLMOutputTokens += outcome.Usage.OutputTokens
 	result.LLMCacheReadTokens += outcome.Usage.CacheReadTokens
 	result.LLMCacheCreationTokens += outcome.Usage.CacheCreationTokens
+
+	if err != nil {
+		return err
+	}
 
 	// A batch that failed while others succeeded leaves its segments on their
 	// draft and does not fail the chapter. Without this the named refusal and

@@ -390,6 +390,24 @@ func TestTranslator_ChapterSurvivesOneFailedBatch(t *testing.T) {
 	}
 }
 
+func TestTranslator_FailedChapterStillReportsWhatItConsumed(t *testing.T) {
+	t.Parallel()
+
+	// Every batch refused, so the chapter is an error — but a refusal is a
+	// billable response. Returning zero usage with the error would let the run
+	// be priced as if the calls never happened.
+	chat := &stubChat{replies: []llm.ChatResponse{{
+		StopReason: llm.StopReasonRefusal, InputTokens: 900, OutputTokens: 0,
+	}}}
+	tr := literary.Translator{Chat: chat, BatchSize: 10}
+
+	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
+		numberedSegments(20), "", "source")
+
+	require.Error(t, err)
+	require.Positive(t, outcome.Usage.InputTokens, "billable tokens must survive the error")
+}
+
 func TestTranslator_ErrorsWhenNoBatchProducesAnything(t *testing.T) {
 	t.Parallel()
 
