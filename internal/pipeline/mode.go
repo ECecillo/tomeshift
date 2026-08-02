@@ -3,7 +3,6 @@ package pipeline
 import (
 	"context"
 	"fmt"
-	"unicode/utf8"
 
 	"go.uber.org/zap"
 
@@ -217,10 +216,6 @@ func (m *literaryMode) Translate(
 		for _, seg := range fresh {
 			seg.Status = segment.StatusTranslated
 			result.NMTSegments++
-			// Accumulated as it happens, not totalled at the end: the provider
-			// has already been paid for these, and a chapter that fails later
-			// must not erase them from the ledger.
-			result.NMTChars += utf8.RuneCountInString(seg.SourceText)
 		}
 
 		if err := m.refine(ctx, log, chapters, i, fresh, result); err != nil {

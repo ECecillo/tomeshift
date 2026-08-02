@@ -151,10 +151,10 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	// finalise is single-shot: the success path calls it before writing the
 	// report so the artifacts carry the same figures the ledger does, and the
 	// deferred call covers every path that never got there.
-	// The retry counter lives as long as the translator, and `batch` shares one
-	// across every book, so a run is charged the delta over its own lifetime
-	// rather than the running total.
-	retriedBefore := o.retriedChars()
+	//
+	// The meter runs for the adapter's lifetime and `batch` shares one across
+	// every book, so a run is charged the delta over its own lifetime.
+	sentBefore := o.charsSent()
 
 	var finalised bool
 	finalise := func() {
@@ -162,7 +162,7 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 			return
 		}
 		finalised = true
-		result.NMTChars += o.retriedChars() - retriedBefore
+		result.NMTChars = o.charsSent() - sentBefore
 		result.ActualCostUSD = mode.Cost(result, usedFreeChars)
 	}
 	defer func() {
@@ -237,20 +237,19 @@ func (o *Orchestrator) nmtEngine() string {
 	return o.Translator.Engine()
 }
 
-// retryReporter is implemented by translators that re-send text on a transient
-// failure. It is optional: an adapter with no retries has nothing to report.
-type retryReporter interface {
-	RetriedChars() int
-}
-
-// retriedChars reads the translator's lifetime count of re-sent characters, or
-// 0 from an adapter that does not retry.
-func (o *Orchestrator) retriedChars() int {
-	reporter, ok := o.Translator.(retryReporter)
+// charsSent reads the adapter's running total of characters actually put into
+// provider requests, or 0 from one that does not meter itself.
+//
+// The pipeline no longer derives this from segment source text. Only the
+// adapter knows what really went out: retried attempts, glossary-protected text
+// whose length differs from the source, and requests whose response was
+// discarded were all invisible to a count reconstructed from segments.
+func (o *Orchestrator) charsSent() int {
+	meter, ok := o.Translator.(translate.Meter)
 	if !ok {
 		return 0
 	}
-	return reporter.RetriedChars()
+	return meter.CharsSent()
 }
 
 // recordSpend persists what the run consumed, for rolling-budget and free-tier
@@ -542,7 +541,6 @@ func (o *Orchestrator) translateSegments(
 		} else {
 			seg.Status = segment.StatusTranslated
 			result.NMTSegments++
-			result.NMTChars += utf8.RuneCountInString(seg.SourceText)
 
 			// Reference-free quality estimation (e.g. COMET-QE) on the NMT draft,
 			// used both to drive escalation and to report per-book quality.

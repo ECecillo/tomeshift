@@ -55,6 +55,8 @@ type GoogleTranslator struct {
 	Endpoint string
 	APIKey   string
 	Client   *http.Client
+
+	charMeter
 }
 
 // NewGoogleTranslator builds an adapter targeting Cloud Translation v2. An
@@ -146,6 +148,7 @@ func (t *GoogleTranslator) translateChunk(ctx context.Context, texts []string, s
 		client = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 
+	t.record(texts...)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("unable to call google translate endpoint, err: %w", err)

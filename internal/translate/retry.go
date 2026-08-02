@@ -3,9 +3,7 @@ package translate
 import (
 	"context"
 	"fmt"
-	"sync/atomic"
 	"time"
-	"unicode/utf8"
 )
 
 const (
@@ -19,12 +17,6 @@ type RetryingTranslator struct {
 	Inner       Translator
 	MaxAttempts int           // total attempts; <= 0 falls back to the default
 	BaseDelay   time.Duration // delay before retry N is N*BaseDelay
-
-	// retriedChars accumulates the source characters re-sent by attempts after
-	// the first. Providers bill per character per request, so a retried batch
-	// is paid for twice even though the pipeline only ever sees one
-	// translation of it.
-	retriedChars atomic.Int64
 }
 
 // NewRetryingTranslator wraps inner. maxAttempts <= 0 and baseDelay <= 0 use
@@ -45,34 +37,29 @@ func (r *RetryingTranslator) Engine() string { return r.Inner.Engine() }
 // Translate retries the wrapped call up to MaxAttempts, sleeping between
 // attempts. It aborts immediately if the context is cancelled.
 func (r *RetryingTranslator) Translate(ctx context.Context, req Request) (Response, error) {
-	return retryCall(ctx, r, utf8.RuneCountInString(req.Text),
-		func() (Response, error) { return r.Inner.Translate(ctx, req) })
+	return retryCall(ctx, r, func() (Response, error) { return r.Inner.Translate(ctx, req) })
 }
 
 // TranslateBatch retries the whole batch. Translation is idempotent and the
 // providers charge per character, so a retry costs the batch again rather than
 // risking a partially-applied chapter.
 func (r *RetryingTranslator) TranslateBatch(ctx context.Context, req BatchRequest) ([]Response, error) {
-	chars := 0
-	for _, text := range req.Texts {
-		chars += utf8.RuneCountInString(text)
-	}
-	return retryCall(ctx, r, chars,
-		func() ([]Response, error) { return r.Inner.TranslateBatch(ctx, req) })
+	return retryCall(ctx, r, func() ([]Response, error) { return r.Inner.TranslateBatch(ctx, req) })
 }
 
-// RetriedChars reports the source characters re-sent by retried attempts over
-// this translator's lifetime. The pipeline adds them to what it was billed
-// for: a batch translated on the third attempt cost the provider three times,
-// and the free-tier counter has to say so.
-func (r *RetryingTranslator) RetriedChars() int {
-	return int(r.retriedChars.Load())
+// CharsSent delegates to the wrapped adapter, which counts at the request
+// boundary and therefore already includes every retried attempt.
+func (r *RetryingTranslator) CharsSent() int {
+	meter, ok := r.Inner.(Meter)
+	if !ok {
+		return 0
+	}
+	return meter.CharsSent()
 }
 
 // retryCall runs call up to MaxAttempts times with linear backoff, aborting
-// immediately if the context is cancelled. chars is what one attempt sends, so
-// every attempt after the first can be added to the billable total.
-func retryCall[T any](ctx context.Context, r *RetryingTranslator, chars int, call func() (T, error)) (T, error) {
+// immediately if the context is cancelled.
+func retryCall[T any](ctx context.Context, r *RetryingTranslator, call func() (T, error)) (T, error) {
 	var zero T
 
 	attempts := r.MaxAttempts
@@ -91,8 +78,6 @@ func retryCall[T any](ctx context.Context, r *RetryingTranslator, chars int, cal
 		if attempt == attempts {
 			break
 		}
-		// About to send the same text again; the provider charges for it again.
-		r.retriedChars.Add(int64(chars))
 
 		select {
 		case <-ctx.Done():

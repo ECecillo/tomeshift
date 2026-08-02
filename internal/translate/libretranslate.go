@@ -31,6 +31,8 @@ type LibreTranslator struct {
 	Endpoint string
 	APIKey   string
 	Client   *http.Client
+
+	charMeter
 }
 
 // NewLibreTranslator builds an adapter targeting a LibreTranslate /translate
@@ -75,6 +77,7 @@ func (t *LibreTranslator) Translate(ctx context.Context, req Request) (Response,
 		client = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 
+	t.record(req.Text)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return Response{}, fmt.Errorf("unable to call libretranslate endpoint, err: %w", err)

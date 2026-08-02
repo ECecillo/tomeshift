@@ -33,6 +33,8 @@ type HTTPTranslator struct {
 	Endpoint string
 	APIKey   string
 	Client   *http.Client
+
+	charMeter
 }
 
 // NewHTTPTranslator builds an HTTP NMT adapter targeting endpoint. apiKey is
@@ -75,6 +77,7 @@ func (t *HTTPTranslator) Translate(ctx context.Context, req Request) (Response, 
 		client = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 
+	t.record(req.Text)
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return Response{}, fmt.Errorf("unable to call nmt endpoint, err: %w", err)

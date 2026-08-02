@@ -2,7 +2,11 @@ package translate_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -101,28 +105,44 @@ func TestNewRetryingTranslator_Defaults(t *testing.T) {
 	require.Equal(t, 200*time.Millisecond, rt.BaseDelay)
 }
 
-func TestRetryingTranslator_CountsRetriedCharacters(t *testing.T) {
+func TestRetryingTranslator_CharsSentIncludesEveryAttempt(t *testing.T) {
 	t.Parallel()
 
-	// The provider bills per character per request, so a batch that only
-	// succeeds on the third attempt was paid for three times even though the
-	// caller sees one translation of it.
-	inner := &fakeTranslator{failUpTo: 2, err: errors.New("transient")}
-	rt := translate.NewRetryingTranslator(inner, 3, time.Millisecond)
+	// Counting lives in the adapter, at the request boundary, so a batch that
+	// only succeeds on the third attempt reports all three sends — and the
+	// retry wrapper simply passes the figure through.
+	var attempts int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts++
+		if attempts < 3 {
+			http.Error(w, "flaky", http.StatusInternalServerError)
+			return
+		}
+		var req struct {
+			Text string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"translated_text": req.Text})
+	}))
+	t.Cleanup(srv.Close)
 
-	_, err := rt.TranslateBatch(t.Context(), translate.BatchRequest{Texts: []string{"abcde", "fghij"}})
+	rt := translate.NewRetryingTranslator(translate.NewHTTPTranslator(srv.URL, ""), 3, time.Millisecond)
+	_, err := rt.Translate(t.Context(), translate.Request{Text: "abcde"})
+
 	require.NoError(t, err)
-
-	// Two failed attempts re-sent all 10 characters each.
-	require.Equal(t, 20, rt.RetriedChars())
+	require.Equal(t, 3, attempts)
+	require.Equal(t, 15, rt.CharsSent(), "five characters, sent three times")
 }
 
-func TestRetryingTranslator_NoRetriesCostNothingExtra(t *testing.T) {
+func TestRetryingTranslator_ARejectedRequestCostsNothing(t *testing.T) {
 	t.Parallel()
 
-	rt := translate.NewRetryingTranslator(&fakeTranslator{}, 3, time.Millisecond)
-	_, err := rt.TranslateBatch(t.Context(), translate.BatchRequest{Texts: []string{"abcde"}})
+	// Google rejects an oversized segment before building a request. Counting
+	// around the retry loop billed it three times for text never sent.
+	rt := translate.NewRetryingTranslator(translate.NewGoogleTranslator("http://127.0.0.1:1", "k"), 3, time.Millisecond)
+	_, err := rt.Translate(t.Context(), translate.Request{Text: strings.Repeat("a", 30_001)})
 
-	require.NoError(t, err)
-	require.Zero(t, rt.RetriedChars())
+	require.ErrorIs(t, err, translate.ErrTextTooLong)
+	require.Zero(t, rt.CharsSent())
 }
