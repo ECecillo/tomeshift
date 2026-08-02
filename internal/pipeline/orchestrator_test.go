@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -229,6 +231,58 @@ func TestOrchestrator_Run_FailedRunStillRecordsWhatItSpent(t *testing.T) {
 	used, err := store.CharsSince(t.Context(), time.Now().UTC().Add(-time.Hour), "nmt-http")
 	require.NoError(t, err)
 	require.Positive(t, used, "characters already sent must survive the failure")
+}
+
+func TestOrchestrator_Run_RetriedCharsAreNotCarriedBetweenRuns(t *testing.T) {
+	t.Parallel()
+
+	// One transient failure per book, then success.
+	var calls int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		if calls%2 == 1 {
+			http.Error(w, "flaky", http.StatusInternalServerError)
+			return
+		}
+		var req struct {
+			Text string `json:"text"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"translated_text": "[fr] " + req.Text})
+	}))
+	t.Cleanup(srv.Close)
+
+	store, err := tm.NewSQLiteStore(filepath.Join(t.TempDir(), "tm.sqlite"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	// `batch` reuses one orchestrator — and therefore one RetryingTranslator,
+	// whose retried-character counter runs for its whole lifetime — across
+	// every book.
+	orch := newOrchestrator(t, translate.NewRetryingTranslator(
+		translate.NewHTTPTranslator(srv.URL, ""), 3, time.Millisecond))
+	orch.TM = store
+
+	run := func(id string) int {
+		result, err := orch.Run(t.Context(), pipeline.RunConfig{
+			InputPath:  writeFixtureEPUB(t),
+			OutputDir:  filepath.Join(t.TempDir(), id),
+			SourceLang: "en", TargetLang: "fr", RunID: id, BookID: id,
+		})
+		require.NoError(t, err)
+		return result.NMTChars
+	}
+
+	first := run("book-1")
+	require.Positive(t, first, "the first run translated and retried")
+
+	// The second run is the same book, so every segment is a TM hit: it calls
+	// the provider zero times. It must therefore record zero characters, not
+	// inherit the first run's retries from a counter that lives as long as the
+	// translator — which is exactly how `batch` shares one.
+	require.Zero(t, run("book-2"),
+		"retried characters must be scoped to the run that re-sent them")
 }
 
 func TestOrchestrator_Run_BudgetAbort(t *testing.T) {

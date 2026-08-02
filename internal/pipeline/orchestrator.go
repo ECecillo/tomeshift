@@ -151,13 +151,18 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	// finalise is single-shot: the success path calls it before writing the
 	// report so the artifacts carry the same figures the ledger does, and the
 	// deferred call covers every path that never got there.
+	// The retry counter lives as long as the translator, and `batch` shares one
+	// across every book, so a run is charged the delta over its own lifetime
+	// rather than the running total.
+	retriedBefore := o.retriedChars()
+
 	var finalised bool
 	finalise := func() {
 		if finalised {
 			return
 		}
 		finalised = true
-		result.NMTChars = o.billableNMTChars(result.NMTChars)
+		result.NMTChars += o.retriedChars() - retriedBefore
 		result.ActualCostUSD = mode.Cost(result, usedFreeChars)
 	}
 	defer func() {
@@ -238,16 +243,14 @@ type retryReporter interface {
 	RetriedChars() int
 }
 
-// billableNMTChars is what the provider actually charged for: the characters
-// translated, plus the ones re-sent by retried attempts. The pipeline only ever
-// sees one translation per segment, so without this a run retried into success
-// under-reports its consumption of a per-character allowance.
-func (o *Orchestrator) billableNMTChars(translated int) int {
+// retriedChars reads the translator's lifetime count of re-sent characters, or
+// 0 from an adapter that does not retry.
+func (o *Orchestrator) retriedChars() int {
 	reporter, ok := o.Translator.(retryReporter)
 	if !ok {
-		return translated
+		return 0
 	}
-	return translated + reporter.RetriedChars()
+	return reporter.RetriedChars()
 }
 
 // recordSpend persists what the run consumed, for rolling-budget and free-tier
