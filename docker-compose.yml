@@ -74,6 +74,13 @@ services:
       #   EPUB_TRANSLATOR_NMT_PROVIDER=libretranslate
       #   EPUB_TRANSLATOR_NMT_ENDPOINT=http://libretranslate:5000/translate
       - EPUB_TRANSLATOR_NMT_ENDPOINT=http://nmt:8081/translate
+      # Secrets are not in .env.local anymore, and env_file is read from disk by
+      # Compose — so a `op run -- docker compose up` would inject nothing
+      # without these. Interpolation resolves them from Compose's own
+      # environment, which is exactly what `op run` provides. They default to
+      # empty so a run with no secrets (dev NMT, no LLM) still starts.
+      - EPUB_TRANSLATOR_LLM_API_KEY=${EPUB_TRANSLATOR_LLM_API_KEY:-}
+      - EPUB_TRANSLATOR_NMT_API_KEY=${EPUB_TRANSLATOR_NMT_API_KEY:-}
     depends_on:
       nmt:
         condition: service_healthy

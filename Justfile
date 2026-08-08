@@ -1,7 +1,34 @@
 set shell := ["bash", "-cu"]
 
 # Default env file sourced by recipes that need EPUB_TRANSLATOR_* variables.
+# Non-secret only: secrets live in a 1Password vault and are injected per
+# command via `op run` (see secret_refs below).
 env_file := ".env.local"
+
+# 1Password secret references, resolved at run time into the launched process
+# and nowhere else. Only the recipes that actually call a paid provider are
+# wrapped, so `estimate`, `glossary-suggest` and `eval-ref` never prompt.
+secret_refs := ".env.op"
+
+# Shell snippet setting `runner` to the `op run` prefix, but only when the run
+# genuinely needs a credential — asking for one it will not use trains you to
+# approve prompts without reading them.
+#
+# Two configurations need none: a self-hosted NMT engine, and the CLI-backed
+# chat provider, which authenticates through its own subscription session.
+# A recipe that calls the LLM sets uses_llm=1 before expanding this.
+#
+# `${runner[@]+...}` rather than `${runner[@]}`: macOS still ships bash 3.2,
+# where expanding an empty array under `set -u` is an error.
+op_guard := '''
+runner=()
+need_secret=0
+if [ "${EPUB_TRANSLATOR_NMT_PROVIDER:-}" = "google" ]; then need_secret=1; fi
+if [ "${uses_llm:-0}" = "1" ] && [ "${EPUB_TRANSLATOR_LLM_CHAT_PROVIDER:-}" != "claude-cli" ]; then
+  need_secret=1
+fi
+if [ "$need_secret" = "1" ]; then runner=(op run --env-file=.env.op --); fi
+'''
 
 # Show available commands.
 default:
@@ -74,7 +101,8 @@ run input output_dir="./runs":
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
-    go run ./cmd/epub-translator run \
+    {{op_guard}}
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator run \
       --input "{{input}}" --output-dir "{{output_dir}}" \
       --source-lang en --target-lang fr
 
@@ -89,9 +117,13 @@ literary input series glossary="" run_id="":
     args=(run --input "{{input}}" --output-dir ./runs --source-lang en --target-lang fr --mode literary --series "{{series}}")
     if [ -n "{{glossary}}" ]; then args+=(--glossary "{{glossary}}"); fi
     if [ -n "{{run_id}}" ]; then args+=(--run-id "{{run_id}}"); fi
-    go run ./cmd/epub-translator "${args[@]}"
+    uses_llm=1
+    {{op_guard}}
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
 
 # Project the LLM cost of a book before paying (0 API calls). Arg: input EPUB.
+# Deliberately NOT wrapped in `op run`: it makes no provider call, so it must
+# not ask for a credential to do arithmetic.
 estimate input:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -108,7 +140,8 @@ batch input_dir glossary="" reference_dir="":
     args=(batch --input-dir "{{input_dir}}" --output-dir ./runs)
     if [ -n "{{glossary}}" ]; then args+=(--glossary "{{glossary}}"); fi
     if [ -n "{{reference_dir}}" ]; then args+=(--reference-dir "{{reference_dir}}"); fi
-    go run ./cmd/epub-translator "${args[@]}"
+    {{op_guard}}
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
 
 # ── Series bible & glossary ───────────────────────────────────────────────────
 
@@ -122,7 +155,9 @@ seed-bible input series samples="8" merge="":
     set -a; source "{{env_file}}"; set +a
     args=(style-profile --input "{{input}}" --series "{{series}}" --samples "{{samples}}")
     if [ "{{merge}}" = "merge" ]; then args+=(--merge); fi
-    go run ./cmd/epub-translator "${args[@]}"
+    uses_llm=1
+    {{op_guard}}
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
 
 # Build the series bible BEFORE translating, from every volume in a directory
 # (RFC 0008). Style/voices/address are seeded from all volumes; summaries are one
@@ -138,7 +173,9 @@ series-bible input_dir series samples="8" merge="":
     set -a; source "{{env_file}}"; set +a
     args=(series-bible --input-dir "{{input_dir}}" --series "{{series}}" --samples "{{samples}}")
     if [ "{{merge}}" = "merge" ]; then args+=(--merge); fi
-    go run ./cmd/epub-translator "${args[@]}"
+    uses_llm=1
+    {{op_guard}}
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
 
 # Pretty-print a series bible from a SQLite DB. Args: db path, series id.
 #   just bible ./data/lumen-series.sqlite lumen
@@ -201,8 +238,17 @@ docker-build:
     docker build -t epub-translator:local .
 
 # Run the containerized NMT workflow (app + nmt).
+# Wrapped in `op run` when a secret is needed, so Compose can interpolate the
+# API keys into the app service; without it the container starts with empty
+# credentials, which is correct for the default dev-NMT workflow and wrong for
+# anything paid.
 up:
-    docker compose up --build app
+    #!/usr/bin/env bash
+    set -euo pipefail
+    set -a; source "{{env_file}}"; set +a
+    uses_llm=1
+    {{op_guard}}
+    "${runner[@]+"${runner[@]}"}" docker compose up --build app
 
 # Stop and remove compose resources.
 down:
