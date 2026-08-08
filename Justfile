@@ -37,20 +37,62 @@ default:
 # ── Setup & build ───────────────────────────────────────────────────────────
 
 # Validate local prerequisites and basic runtime configuration.
+#
+# The toolchain itself is mise's job (mise.toml): this checks what mise does not
+# manage — the config file, the 1Password session, the tools with no usable
+# backend — and pings the NMT endpoint.
 preflight:
-    test -f "{{env_file}}" || (echo "missing {{env_file}} (copy .env.example first)"; exit 1)
-    command -v go >/dev/null || (echo "missing dependency: go"; exit 1)
-    command -v java >/dev/null || (echo "missing dependency: java"; exit 1)
-    command -v golangci-lint >/dev/null || (echo "missing dependency: golangci-lint"; exit 1)
-    command -v rg >/dev/null || (echo "missing dependency: rg"; exit 1)
-    set -a; source "{{env_file}}"; set +a; \
-      if [ -n "${EPUB_TRANSLATOR_NMT_ENDPOINT:-}" ] && command -v curl >/dev/null; then \
-        curl -fsS --max-time 2 "${EPUB_TRANSLATOR_NMT_ENDPOINT%/}/health" >/dev/null && \
-        echo "nmt endpoint health: ok" || \
-        echo "nmt endpoint health: unavailable (non-blocking)"; \
-      else \
-        echo "nmt endpoint health: skipped (curl or endpoint missing)"; \
+    #!/usr/bin/env bash
+    set -uo pipefail
+    fail=0
+
+    test -f "{{env_file}}" || { echo "missing {{env_file}} (cp .env.example {{env_file}})"; fail=1; }
+
+    # Toolchain: one check instead of the five hand-written ones that used to
+    # miss python3, sqlite3, uv and docker entirely.
+    if command -v mise >/dev/null; then
+      if mise ls --missing --no-header 2>/dev/null | grep -q .; then
+        echo "toolchain: missing versions — run 'mise install'"
+        mise ls --missing --no-header 2>/dev/null | awk '{printf "  - %s %s\n", $1, $2}'
+        fail=1
+      else
+        echo "toolchain: ok (mise)"
       fi
+    else
+      echo "mise not found: install it (https://mise.jdx.dev) or provide go, java>=21, just, golangci-lint, rg, python3 and uv yourself"
+      fail=1
+    fi
+
+    # Not managed by mise, on purpose — see the comments in mise.toml.
+    command -v sqlite3 >/dev/null || echo "sqlite3 not found: 'just bible' will not work (non-blocking)"
+    command -v docker  >/dev/null || echo "docker not found: container recipes will not work (non-blocking)"
+
+    # Secrets. A missing op session must say so here rather than surface as a
+    # raw 'op' error in the middle of a paid run.
+    if [ -f "{{secret_refs}}" ]; then
+      if ! command -v op >/dev/null; then
+        echo "1password cli not found: recipes that call a provider will fail (see {{secret_refs}})"
+        fail=1
+      elif ! op whoami >/dev/null 2>&1; then
+        echo "1password: not signed in — run 'op signin', or unlock the desktop app"
+        fail=1
+      else
+        echo "1password: ok ($(op whoami --format=json 2>/dev/null | sed -n 's/.*"url": "\([^"]*\)".*/\1/p'))"
+      fi
+    fi
+
+    if [ -f "{{env_file}}" ]; then
+      set -a; source "{{env_file}}"; set +a
+      if [ -n "${EPUB_TRANSLATOR_NMT_ENDPOINT:-}" ] && command -v curl >/dev/null; then
+        curl -fsS --max-time 2 "${EPUB_TRANSLATOR_NMT_ENDPOINT%/}/health" >/dev/null 2>&1 && \
+          echo "nmt endpoint health: ok" || \
+          echo "nmt endpoint health: unavailable (non-blocking)"
+      else
+        echo "nmt endpoint health: skipped (curl or endpoint missing)"
+      fi
+    fi
+
+    exit $fail
 
 # Build the CLI binary to ./bin/epub-translator.
 build:
@@ -290,4 +332,4 @@ fuzz fuzz_time="10s":
 check: fmt lint test
 
 # Run CI-equivalent checks locally.
-ci-local: preflight fmt lint test
+ci-local: preflight fmt lint test docs-audit

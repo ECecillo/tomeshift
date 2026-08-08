@@ -1,0 +1,44 @@
+# Toolchain and non-secret environment for epub-translator.
+#
+# `mise install` gets every tool the Justfile actually calls, at one pinned set
+# of versions shared by every machine and by CI. Before this file, `just
+# preflight` checked five tools by hand while the recipes called ten: python3,
+# sqlite3, uv and docker failed as a raw "command not found" at the moment you
+# ran `just bible` or `just compare`.
+#
+# Secrets are deliberately NOT here — see .env.op and the `op run` wrapping in
+# the Justfile.
+
+[tools]
+# Matches the `go` directive in go.mod, which is also what CI resolves from.
+go = "1.26"
+# epubcheck needs a JRE >= 21. That requirement used to live only in prose.
+java = "temurin-21"
+# mise installs the task runner; the Justfile stays the runner.
+just = "1"
+golangci-lint = "latest"
+ripgrep = "latest"
+# scripts/*.py: carve_chapter, compare_sidebyside, cost_model, docs_audit.
+python = "3.12"
+# COMET-QE service. 3.12 is also what the COMET stack needs — the bleeding-edge
+# Pythons hit dependency conflicts in that stack.
+uv = "latest"
+
+# Deliberately not managed here:
+#   - `op` (1Password CLI): biometric unlock goes through the desktop app, which
+#     authorizes the CLI binary it knows. Letting a mise shim shadow a working
+#     Homebrew install risks breaking that for no gain. `just preflight` checks
+#     it instead.
+#   - `sqlite3`: only reachable through the conda backend, and every supported
+#     OS ships it. `just preflight` checks it.
+#   - `epubcheck`: a jar, not a binary — no backend serves it. Point
+#     EPUB_TRANSLATOR_EPUBCHECK_JAR at it, or let the QA gate skip it.
+#   - `docker`: a daemon, not a CLI version to pin.
+
+[env]
+# Non-secret runtime configuration. Copy .env.example to .env.local first; mise
+# refuses to activate while it is missing, which is the intended nudge.
+#
+# mise's dotenv parser accepts KEY=VALUE only — it does not run shell code. That
+# enforces the rule docs/ARCHITECTURE.md previously only stated.
+_.file = ".env.local"
