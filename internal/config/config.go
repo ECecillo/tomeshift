@@ -139,13 +139,17 @@ const (
 // isSet is a parameter rather than a direct environment read because that read
 // would silently make this method correct only when called immediately after
 // envconfig, and wrong for any other caller.
+//
+// It deliberately does not check for credentials. The rates are what every
+// command needs — `estimate` prices a Google draft without ever calling
+// Google — while the API key is only needed by the commands that translate,
+// and translate.RequiresAPIKey is checked where the provider is built, exactly
+// as the endpoint already was. Demanding the key here made a zero-call dry run
+// refuse to start without one, which became actively costly once secrets moved
+// behind a password manager: arithmetic would prompt for a credential.
 func (c *Config) applyProviderDefaults(isSet func(string) bool) error {
 	if c.NMTProvider != translate.ProviderGoogle {
 		return nil
-	}
-	if c.NMTAPIKey == "" {
-		return fmt.Errorf("unable to use the google NMT provider: set EPUB_TRANSLATOR_NMT_API_KEY, err: %w",
-			ErrMissingAPIKey)
 	}
 	if !isSet("COST_PER_1000_CHARS_USD") {
 		c.CostPer1000CharsUSD = googlePer1000CharsUSD

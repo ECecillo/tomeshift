@@ -3,7 +3,10 @@ package translate
 import "errors"
 
 var (
-	ErrEmptyEndpoint    = errors.New("translate: NMT endpoint is empty")
+	ErrEmptyEndpoint = errors.New("translate: NMT endpoint is empty")
+	// ErrEmptyAPIKey marks a provider selected without the credentials it
+	// authenticates every call with.
+	ErrEmptyAPIKey      = errors.New("translate: NMT API key is empty")
 	ErrProviderStatus   = errors.New("translate: NMT provider returned a non-2xx status")
 	ErrEmptyTranslation = errors.New("translate: NMT provider returned empty translated text")
 	// ErrShortBatchResponse guards the index alignment between a batch request

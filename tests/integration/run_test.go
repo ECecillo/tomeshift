@@ -353,3 +353,45 @@ func TestRun_MissingNMTEndpointFailsBeforeTranslating(t *testing.T) {
 	require.Equal(t, exitcode.InvalidInputConfig, code)
 	require.Contains(t, stderr.String(), "EPUB_TRANSLATOR_NMT_ENDPOINT")
 }
+
+func TestRun_MissingNMTAPIKeyFailsBeforeTranslating(t *testing.T) {
+	t.Parallel()
+
+	input := writeEPUB(t, []string{`<h1>One</h1><p>Hello world.</p>`})
+	loader := func() (config.Config, error) {
+		return config.Config{NMTProvider: "google", TMPath: filepath.Join(t.TempDir(), "tm.sqlite")}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := commandexec.Execute([]string{
+		"run", "--input", input, "--output-dir", filepath.Join(t.TempDir(), "runs"),
+		"--source-lang", "en", "--target-lang", "fr",
+	}, &stdout, &stderr, loader)
+
+	// Same treatment as the endpoint: named setting, before any provider call.
+	require.Equal(t, exitcode.InvalidInputConfig, code)
+	require.Contains(t, stderr.String(), "EPUB_TRANSLATOR_NMT_API_KEY")
+}
+
+// TestEstimate_NeedsNoNMTCredentials pins the reason the key check moved out of
+// configuration load: a dry run makes zero provider calls, so requiring
+// credentials only ever refused to start — and once secrets live in a password
+// manager, it made pricing a book prompt for one.
+func TestEstimate_NeedsNoNMTCredentials(t *testing.T) {
+	t.Parallel()
+
+	input := writeEPUB(t, []string{`<h1>One</h1><p>Hello world.</p>`})
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NMTProvider:         "google",
+			CostPer1000CharsUSD: 0.02,
+			LLMOutputExpansion:  1.15,
+		}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := commandexec.Execute([]string{"estimate", "--input", input}, &stdout, &stderr, loader)
+
+	require.Equal(t, exitcode.Success, code, "stderr: %s", stderr.String())
+	require.Contains(t, stdout.String(), "nmt-only")
+}

@@ -22,3 +22,16 @@ func TestRequiresEndpoint(t *testing.T) {
 	require.True(t, translate.RequiresEndpoint(translate.ProviderLibreTranslate))
 	require.True(t, translate.RequiresEndpoint(""))
 }
+
+func TestRequiresAPIKey(t *testing.T) {
+	t.Parallel()
+
+	// Cloud Translation authenticates every call with a key.
+	require.True(t, translate.RequiresAPIKey(translate.ProviderGoogle))
+
+	// The self-hosted engines accept one but do not need it, so demanding it
+	// would refuse a perfectly working local setup.
+	require.False(t, translate.RequiresAPIKey(translate.ProviderHTTP))
+	require.False(t, translate.RequiresAPIKey(translate.ProviderLibreTranslate))
+	require.False(t, translate.RequiresAPIKey(""))
+}

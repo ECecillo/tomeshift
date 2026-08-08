@@ -17,6 +17,20 @@ func RequiresEndpoint(provider string) bool {
 	return provider != ProviderGoogle
 }
 
+// RequiresAPIKey reports whether a provider cannot translate without
+// credentials. Cloud Translation authenticates every call with an API key; the
+// self-hosted engines accept one but do not need it.
+//
+// It is the symmetric half of RequiresEndpoint, and it is checked in the same
+// place for the same reason: when the provider is built. Validating it at
+// configuration load instead made every command need credentials — including
+// `estimate`, whose whole purpose is to price a book with zero provider calls,
+// and which would now demand a secret from the operator's password manager to
+// do arithmetic.
+func RequiresAPIKey(provider string) bool {
+	return provider == ProviderGoogle
+}
+
 // NewProvider builds the NMT Translator for the configured provider. Unknown
 // providers fall back to the default HTTP adapter so a typo never disables
 // translation silently — callers should validate the value if strictness is

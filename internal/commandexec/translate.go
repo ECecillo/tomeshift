@@ -64,6 +64,11 @@ func newOrchestrator(
 			"unable to build the %q NMT provider: set EPUB_TRANSLATOR_NMT_ENDPOINT, err: %w",
 			cfg.NMTProvider, translate.ErrEmptyEndpoint)
 	}
+	if translate.RequiresAPIKey(cfg.NMTProvider) && cfg.NMTAPIKey == "" {
+		return nil, nil, fmt.Errorf(
+			"unable to build the %q NMT provider: set EPUB_TRANSLATOR_NMT_API_KEY, err: %w",
+			cfg.NMTProvider, translate.ErrEmptyAPIKey)
+	}
 
 	var postEditor llm.PostEditor
 	if cfg.LLMEnabled && cfg.LLMEndpoint != "" {

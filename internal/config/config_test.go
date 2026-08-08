@@ -35,11 +35,19 @@ func TestApplyProviderDefaults_ExplicitSettingsWin(t *testing.T) {
 	require.Equal(t, 1, cfg.NMTFreeCharsPerMonth)
 }
 
-func TestApplyProviderDefaults_GoogleNeedsAKey(t *testing.T) {
+func TestApplyProviderDefaults_PricesGoogleWithoutCredentials(t *testing.T) {
 	t.Parallel()
 
+	// Loading the configuration must not require an API key: `estimate` prices a
+	// Google draft without ever calling Google, and the commands that do call it
+	// check the key where they build the provider. Requiring it here made a
+	// zero-call dry run refuse to start — and, once secrets moved behind a
+	// password manager, made arithmetic prompt for a credential.
 	cfg := Config{NMTProvider: "google"}
-	require.ErrorIs(t, cfg.applyProviderDefaults(unset), ErrMissingAPIKey)
+	require.NoError(t, cfg.applyProviderDefaults(unset))
+
+	require.InDelta(t, googlePer1000CharsUSD, cfg.CostPer1000CharsUSD, 1e-9)
+	require.Equal(t, googleFreeCharsPerMonth, cfg.NMTFreeCharsPerMonth)
 }
 
 func TestApplyProviderDefaults_AnExplicitZeroIsNotUnset(t *testing.T) {
