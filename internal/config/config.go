@@ -56,10 +56,16 @@ type Config struct {
 	LLMEnabled  bool   `split_words:"true" default:"false"`
 	LLMEndpoint string `split_words:"true"`
 	LLMAPIKey   string `envconfig:"LLM_API_KEY"`
-	// Chat client for literary mode and style-profile.
+	// Chat client for literary mode and style-profile: "anthropic", "openai",
+	// "deepseek", or "claude-cli" to drive the local Claude Code CLI against a
+	// subscription seat instead of an API key (experimental — see
+	// llm.ChatProviderClaudeCLI for what that gives up).
 	LLMChatProvider string `split_words:"true" default:"openai"`
 	LLMBaseURL      string `envconfig:"LLM_BASE_URL"`
 	LLMModel        string `split_words:"true"`
+	// LLMCLIBin overrides the executable used by CLI-backed chat providers.
+	// Empty uses the provider's default name from PATH.
+	LLMCLIBin string `envconfig:"LLM_CLI_BIN"`
 	// LLMBatchSize is the number of segments per literary LLM call; 0 uses the
 	// literary package default. Raise it for large models that finish long
 	// structured outputs in one pass, to spend fewer calls per chapter.

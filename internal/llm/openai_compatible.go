@@ -53,16 +53,33 @@ type OpenAICompatibleClient struct {
 	Client  *http.Client
 }
 
+// ChatClientConfig selects and configures a chat client.
+//
+// It is a struct rather than three positional strings because the CLI-backed
+// provider needs an executable, not a base URL, and overloading BaseURL to mean
+// "sometimes a path to a binary" would make the field's meaning depend on a
+// value elsewhere.
+type ChatClientConfig struct {
+	Provider string
+	BaseURL  string
+	APIKey   string
+	// CLIBin overrides the executable used by CLI-backed providers. Empty uses
+	// the provider's default name from PATH.
+	CLIBin string
+}
+
 // NewChatClient builds the configured chat client. DeepSeek uses the same
 // OpenAI-compatible adapter with a different base URL.
-func NewChatClient(provider, baseURL, apiKey string) ChatClient {
-	switch provider {
+func NewChatClient(cfg ChatClientConfig) ChatClient {
+	switch cfg.Provider {
 	case ChatProviderAnthropic:
-		return NewAnthropicClient(baseURL, apiKey)
+		return NewAnthropicClient(cfg.BaseURL, cfg.APIKey)
+	case ChatProviderClaudeCLI:
+		return NewCLIChatClient(cfg.CLIBin)
 	case ChatProviderOpenAI, ChatProviderDeepSeek, ChatProviderOpenAICompatible, "":
-		return NewOpenAICompatibleClient(baseURL, apiKey)
+		return NewOpenAICompatibleClient(cfg.BaseURL, cfg.APIKey)
 	default:
-		return NewOpenAICompatibleClient(baseURL, apiKey)
+		return NewOpenAICompatibleClient(cfg.BaseURL, cfg.APIKey)
 	}
 }
 

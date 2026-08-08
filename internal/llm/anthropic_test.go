@@ -151,7 +151,9 @@ func TestAnthropicClient_NonOKStatus(t *testing.T) {
 func TestNewChatClient_Anthropic(t *testing.T) {
 	t.Parallel()
 
-	_, ok := llm.NewChatClient(llm.ChatProviderAnthropic, "", "k").(*llm.AnthropicClient)
+	_, ok := llm.NewChatClient(llm.ChatClientConfig{
+		Provider: llm.ChatProviderAnthropic, APIKey: "k",
+	}).(*llm.AnthropicClient)
 	require.True(t, ok, "provider 'anthropic' must build an AnthropicClient")
 }
 

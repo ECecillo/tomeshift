@@ -126,7 +126,12 @@ func qualityEstimator(cfg config.Config) pipeline.QualityEstimator {
 // LLM cache, so re-running over the same chapter reuses prior completions at no
 // provider cost. The caller must invoke the returned closer.
 func newCachedChatClient(cfg config.Config) (llm.ChatClient, func() error, error) {
-	inner := llm.NewChatClient(cfg.LLMChatProvider, cfg.LLMBaseURL, cfg.LLMAPIKey)
+	inner := llm.NewChatClient(llm.ChatClientConfig{
+		Provider: cfg.LLMChatProvider,
+		BaseURL:  cfg.LLMBaseURL,
+		APIKey:   cfg.LLMAPIKey,
+		CLIBin:   cfg.LLMCLIBin,
+	})
 	cache, err := llm.NewSQLiteCache(cfg.LLMCachePath)
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to open llm cache, err: %w", err)
