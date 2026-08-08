@@ -328,8 +328,16 @@ fuzz fuzz_time="10s":
       echo "no fuzz tests found"; \
     fi
 
+# Check that the illustrated HTML docs still cover the code's user-facing
+# surface: every command, flag, EPUB_TRANSLATOR_* variable, recipe and exit
+# code must be mentioned in docs/utilisation.html or
+# docs/comprendre-le-projet.html. Fails when a feature shipped without the docs
+# being reopened. See AGENTS.md § Living Documentation.
+docs-audit:
+    python3 scripts/docs_audit.py
+
 # Full local validation.
-check: fmt lint test
+check: fmt lint test docs-audit
 
 # Run CI-equivalent checks locally.
 ci-local: preflight fmt lint test docs-audit

@@ -7,20 +7,26 @@ enchaîne sur [`guide-traduction.md`](guide-traduction.md).
 
 ## 1. Prérequis
 
-| Outil | Pourquoi | Vérifier |
-|---|---|---|
-| **Go** (stable récent) | compiler/lancer le CLI | `go version` |
-| **Java** (≥ 21) | gate `epubcheck` (optionnelle) | `java -version` |
-| **just** | lanceur de tâches | `just --version` |
-| **ripgrep** (`rg`) | sortie de certaines recettes | `rg --version` |
-| **golangci-lint** | lint | `golangci-lint version` |
-| **uv** | service COMET-QE (Python) — éval qualité | `uv --version` |
-| **Docker** (option) | workflow conteneurisé | `docker --version` |
+La chaîne d'outils est décrite par [`mise.toml`](../mise.toml) : **une seule
+commande l'installe**, aux mêmes versions pour tout le monde.
 
-macOS (Homebrew) :
 ```bash
-brew install go openjdk just ripgrep golangci-lint uv
+brew install mise 1password-cli     # les deux seuls prérequis manuels (macOS)
 ```
+
+| Outil | Pourquoi | Géré par |
+|---|---|---|
+| **Go** (1.26, aligné sur `go.mod`) | compiler/lancer le CLI | `mise` |
+| **Java** (temurin 21) | gate `epubcheck` (optionnelle) | `mise` |
+| **just** | lanceur de tâches | `mise` |
+| **ripgrep** (`rg`) | sortie de certaines recettes | `mise` |
+| **golangci-lint** | lint | `mise` |
+| **Python** (3.12) | `scripts/*.py` (`carve`, `compare`, audit doc) | `mise` |
+| **uv** | service COMET-QE — éval qualité | `mise` |
+| **`op`** (1Password CLI) | injection des secrets au lancement | manuel |
+| **`sqlite3`** | `just bible` | fourni par l'OS |
+| **Docker** (option) | workflow conteneurisé | manuel |
+| **`epubcheck`** (option) | validation EPUB | jar à télécharger |
 
 > Sans Java/`epubcheck`, tout marche : la validation EPUB est simplement
 > ignorée. Sans `uv`, tout marche sauf l'évaluation COMET-QE.
@@ -32,15 +38,53 @@ brew install go openjdk just ripgrep golangci-lint uv
 ```bash
 git clone <url-du-dépôt> epub-translator
 cd epub-translator
+mise trust        # mise n'exécute pas la config d'un dépôt sans accord explicite
+mise install      # go, java, just, golangci-lint, rg, python, uv
 ```
 
 ---
 
 ## 3. Configurer l'environnement
 
+Deux fichiers, deux rôles — c'est la règle à retenir :
+
+| Fichier | Contenu | Versionné ? |
+|---|---|---|
+| `.env.local` | configuration **non secrète** (fournisseur, chemins, plafonds, tarifs) | non (gitignoré) |
+| `.env.op` | **références** `op://` vers les secrets, aucune valeur | **oui** |
+
 ```bash
 cp .env.example .env.local      # config locale, gitignorée
 ```
+
+`mise` charge `.env.local` dès que tu entres dans le répertoire ; son parseur
+n'accepte que des lignes `KEY=VALUE`, ce qui applique la règle que
+`docs/ARCHITECTURE.md` se contentait d'énoncer.
+
+### Les secrets : 1Password, pas un fichier
+
+Aucune clé API ne doit se trouver dans `.env.local`. Elles vivent dans un coffre
+1Password et sont injectées **dans le processus, au lancement de la commande** :
+
+```bash
+# 1. Dans l'app 1Password : Réglages → Développeur → « Intégrer avec le CLI »
+#    (c'est ce réglage qui déclenche la demande biométrique)
+# 2. Vérifier qu'une référence résout :
+op read "op://Dev/anthropic-epub-translator/credential"
+# 3. Adapter les références de .env.op à ton coffre si besoin.
+```
+
+Les recettes qui appellent un fournisseur sont enveloppées dans
+`op run --env-file=.env.op --` ; les autres non. Concrètement : `estimate`,
+`glossary-suggest` et `eval-ref` ne demandent **jamais** de credential, parce
+qu'elles ne passent aucun appel. Le secret n'existe que dans la mémoire du
+processus lancé, pour sa durée de vie — ni dans un fichier, ni dans ton shell.
+
+> ⚠️ Ce que ça garantit, exactement : la demande biométrique apparaît quand
+> l'app 1Password est **verrouillée**. App déverrouillée, `op` autorise sans
+> redemander. La garantie achetée est donc « le secret n'est jamais au repos sur
+> le disque », pas « un humain a approuvé ce run précis ». Pour la seconde,
+> règle le verrouillage automatique de l'app de façon agressive.
 
 Édite `.env.local`. Variables clés (préfixe `EPUB_TRANSLATOR_`) :
 
@@ -48,32 +92,34 @@ cp .env.example .env.local      # config locale, gitignorée
 |---|---|---|
 | `NMT_PROVIDER` | `http` (dev) \| `libretranslate` \| `google` | `http` |
 | `NMT_ENDPOINT` | service NMT ; requis par `run`/`batch` sauf pour `google`, qui fournit son hôte | `http://localhost:8081/translate` |
-| `NMT_API_KEY` | clé API du NMT (Cloud Translation v2) | `AIza…` |
+| `NMT_API_KEY` | clé API du NMT — **dans `.env.op`, pas ici** | `op://Dev/gcp…` |
 | `NMT_FREE_CHARS_PER_MONTH` | quota gratuit mensuel du fournisseur (`500000` pour Google) | `0` |
 | `TM_PATH` | mémoire de traduction (SQLite) | `./data/tm.sqlite` |
 | `NARRATIVE_PATH` | bible de série (SQLite) | `./data/lumen-series.sqlite` |
 | `LLM_CACHE_PATH` | cache des complétions LLM | `./data/llm-cache.sqlite` |
-| `LLM_CHAT_PROVIDER` | `anthropic` \| `openai` \| `deepseek` | `anthropic` |
+| `LLM_CHAT_PROVIDER` | `anthropic` \| `openai` \| `deepseek` \| `claude-cli` | `anthropic` |
+| `LLM_CLI_BIN` | exécutable des fournisseurs CLI (vide = `claude` du `PATH`) | — |
 | `LLM_MODEL` | modèle LLM (mode littéraire) | `claude-sonnet-5` |
 | `LLM_TOKEN_MULTIPLIER` | densité du tokenizer (`1.30` pour `claude-sonnet-5`) | `1.0` |
 | `LLM_CACHE_READ_PER_MTOK_USD` | tarif de lecture du cache de prompt (`0` = pas de cache) | `0.30` |
 | `LLM_BATCH_SIZE` | segments par appel LLM littéraire (`0` = défaut interne) | `0` |
-| `LLM_API_KEY` | clé du fournisseur LLM | `sk-ant-…` |
+| `LLM_API_KEY` | clé du fournisseur LLM — **dans `.env.op`, pas ici** | `op://Dev/anthropic…` |
 | `COMET_ENDPOINT` | service COMET-QE (éval) | `http://localhost:8000/score` |
 
-> 🔐 **Clé API** : ne la mets pas en clair dans le dépôt. `.env.local` est
-> gitignoré ; pour plus de sûreté, garde la clé dans un fichier hors dépôt
-> (`~/.epub-translator-secrets`) et source-le avant de lancer une commande, ou
-> exporte `EPUB_TRANSLATOR_LLM_API_KEY` dans ton shell.
+> 🔐 **Les deux `*_API_KEY` n'ont plus leur place dans `.env.local`.** Elles sont
+> résolues depuis 1Password au lancement (voir ci-dessus). Si tu tiens à ne pas
+> utiliser 1Password, exporte-les dans ton shell avant la commande — mais alors
+> elles vivent dans l'environnement de tout ce que tu lances depuis ce dossier,
+> ce que le montage `op run` existe précisément pour éviter.
 
 ---
 
 ## 4. Construire & vérifier
 
 ```bash
-just preflight          # vérifie go/java/lint/rg + santé NMT (non bloquant)
+just preflight          # config, chaîne d'outils (mise), session 1Password, santé NMT
 go build -o ./bin/epub-translator ./cmd/epub-translator
-just check              # gofmt -s + golangci-lint + go test ./...
+just check              # gofmt -s + golangci-lint + go test ./... + audit doc
 ```
 
 Si ton shell a un `GOROOT` cassé (`go: cannot find GOROOT directory`) :
@@ -171,10 +217,12 @@ just down       # arrêt + nettoyage
 ```
 
 **Ce que le compose ne couvre pas** (par conception) :
-- **Mode littéraire (LLM)** : fonctionne via `app` (il lit `.env.local`, donc la
-  clé API), mais l'LLM est une **API externe**, pas un service hébergé. Pour
-  l'activer en conteneur, adapte la `command:` du service `app`
-  (`--mode literary --series … --glossary …`).
+- **Mode littéraire (LLM)** : fonctionne via `app`, mais l'LLM est une **API
+  externe**, pas un service hébergé. Pour l'activer en conteneur, adapte la
+  `command:` du service `app` (`--mode literary --series … --glossary …`). La
+  clé n'arrive plus par `.env.local` (Compose le lit depuis le disque) mais par
+  interpolation depuis l'environnement de Compose — c'est pourquoi `just up`
+  est enveloppé dans `op run`.
 - **COMET-QE** : disponible via le profil `eval` (`docker compose --profile eval
   up comet`) ou via `uv` (voir §6) — pas dans le profil par défaut (image lourde).
 

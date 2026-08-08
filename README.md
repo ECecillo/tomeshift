@@ -64,6 +64,8 @@ flowchart TD
 
 | Doc | Pour quoi |
 |---|---|
+| **[docs/comprendre-le-projet.html](docs/comprendre-le-projet.html)** | 🎬 le projet illustré : concepts, logique, diagrammes, exemples animés, carte du code, comment étendre |
+| **[docs/utilisation.html](docs/utilisation.html)** | 🎬 le mode d'emploi illustré : setup, services, chaque commande et flag avec sa conséquence, codes de sortie |
 | **[docs/INSTALLATION.md](docs/INSTALLATION.md)** | télécharger, installer, configurer, build, services (NMT, COMET) — natif & Docker |
 | **[docs/guide-traduction.md](docs/guide-traduction.md)** | traduire un livre pas à pas (modes NMT & littéraire) |
 | **[docs/evaluation-qualite.md](docs/evaluation-qualite.md)** | mesurer la qualité (chrF, COMET-QE) et relire **ligne par ligne** |
@@ -71,23 +73,36 @@ flowchart TD
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | architecture & contraintes (source de vérité) |
 | [docs/rfc-0007-google-translate.html](docs/rfc-0007-google-translate.html) | RFC 0007 illustrée — brouillon Google, garde-fou par tokens, contexte LLM (diagrammes) |
 
-> Nouveau venu : commence par **INSTALLATION** → **guide-traduction** →
-> **evaluation-qualite**. Le reste de ce README est une référence rapide.
+> Nouveau venu : commence par les deux documents illustrés
+> (**comprendre-le-projet** → **utilisation**), puis **INSTALLATION** →
+> **guide-traduction** → **evaluation-qualite** pour le détail en texte. Le reste
+> de ce README est une référence rapide.
 
 ## Prerequisites
-- Go (latest stable)
-- Java runtime (`>=21`, tested with Java 25) for `epubcheck`
-- `just` command runner
-- `ripgrep` (`rg`) for helper recipe output
-- `golangci-lint`
+The toolchain is declared in [`mise.toml`](mise.toml) — Go, Java (temurin 21, for
+`epubcheck`), `just`, `ripgrep`, `golangci-lint`, Python and `uv`. Two tools stay
+manual: `mise` itself and the 1Password CLI.
+
+```bash
+brew install mise 1password-cli
+```
 
 ## Local Setup
-1. Copy env template:
+1. Install the toolchain:
+   ```bash
+   mise trust && mise install
+   ```
+2. Copy the env template:
    ```bash
    cp .env.example .env.local
    ```
-2. Edit `.env.local` with your NMT endpoint and API keys.
-3. Keep `.env.local` as trusted local config only (`KEY=VALUE` lines).
+3. Edit `.env.local` with your NMT endpoint and **non-secret** settings. Keep it
+   to `KEY=VALUE` lines.
+4. Leave the API keys empty there: they live in a 1Password vault, referenced by
+   the committed [`.env.op`](.env.op) and injected per command by `op run`. The
+   recipes that call a provider are wrapped; `estimate`, `glossary-suggest` and
+   `eval-ref` are not, so they never ask for a credential.
+5. `just preflight` checks all of the above at once.
 
 ## Run
 ```bash

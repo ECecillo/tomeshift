@@ -1,0 +1,1354 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>epub-translator — mode d'emploi</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #151824;
+    --border: #2a2d3e;
+    --text: #e2e4f0;
+    --muted: #8b8fa8;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --purple: #c084fc;
+    --orange: #fb923c;
+    --tag-bg: #252840;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+    font-size: 13px; line-height: 1.65;
+    padding: 2rem 1.25rem 5rem; max-width: 1000px; margin: 0 auto;
+  }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+  header h1 { font-size: 1.45rem; color: var(--blue); letter-spacing: 0.02em; line-height: 1.35; }
+  header .meta { color: var(--muted); margin-top: 0.6rem; font-size: 0.82rem; }
+  header .meta a { color: var(--muted); }
+
+  h2 { font-size: 1.05rem; color: var(--yellow); margin: 3rem 0 0.9rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 0.95rem; color: var(--purple); margin: 1.9rem 0 0.6rem; }
+  h4 { font-size: 0.87rem; color: var(--text); margin: 1.2rem 0 0.4rem; }
+  p { margin: 0.7rem 0; }
+  ul, ol { padding-left: 1.3rem; margin: 0.6rem 0; }
+  li { margin: 0.3rem 0; }
+  a { color: var(--blue); text-decoration: none; border-bottom: 1px dotted var(--border); }
+  a:hover { border-bottom-style: solid; }
+  strong { color: #fff; }
+  code { background: var(--tag-bg); border-radius: 3px; padding: 0.08rem 0.32rem; font-size: 0.92em; color: var(--green); }
+  pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.9rem 1rem; overflow-x: auto; margin: 0.9rem 0; font-size: 0.85rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; color: var(--text); }
+  .cmt { color: var(--muted); }
+
+  .badge { display: inline-block; background: var(--tag-bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.5rem; font-size: 0.72rem; color: var(--yellow); margin-right: 0.4rem; }
+  .badge.ok { color: var(--green); } .badge.bad { color: var(--red); } .badge.info { color: var(--blue); }
+  .badge.free { color: var(--green); } .badge.paid { color: var(--orange); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.1rem 0; }
+  .card.note { border-left: 3px solid var(--blue); }
+  .card.warn { border-left: 3px solid var(--red); }
+  .card.key { border-left: 3px solid var(--green); }
+  .card > .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; min-width: 560px; }
+  th, td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+  th { background: var(--tag-bg); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.06em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  figure { margin: 1.5rem 0; }
+  figure figcaption { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; text-align: center; }
+  pre.mermaid { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; text-align: center; overflow-x: auto; }
+  blockquote { border-left: 3px solid var(--border); padding: 0.2rem 0 0.2rem 1rem; margin: 0.9rem 0; color: var(--muted); font-style: italic; }
+  footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.78rem; }
+
+  .toc { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; }
+  .toc .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+  .toc ol { margin: 0; columns: 2; column-gap: 2rem; }
+  @media (max-width: 640px) { .toc ol { columns: 1; } }
+
+  /* ── widgets ─────────────────────────────────────────────────────── */
+  .widget { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.1rem 1.25rem; margin: 1.4rem 0; }
+  .widget .wlabel { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.8rem; }
+  .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.6rem 0; }
+  .ctlgroup { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.7rem; }
+  .ctlgroup > span { font-size: 0.74rem; color: var(--muted); }
+  button {
+    font-family: inherit; font-size: 0.78rem; color: var(--text);
+    background: var(--tag-bg); border: 1px solid var(--border); border-radius: 5px;
+    padding: 0.35rem 0.8rem; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  button:hover { background: #2f3350; border-color: var(--blue); }
+  button.active { border-color: var(--blue); color: var(--blue); background: #1e2438; }
+  button.primary { border-color: var(--green); color: var(--green); }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  .out { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; font-size: 0.8rem; line-height: 1.6; overflow-x: auto; white-space: pre; }
+  .out .k { color: var(--blue); } .out .v { color: var(--green); } .out .c { color: var(--muted); }
+  .consequence { font-size: 0.8rem; color: var(--muted); margin-top: 0.7rem; border-top: 1px dashed var(--border); padding-top: 0.7rem; }
+  .consequence b { color: var(--yellow); }
+
+  /* timeline */
+  .tl { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+  .tlstep {
+    flex: 1 1 110px; min-width: 110px; text-align: left; cursor: pointer;
+    border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 5px;
+    background: var(--surface2); padding: 0.5rem 0.6rem; font-size: 0.74rem; color: var(--muted);
+    transition: border-color 0.25s, background 0.25s, transform 0.2s;
+  }
+  .tlstep b { display: block; color: var(--text); font-size: 0.78rem; }
+  .tlstep .cost { font-size: 0.7rem; }
+  .tlstep.on { border-left-color: var(--blue); background: #1b2740; color: var(--text); transform: translateY(-2px); }
+  .tlstep.done { border-left-color: var(--green); }
+  .tlbody { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.9rem 1rem; min-height: 10.5rem; }
+  .tlbody h5 { color: var(--yellow); font-size: 0.85rem; margin-bottom: 0.4rem; }
+  .tlbody pre { margin: 0.5rem 0; background: #10131d; }
+
+  /* flag explorer */
+  .flaglist { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .flaglist button { font-size: 0.75rem; }
+  .fgrid { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+  @media (min-width: 720px) { .fgrid { grid-template-columns: repeat(3, 1fr); } }
+  .fcell { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.7rem 0.85rem; font-size: 0.79rem; }
+  .fcell .h { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.35rem; }
+  .fcell.proc { border-top: 2px solid var(--blue); }
+  .fcell.out2 { border-top: 2px solid var(--green); }
+  .fcell.cost { border-top: 2px solid var(--orange); }
+
+  /* exit codes */
+  .exitgrid { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .exitbox { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; font-size: 0.82rem; min-height: 6.5rem; }
+  .exitbox .code { color: var(--red); font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>epub-translator — mode d'emploi<br/><span style="color:var(--muted);font-size:0.75em">installer, configurer, lancer, et savoir ce que chaque commande change</span></h1>
+  <div class="meta">
+    Guide opérationnel · 8 août 2026 ·
+    code figé sur <a href="https://github.com/ECecillo/ebooks-translator/tree/6192dae8f3f355ea11c0fe2171b8b13511f742fa"><code>6192dae</code></a><br/>
+    Pour comprendre <em>comment ça marche à l'intérieur</em> : <a href="comprendre-le-projet.html">comprendre-le-projet.html</a>
+    · Références texte : <code>docs/INSTALLATION.md</code>, <code>docs/guide-traduction.md</code>
+  </div>
+</header>
+
+<div class="toc">
+  <span class="label">Sommaire</span>
+  <ol>
+    <li><a href="#prerequis">Prérequis et installation</a></li>
+    <li><a href="#config">Configurer <code>.env.local</code> <span class="badge info">interactif</span></a></li>
+    <li><a href="#credentials">Créer les comptes et déposer les clés</a></li>
+    <li><a href="#services">Choisir et démarrer les services</a></li>
+    <li><a href="#parcours">Le parcours type <span class="badge info">animé</span></a></li>
+    <li><a href="#commandes">Référence des sept commandes</a></li>
+    <li><a href="#flags">Ce que change chaque flag <span class="badge info">interactif</span></a></li>
+    <li><a href="#env">Les variables qui changent le rendu</a></li>
+    <li><a href="#artefacts">Lire les artefacts d'un run</a></li>
+    <li><a href="#exit">Codes de sortie et diagnostic <span class="badge info">interactif</span></a></li>
+    <li><a href="#docker">Docker et aide-mémoire <code>just</code></a></li>
+  </ol>
+</div>
+
+<h2 id="prerequis">1. Prérequis et installation</h2>
+
+<p>
+  La chaîne d'outils est <strong>déclarée dans <code>mise.toml</code></strong> : une commande
+  l'installe, aux mêmes versions pour tout le monde. Deux prérequis restent manuels.
+</p>
+
+<pre><code><span class="cmt"># macOS (Homebrew) — les deux seuls outils à installer soi-même</span>
+brew install mise 1password-cli
+
+<span class="cmt"># Récupérer et préparer le projet</span>
+git clone git@github.com:ECecillo/ebooks-translator.git epub-translator
+cd epub-translator
+mise trust                        <span class="cmt"># mise n'exécute pas la config d'un dépôt sans accord</span>
+mise install                      <span class="cmt"># go, java, just, golangci-lint, rg, python, uv</span>
+cp .env.example .env.local        <span class="cmt"># config NON SECRÈTE, gitignorée</span>
+just preflight                    <span class="cmt"># config + outils + session 1Password + santé NMT</span>
+go build -o ./bin/epub-translator ./cmd/epub-translator</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Outil</th><th>Pourquoi</th><th>Géré par</th><th>Obligatoire ?</th></tr>
+  <tr><td><strong>Go</strong> 1.26</td><td>compiler et lancer le CLI</td><td><code>mise</code></td><td>oui</td></tr>
+  <tr><td><strong>just</strong></td><td>lanceur de tâches (source <code>.env.local</code> pour vous)</td><td><code>mise</code></td><td>recommandé</td></tr>
+  <tr><td><strong>Java</strong> temurin 21</td><td>porte <code>epubcheck</code></td><td><code>mise</code></td><td>non — sans lui la validation est <em>ignorée</em>, pas échouée</td></tr>
+  <tr><td><strong>golangci-lint</strong></td><td>lint</td><td><code>mise</code></td><td>pour contribuer</td></tr>
+  <tr><td><strong>ripgrep</strong></td><td>sortie de certaines recettes <code>just</code></td><td><code>mise</code></td><td>pour <code>just preflight</code></td></tr>
+  <tr><td><strong>Python</strong> 3.12</td><td><code>scripts/*.py</code> : <code>carve</code>, <code>compare</code>, audit doc</td><td><code>mise</code></td><td>oui</td></tr>
+  <tr><td><strong>uv</strong></td><td>service COMET-QE</td><td><code>mise</code></td><td>non — seulement pour l'éval qualité</td></tr>
+  <tr><td><strong><code>op</code></strong> (1Password CLI)</td><td>injecte les clés API au lancement</td><td>manuel</td><td>oui dès qu'un fournisseur payant est utilisé</td></tr>
+  <tr><td><strong><code>sqlite3</code></strong></td><td><code>just bible</code></td><td>fourni par l'OS</td><td>optionnel</td></tr>
+  <tr><td><strong>Docker</strong></td><td>workflow conteneurisé, LibreTranslate, COMET</td><td>manuel</td><td>optionnel</td></tr>
+</table>
+</div>
+
+<div class="card note">
+  <span class="label">Pourquoi mise plutôt qu'une liste dans un README</span>
+  <p style="margin-top:0">
+    Le <code>Justfile</code> appelle <strong>dix</strong> outils ; l'ancien <code>preflight</code> en
+    vérifiait cinq. <code>python3</code>, <code>sqlite3</code>, <code>uv</code> et
+    <code>docker</code> n'étaient déclarés nulle part : ils échouaient en
+    <code>command not found</code> au moment précis où vous lanciez <code>just bible</code> ou
+    <code>just compare</code>. <code>mise.toml</code> rend la liste exécutable, et épingle
+    notamment le Java ≥ 21 qu'<code>epubcheck</code> exige et qui n'existait que dans une phrase.
+  </p>
+</div>
+
+<div class="card warn">
+  <span class="label">Piège de démarrage</span>
+  <p style="margin-top:0">
+    <code>GOROOT</code> cassé (<code>go: cannot find GOROOT directory</code>) → préfixer les
+    commandes : <code>env -u GOROOT go test ./...</code>. Ne <em>jamais</em> mettre ce préfixe dans
+    une recette du <code>Justfile</code>.
+  </p>
+</div>
+
+<h3>Les secrets ne sont pas dans un fichier</h3>
+
+<p>
+  Deux fichiers, deux rôles — c'est la règle à retenir :
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Fichier</th><th>Contenu</th><th>Versionné ?</th></tr>
+  <tr><td><code>.env.local</code></td><td>Configuration <strong>non secrète</strong> : fournisseur, chemins de bases, plafonds, tarifs.</td><td>non (gitignoré)</td></tr>
+  <tr><td><code>.env.op</code></td><td><strong>Références</strong> <code>op://</code> vers le coffre 1Password. Aucune valeur.</td><td><strong>oui</strong></td></tr>
+</table>
+</div>
+
+<pre><code><span class="cmt"># .env.op — committable tel quel, ce ne sont que des pointeurs</span>
+EPUB_TRANSLATOR_LLM_API_KEY=op://Dev/anthropic-epub-translator/credential
+EPUB_TRANSLATOR_NMT_API_KEY=op://Dev/gcp-cloud-translation/credential</code></pre>
+
+<p>
+  Les recettes qui appellent un fournisseur sont enveloppées dans
+  <code>op run --env-file=.env.op --</code> : la clé est résolue au lancement, vit dans la mémoire du
+  processus le temps de la commande, et nulle part ailleurs. Les autres ne le sont pas — donc
+  <code>estimate</code>, <code>glossary-suggest</code> et <code>eval-ref</code> ne demandent
+  <strong>jamais</strong> de credential, puisqu'elles ne passent aucun appel.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    OP[("Coffre 1Password")]
+    REF[".env.op<br/>références op://<br/>versionné"]
+    LOC[".env.local<br/>config non secrète<br/>gitignoré"]
+    REF --> RUN["op run --env-file=.env.op --"]
+    OP -->|"déverrouillage biométrique"| RUN
+    LOC --> PROC
+    RUN --> PROC["Processus epub-translator<br/>clé en mémoire, durée de vie du run"]
+    PROC --> END["fin du run :<br/>le secret disparaît"]
+    LOC -.->|"jamais"| SEC["clé en clair sur disque"]
+</pre>
+<figcaption>Le secret n'est ni au repos sur le disque, ni dans l'environnement du shell : il n'existe
+que dans le processus lancé.</figcaption>
+</figure>
+
+<div class="card warn">
+  <span class="label">Ce que la biométrie garantit, exactement</span>
+  <p style="margin-top:0">
+    La demande Touch ID apparaît quand l'application 1Password est <strong>verrouillée</strong>. Tant
+    qu'elle est déverrouillée, <code>op</code> autorise sans redemander. La garantie achetée est donc
+    « le secret n'est jamais au repos sur le disque et ne fuit pas dans l'environnement », et non
+    « un humain a approuvé ce run précis ». Pour la seconde, réglez le verrouillage automatique de
+    l'app de façon agressive.
+  </p>
+</div>
+
+<h2 id="config">2. Configurer <code>.env.local</code></h2>
+
+<p>
+  Toute la configuration passe par des variables d'environnement préfixées
+  <code>EPUB_TRANSLATOR_</code>, chargées dans une struct typée au démarrage. Les recettes
+  <code>just</code> sourcent <code>.env.local</code> automatiquement ; si vous appelez le binaire
+  directement, sourcez-le vous-même (<code>set -a; source .env.local; set +a</code>).
+</p>
+
+<div class="widget" id="w-cfg">
+  <span class="wlabel">Générateur de configuration — choisissez, copiez le bloc</span>
+
+  <div class="ctlgroup">
+    <span>Moteur de brouillon (NMT) — toujours requis, même en mode littéraire</span>
+    <div class="controls" id="g-nmt">
+      <button data-v="http" class="active">serveur de dev intégré</button>
+      <button data-v="google">Google Cloud Translation v2</button>
+      <button data-v="libretranslate">LibreTranslate auto-hébergé</button>
+    </div>
+  </div>
+
+  <div class="ctlgroup">
+    <span>Mode de traduction</span>
+    <div class="controls" id="g-mode">
+      <button data-v="nmt" class="active">nmt — brouillon rapide</button>
+      <button data-v="literary">literary — réécriture LLM</button>
+    </div>
+  </div>
+
+  <div class="ctlgroup" id="g-llm-group" style="display:none">
+    <span>Fournisseur LLM (mode littéraire)</span>
+    <div class="controls" id="g-llm">
+      <button data-v="anthropic" class="active">Anthropic</button>
+      <button data-v="openai">OpenAI</button>
+      <button data-v="deepseek">DeepSeek</button>
+      <button data-v="claude-cli">Claude Code CLI <span class="badge info" style="margin:0 0 0 .3rem">exp.</span></button>
+    </div>
+  </div>
+
+  <div class="ctlgroup">
+    <span>Évaluation qualité COMET-QE</span>
+    <div class="controls" id="g-qe">
+      <button data-v="off" class="active">désactivée</button>
+      <button data-v="on">activée (service local :8000)</button>
+    </div>
+  </div>
+
+  <div class="out" id="cfg-out"></div>
+  <div class="controls">
+    <button class="primary" id="cfg-copy">Copier le bloc</button>
+    <span style="color:var(--muted);font-size:0.78rem" id="cfg-copied"></span>
+  </div>
+  <div class="consequence" id="cfg-cons"></div>
+</div>
+
+<h2 id="credentials">3. Créer les comptes et déposer les clés dans 1Password</h2>
+
+<p>
+  Cette section est le chaînon entre « où vont les clés » et « comment on les obtient ». Elle se
+  fait <strong>une fois</strong>. Bonne nouvelle : selon le montage, il y a entre <strong>zéro et
+  deux</strong> credentials à créer.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Service</th><th>Requis quand</th><th>Variable</th><th>Coût</th></tr>
+  <tr>
+    <td><strong>Google Cloud Translation v2</strong></td>
+    <td><code>NMT_PROVIDER=google</code></td>
+    <td><code>NMT_API_KEY</code></td>
+    <td><span class="badge free">gratuit</span> 500 000 car./mois, puis 20 $/M</td>
+  </tr>
+  <tr>
+    <td><strong>Anthropic</strong> (API)</td>
+    <td><code>LLM_CHAT_PROVIDER=anthropic</code></td>
+    <td><code>LLM_API_KEY</code></td>
+    <td><span class="badge paid">payant</span> ~4–6,50 $/tome (Sonnet)</td>
+  </tr>
+  <tr>
+    <td><strong>OpenAI</strong> / <strong>DeepSeek</strong></td>
+    <td><code>LLM_CHAT_PROVIDER=openai|deepseek</code></td>
+    <td><code>LLM_API_KEY</code></td>
+    <td><span class="badge paid">payant</span> DeepSeek &lt; 1 $/tome</td>
+  </tr>
+  <tr>
+    <td><strong>Claude Code CLI</strong></td>
+    <td><code>LLM_CHAT_PROVIDER=claude-cli</code></td>
+    <td class="num">—</td>
+    <td><span class="badge free">aucun credential</span> session de l'app</td>
+  </tr>
+  <tr>
+    <td><strong>LibreTranslate</strong> / <strong>NMT de dev</strong></td>
+    <td>auto-hébergé</td>
+    <td class="num">—</td>
+    <td><span class="badge free">aucun credential</span></td>
+  </tr>
+  <tr>
+    <td><strong>COMET-QE</strong></td>
+    <td>éval qualité, en local</td>
+    <td class="num">—</td>
+    <td><span class="badge free">aucun credential</span> (sauf service hébergé)</td>
+  </tr>
+</table>
+</div>
+
+<h3>3.1 Google Cloud Translation — la clé API</h3>
+
+<ol>
+  <li>Console GCP → créer ou choisir un projet.</li>
+  <li><strong>Activer la facturation sur le projet.</strong> C'est obligatoire <em>même pour le
+    palier gratuit</em> : sans elle, l'API refuse les appels alors que rien ne serait facturé.</li>
+  <li>« APIs &amp; Services » → « Enable APIs » → activer <strong>Cloud Translation API</strong>.</li>
+  <li>« APIs &amp; Services » → « Credentials » → « Create credentials » → <strong>API key</strong>.</li>
+  <li><strong>Restreindre la clé</strong> à la seule Cloud Translation API (« Restrict key » → API
+    restrictions). Une clé non restreinte donne accès à tout ce qui est activé sur le projet.</li>
+</ol>
+
+<div class="card note">
+  <span class="label">Le palier gratuit, précisément</span>
+  <p style="margin-top:0">
+    500 000 caractères par mois calendaire, <strong>partagés entre Basic et Advanced et pour tout le
+    projet</strong> — environ un tome. Seul le dépassement est facturé. Le compteur du pipeline est
+    son propre ledger de runs : si des caractères ont été consommés hors de cet outil ce mois-ci, la
+    projection sous-estime d'autant. C'est <code>NMT_FREE_CHARS_PER_MONTH</code> qu'il faut alors
+    baisser à la main.
+  </p>
+</div>
+
+<h3>3.2 Le fournisseur LLM — la clé de chat</h3>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Fournisseur</th><th>Où créer la clé</th><th>À renseigner en plus</th></tr>
+  <tr><td>Anthropic</td><td>console.anthropic.com → API keys</td><td><code>LLM_MODEL=claude-sonnet-5</code>, <code>LLM_TOKEN_MULTIPLIER=1.30</code></td></tr>
+  <tr><td>OpenAI</td><td>platform.openai.com → API keys</td><td><code>LLM_BASE_URL=https://api.openai.com/v1</code></td></tr>
+  <tr><td>DeepSeek</td><td>platform.deepseek.com → API keys</td><td><code>LLM_BASE_URL=https://api.deepseek.com</code></td></tr>
+</table>
+</div>
+
+<p>
+  Dans les trois cas, pensez à <strong>renseigner les tarifs</strong> (<code>LLM_INPUT_PER_MTOK_USD</code>
+  et compagnie) : sans eux la projection vaut 0 $ et le plafond par livre ne compare plus rien.
+</p>
+
+<h3>3.3 Déposer les clés dans 1Password</h3>
+
+<p>
+  Le projet attend des éléments de catégorie <strong>API Credential</strong>, dont le champ secret
+  s'appelle <code>credential</code> — c'est ce que désignent les références
+  <code>op://&lt;coffre&gt;/&lt;élément&gt;/credential</code> de <code>.env.op</code>.
+</p>
+
+<pre><code><span class="cmt"># 1. Activer l'intégration CLI ↔ app (c'est elle qui déclenche Touch ID) :</span>
+<span class="cmt">#    app 1Password → Réglages → Développeur → « Intégrer avec le CLI 1Password »</span>
+
+<span class="cmt"># 2. Créer les éléments (ou les créer à la main dans l'app) :</span>
+op item create --category="API Credential" --vault=Dev \
+  --title="anthropic-epub-translator" \
+  credential="sk-ant-…"
+
+op item create --category="API Credential" --vault=Dev \
+  --title="gcp-cloud-translation" \
+  credential="AIza…"
+
+<span class="cmt"># 3. Vérifier que chaque référence résout (c'est exactement ce que fera `op run`) :</span>
+op read "op://Dev/anthropic-epub-translator/credential"
+op read "op://Dev/gcp-cloud-translation/credential"</code></pre>
+
+<p>
+  Si vos éléments existent déjà sous d'autres noms, ne les renommez pas : <strong>adaptez
+  <code>.env.op</code></strong>. Dans l'app, clic droit sur le champ → « Copier la référence secrète »
+  donne la chaîne <code>op://…</code> exacte.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    subgraph SETUP["Une fois"]
+      GCP["Console GCP<br/>facturation + API + clé restreinte"] --> I1["Élément 1Password<br/>gcp-cloud-translation"]
+      ANT["console.anthropic.com<br/>API key"] --> I2["Élément 1Password<br/>anthropic-epub-translator"]
+      I1 --> REF[".env.op<br/>2 références op://<br/>versionné"]
+      I2 --> REF
+    end
+    subgraph RUN["À chaque commande"]
+      REF --> GUARD{"la commande a-t-elle<br/>besoin d'un secret ?"}
+      GUARD -->|"non — estimate,<br/>glossary-suggest, claude-cli"| DIRECT["lancement direct<br/>aucune sollicitation"]
+      GUARD -->|"oui"| OPRUN["op run --env-file=.env.op --"]
+      OPRUN --> BIO["déverrouillage biométrique<br/>si l'app est verrouillée"]
+      BIO --> PROC["clé en mémoire du processus,<br/>le temps du run"]
+    end
+</pre>
+<figcaption>Le <code>Justfile</code> décide seul s'il faut envelopper : un fournisseur NMT
+auto-hébergé et un chat en <code>claude-cli</code> n'ont besoin d'aucun secret, donc rien ne
+demande à être déverrouillé.</figcaption>
+</figure>
+
+<h3>3.4 Vérifier que tout est en place</h3>
+
+<pre><code>just preflight        <span class="cmt"># config + outils + session 1Password + santé NMT</span>
+op whoami             <span class="cmt"># session active ?</span>
+just estimate ./books/volume-01.epub   <span class="cmt"># 0 appel API, 0 credential : doit passer sans rien demander</span></code></pre>
+
+<div class="card warn">
+  <span class="label">Erreurs fréquentes de cette étape</span>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Message</th><th>Cause</th></tr>
+    <tr><td><code>1password: not signed in</code></td><td>App verrouillée ou intégration CLI non activée dans les réglages Développeur.</td></tr>
+    <tr><td><code>could not resolve item</code></td><td>Le nom de l'élément ou du coffre dans <code>.env.op</code> ne correspond pas. Vérifiez avec <code>op read</code>.</td></tr>
+    <tr><td><code>unable to build the "google" NMT provider</code></td><td>La recette n'était pas enveloppée, ou la référence a résolu une valeur vide.</td></tr>
+    <tr><td>403 de Cloud Translation</td><td>Facturation non activée sur le projet, ou clé restreinte à une autre API.</td></tr>
+  </table>
+  </div>
+</div>
+
+<h2 id="services">4. Choisir et démarrer les services</h2>
+
+<p>
+  Le pipeline a <strong>toujours</strong> besoin d'un moteur NMT : c'est le brouillon en mode
+  <code>nmt</code>, et le repli en mode <code>literary</code> quand un lot LLM échoue.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    Q1{"Vous voulez quoi ?"}
+    Q1 -->|"vérifier que la chaîne tourne"| DEV["serveur de dev intégré<br/>just nmt-dev — :8081"]
+    Q1 -->|"la meilleure qualité de brouillon"| Q2{"le texte peut-il<br/>sortir de la machine ?"}
+    Q2 -->|"oui"| GOO["Google Cloud Translation v2<br/>gratuit jusqu'à 500 000 car./mois"]
+    Q2 -->|"non"| LIB["LibreTranslate en Docker<br/>profil real-nmt"]
+    DEV --> NOTE1["dictionnaire mot à mot :<br/>qualité jouet, mais zéro install"]
+    GOO --> NOTE2["facturation GCP à activer<br/>même pour le palier gratuit"]
+    LIB --> NOTE3["1er lancement :<br/>téléchargement du modèle en→fr"]
+</pre>
+<figcaption>Le choix se change avec une seule variable — <code>NMT_PROVIDER</code> — donc revenir en
+arrière est trivial.</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Service</th><th>Commande</th><th>Port</th><th>Conséquence</th></tr>
+  <tr>
+    <td>NMT de dev</td><td><code>just nmt-dev</code></td><td class="num">8081</td>
+    <td>Substitution mot à mot par dictionnaire. Préserve les placeholders. <strong>À ne pas utiliser pour juger la qualité</strong> — utile pour valider le pipeline gratuitement.</td>
+  </tr>
+  <tr>
+    <td>LibreTranslate</td><td><code>just libretranslate-up</code></td><td class="num">5050</td>
+    <td>Vrai NMT local. Le texte ne quitte pas la machine. Plus lent qu'un service hébergé.</td>
+  </tr>
+  <tr>
+    <td>Google Cloud Translation</td><td><span class="cmt">aucun service à lancer</span></td><td class="num">—</td>
+    <td>L'adaptateur connaît l'hôte public : <code>NMT_ENDPOINT</code> peut rester vide. Les segments d'un chapitre partent groupés (≤ 128 textes ou 5000 caractères par requête) : le brouillon d'un tome passe de ~14 min à ~30 s. <strong>Le texte du livre est envoyé à Google.</strong></td>
+  </tr>
+  <tr>
+    <td>COMET-QE</td><td><code>just comet-dev</code> ou <code>just comet-up</code></td><td class="num">8000</td>
+    <td>Notation sans référence. 1<sup>er</sup> lancement : ~2,3 Go de modèle. Sert à l'éval <em>et</em> à l'escalade sélective pendant un run.</td>
+  </tr>
+</table>
+</div>
+
+<h2 id="parcours">5. Le parcours type</h2>
+
+<p>
+  Traduire sérieusement une série, c'est cinq étapes dans cet ordre. Cliquez sur une étape pour voir
+  la commande, ce qu'elle produit et ce qu'elle coûte.
+</p>
+
+<div class="widget" id="w-tl">
+  <div class="tl" id="tl"></div>
+  <div class="tlbody" id="tlbody"></div>
+  <div class="controls">
+    <button class="primary" id="tl-play">▶ Dérouler le parcours</button>
+    <span style="color:var(--muted);font-size:0.78rem">Les étapes 1 à 3 se font une fois par série ; l'étape 4 se répète par tome.</span>
+  </div>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    G["glossary-suggest<br/>gratuit"] --> GJ["glossary.json<br/>à curer à la main"]
+    SB["series-bible<br/>~0,65 $ par tome, une fois"] --> BIB[("narrative.sqlite<br/>1 bible par tome")]
+    EST["estimate<br/>0 appel API"] --> DEC{"le coût<br/>est acceptable ?"}
+    DEC -->|"non"| TUNE["ajuster : modèle,<br/>LLM_BATCH_SIZE, plafonds"]
+    DEC -->|"oui"| RUN["run --mode literary"]
+    GJ --> RUN
+    BIB --> RUN
+    TUNE --> EST
+    RUN --> ART["runs/&lt;id&gt;/"]
+    ART --> EV["eval --segments<br/>COMET-QE"]
+    ART --> CMP["just compare<br/>relecture EN | FR"]
+</pre>
+<figcaption>Le glossaire et la bible sont des <em>entrées</em> qu'on prépare une fois ; les runs les
+consomment sans les modifier.</figcaption>
+</figure>
+
+<h2 id="commandes">6. Référence des sept commandes</h2>
+
+<h3><code>run</code> — traduire un livre</h3>
+
+<pre><code>epub-translator run --input &lt;f.epub&gt; --output-dir &lt;dir&gt; --source-lang en --target-lang fr \
+  [--mode nmt|literary] [--series &lt;id&gt;] [--glossary &lt;f.json&gt;] [--run-id &lt;id&gt;] \
+  [--update-bible] [--resume]</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Flag</th><th>Défaut</th><th>Effet</th></tr>
+  <tr><td><code>--input</code></td><td class="num">requis</td><td>L'EPUB source. Son nom de fichier (sans extension) devient le <code>book_id</code>.</td></tr>
+  <tr><td><code>--output-dir</code></td><td class="num">requis</td><td>Les artefacts vont dans <code>&lt;output-dir&gt;/&lt;run-id&gt;/</code>, pas directement dedans.</td></tr>
+  <tr><td><code>--source-lang</code> / <code>--target-lang</code></td><td class="num">requis</td><td>V1 n'accepte que <code>en</code> → <code>fr</code>. Toute autre valeur est refusée à l'analyse des flags (exit 2), avant tout travail.</td></tr>
+  <tr><td><code>--mode</code></td><td><code>nmt</code></td><td><code>nmt</code> : brouillon + escalade optionnelle. <code>literary</code> : réécriture LLM de chaque segment frais, avec bible obligatoire.</td></tr>
+  <tr><td><code>--series</code></td><td class="num">—</td><td>Obligatoire si <code>--mode literary</code>. Viser la bible <em>bornée</em> du tome : <code>lumen@volume-01</code>. Bible absente ou invalide = échec immédiat.</td></tr>
+  <tr><td><code>--glossary</code></td><td class="num">—</td><td>Les termes <code>locked</code> sont masqués avant l'appel et resubstitués après. Une violation résiduelle fait <strong>échouer la porte QA</strong>.</td></tr>
+  <tr><td><code>--run-id</code></td><td>horodatage UTC</td><td>Nomme le dossier d'artefacts. Réutiliser le même identifiant <strong>écrase</strong> les artefacts précédents.</td></tr>
+  <tr><td><code>--update-bible</code></td><td><code>false</code></td><td>Laisse la bible évoluer pendant le run. <span class="badge bad">déconseillé</span> Casse le préfixe cacheable (≈ ×10 sur le coût) et rend les re-runs non reproductibles.</td></tr>
+  <tr><td><code>--resume</code></td><td><code>false</code></td><td>Aujourd'hui un simple marqueur journalisé : la reprise vient <em>de fait</em> de la mémoire de traduction, qui resert tout ce qui a déjà été traduit. Relancer un run interrompu ne repaie pas le travail déjà fait.</td></tr>
+</table>
+</div>
+
+<h3><code>estimate</code> — projeter le coût sans payer</h3>
+
+<pre><code>epub-translator estimate --input &lt;f.epub&gt; [--escalation-rate 0.15]</code></pre>
+
+<p>
+  Parse et segmente le livre, <strong>ne traduit rien, n'appelle aucune API</strong>, et imprime trois
+  scénarios : NMT seul, hybride (la fraction <code>--escalation-rate</code> des segments passe au
+  LLM), LLM complet.
+</p>
+
+<pre><code>estimate for volume-01: 2841 segments over 68 chapters, 412903 source chars, batch=50, escalation=15%
+free tier: 500000 chars/month, 0 billable this run
+strategy     llm_segs  llm_calls    in_tokens      nmt_usd      llm_usd    total_usd
+nmt-only            0          0            0       0.0000       0.0000       0.0000
+hybrid            426        426       218400       0.0000       1.2104       1.2104
+full-llm         2841         68       984210       0.0000       4.1832       4.1832</code></pre>
+
+<div class="card key">
+  <span class="label">Pourquoi cette commande est fiable</span>
+  <p style="margin-top:0">
+    <code>estimate</code> et le garde-fou du run passent par le <strong>même</strong> modèle de coût
+    et lisent le <strong>même</strong> compteur de palier gratuit dans le ledger. Ce que
+    <code>estimate</code> annonce est ce que le plafond par livre applique. Corollaire : si les
+    tarifs LLM ne sont pas renseignés dans <code>.env.local</code>, la projection vaut 0 $ et le
+    plafond ne compare plus rien.
+  </p>
+</div>
+
+<h3><code>series-bible</code> — construire la bible avant de traduire</h3>
+
+<pre><code>epub-translator series-bible --input-dir ./books/lumen --series lumen [--samples 8] [--merge]</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Flag</th><th>Défaut</th><th>Effet</th></tr>
+  <tr><td><code>--input-dir</code></td><td class="num">requis</td><td>Tous les <code>.epub</code> du dossier, en ordre de publication déduit du nom de fichier.</td></tr>
+  <tr><td><code>--samples</code></td><td class="num">3</td><td>Documents échantillonnés <em>par tome</em> pour le style, les voix et le vouvoiement. Plus haut = bible plus riche et plus chère, et un préfixe plus gros à chaque appel ensuite.</td></tr>
+  <tr><td><code>--merge</code></td><td><code>false</code></td><td>Enrichit les bibles existantes au lieu de les écraser.</td></tr>
+</table>
+</div>
+
+<p>
+  Sortie : <strong>une bible par tome</strong> (<code>lumen@volume-01</code>,
+  <code>lumen@volume-02</code>, …) plus <code>lumen</code> = la bible du tome le plus récent. Les
+  synopsis d'une bible sont bornés aux tomes 1..N pour ne pas divulguer la fin d'une histoire qu'on
+  commence. Coût : environ 1 + (chapitres + 1) appels LLM par tome, <strong>une fois</strong>,
+  jamais rejoué.
+</p>
+
+<div class="card warn">
+  <span class="label">Conséquence à connaître</span>
+  <p style="margin-top:0">
+    Regénérer la bible change le préfixe des prompts, donc <strong>invalide le cache LLM une fois</strong>.
+    C'est voulu : un coût ponctuel par regénération, au lieu d'un coût par chapitre. Les tomes déjà
+    traduits ne sont pas re-traduits automatiquement.
+  </p>
+</div>
+
+<h3><code>style-profile</code> — amorcer la bible depuis un seul tome</h3>
+
+<pre><code>epub-translator style-profile --input &lt;f.epub&gt; --series &lt;id&gt; [--samples 3] [--merge]</code></pre>
+
+<p>
+  Un seul appel LLM, un seul tome, pas de synopsis. Utile pour un livre isolé ou pour corriger le
+  style d'une bible existante avec <code>--merge</code>. <code>series-bible</code> le supplante pour
+  le travail en série.
+</p>
+
+<h3><code>glossary-suggest</code> — extraire les noms propres</h3>
+
+<pre><code>epub-translator glossary-suggest --input &lt;f.epub&gt; [--out glossary.json] [--min-count 3]</code></pre>
+
+<p>
+  Gratuit, heuristique, <strong>aucune configuration requise</strong> — c'est la seule commande qui
+  ne charge pas la config. Elle produit un squelette JSON <em>à curer à la main</em> : garder les
+  vrais noms, écrire la forme française, retirer le bruit, cocher <code>locked</code>. Monter
+  <code>--min-count</code> réduit le bruit et laisse passer des noms rares.
+</p>
+
+<pre><code>[
+  { <span class="cmt">"term_en"</span>: "Elena", <span class="cmt">"term_fr"</span>: "Elena", <span class="cmt">"locked"</span>: true },
+  { <span class="cmt">"term_en"</span>: "Return by Ash", <span class="cmt">"term_fr"</span>: "Retour par la Cendre", <span class="cmt">"locked"</span>: true }
+]</code></pre>
+
+<h3><code>eval</code> — mesurer la qualité</h3>
+
+<pre><code><span class="cmt"># chrF : nécessite une référence humaine de la MÊME édition</span>
+epub-translator eval --candidate ./runs/&lt;id&gt;/translated.epub --reference ./ref-fr.epub
+
+<span class="cmt"># COMET-QE : sans référence, nécessite un service COMET actif</span>
+EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
+  epub-translator eval --segments ./runs/&lt;id&gt;/segments.jsonl</code></pre>
+
+<div class="card note">
+  <span class="label">Choisir la bonne métrique</span>
+  <p style="margin-top:0">
+    Comparer une traduction de <em>light novel</em> à une référence <em>web novel</em> donne un chrF
+    catastrophique qui ne dit rien de la qualité : ce ne sont pas les mêmes textes. Sans référence
+    alignée, <strong>COMET-QE est la métrique honnête</strong>. La moyenne par livre atterrit dans
+    <code>report.json</code> (<code>avg_quality_score</code>) et <code>metrics.json</code>.
+  </p>
+</div>
+
+<h3><code>batch</code> — traiter un dossier de livres</h3>
+
+<pre><code>epub-translator batch --input-dir ./books/serie --output-dir ./runs \
+  [--glossary ./glossary.json] [--reference-dir ./refs]</code></pre>
+
+<ul>
+  <li><strong>Mode NMT uniquement</strong> — pas de mode littéraire en batch.</li>
+  <li>Une TM et un glossaire <em>partagés</em> entre les livres : le tome 2 réutilise les phrases du
+    tome 1, et la terminologie reste cohérente d'un bout à l'autre.</li>
+  <li>Un livre en échec n'arrête pas les suivants ; le premier échec fixe le code de sortie.</li>
+  <li>Les artefacts vont dans <code>&lt;output-dir&gt;/&lt;book-id&gt;/</code>, plus un
+    <code>batch-report.json</code> agrégé.</li>
+  <li><code>--reference-dir</code> : si <code>&lt;dir&gt;/&lt;book-id&gt;.epub</code> existe, un chrF
+    est calculé pour ce livre et injecté dans le rapport agrégé. Sans référence pour un livre donné,
+    on passe en silence.</li>
+  <li><kbd>Ctrl-C</kbd> arrête proprement <em>entre</em> deux livres.</li>
+</ul>
+
+<h2 id="flags">7. Ce que change chaque flag</h2>
+
+<p>
+  Trois questions par option : qu'est-ce que ça change dans le <em>traitement</em>, dans la
+  <em>sortie</em>, et sur le <em>coût</em> ?
+</p>
+
+<div class="widget" id="w-flags">
+  <span class="wlabel">Explorateur — cliquez une option</span>
+  <div class="flaglist" id="flaglist"></div>
+  <div class="fgrid">
+    <div class="fcell proc"><span class="h">Traitement</span><span id="f-proc"></span></div>
+    <div class="fcell out2"><span class="h">Sortie / artefacts</span><span id="f-out"></span></div>
+    <div class="fcell cost"><span class="h">Coût &amp; performance</span><span id="f-cost"></span></div>
+  </div>
+</div>
+
+<h2 id="env">8. Les variables qui changent le rendu</h2>
+
+<p>
+  Les flags décident <em>quoi</em> traduire ; l'environnement décide <em>comment</em>. Voici celles
+  dont l'effet est visible dans le fichier produit ou dans la facture.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Variable (<code>EPUB_TRANSLATOR_</code>)</th><th>Défaut</th><th>Conséquence si vous y touchez</th></tr>
+  <tr>
+    <td><code>NMT_PROVIDER</code></td><td><code>http</code></td>
+    <td>Change la <strong>qualité du brouillon</strong>, donc la qualité finale en mode nmt et le travail restant au LLM en littéraire. Change aussi le tag <code>engine</code> écrit en TM.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_MODEL</code> + tarifs</td><td class="num">—</td>
+    <td>Change la qualité littéraire et le coût. <strong>Sans les tarifs, la projection vaut 0 $</strong> et le plafond par livre ne protège plus rien.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_TOKEN_MULTIPLIER</code></td><td><code>1.0</code></td>
+    <td>Corrige la densité du tokenizer (<code>1.30</code> pour <code>claude-sonnet-5</code> et la famille Opus 4.7). Sans lui, la projection sous-estime d'autant et le garde-fou laisse passer un run trop cher.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_CHAT_PROVIDER=claude-cli</code></td><td><code>openai</code></td>
+    <td><span class="badge info">expérimental</span> Passe par le CLI Claude Code local au lieu de l'API : plus de clé, facturé sur le siège d'abonnement. Voir la section dédiée ci-dessous.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_CLI_BIN</code></td><td>vide → <code>claude</code></td>
+    <td>Exécutable des fournisseurs CLI. À renseigner si le binaire n'est pas dans le <code>PATH</code> ou pour épingler une version.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_BATCH_SIZE</code></td><td><code>0</code> → 50</td>
+    <td>Segments par appel. Plus haut = moins d'appels, donc moins de répétitions du préfixe ; mais un modèle qui n'arrive pas au bout déclenche des réessais en demi-lots. Baisser pour un petit modèle local, monter pour un gros modèle.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_ESCALATE_MIN_CHARS</code></td><td><code>240</code></td>
+    <td>Mode nmt uniquement : seuil de longueur au-delà duquel un segment part au post-éditeur. <code>0</code> escalade tout. Fait varier directement le nombre d'appels LLM.</td>
+  </tr>
+  <tr>
+    <td><code>COMET_ENDPOINT</code> + <code>ESCALATE_BELOW_SCORE</code></td><td>vide / <code>0</code></td>
+    <td>Bascule l'escalade de « par longueur » à <strong>« par qualité »</strong> : seuls les brouillons notés sous le seuil partent au LLM. Ajoute la métrique <code>translation_quality_score</code>.</td>
+  </tr>
+  <tr>
+    <td><code>PER_BOOK_</code> / <code>DAILY_</code> / <code>MONTHLY_BUDGET_USD</code></td><td>2 / 5 / 50</td>
+    <td>Plafonds durs vérifiés <em>avant</em> le premier appel payant → <strong>exit 7</strong>. Le défaut de 2 $ refuse volontairement un tome littéraire sur modèle Sonnet (~4–6,50 $).</td>
+  </tr>
+  <tr>
+    <td><code>NMT_FREE_CHARS_PER_MONTH</code></td><td><code>0</code> (500 000 auto pour Google)</td>
+    <td>Seul le dépassement est facturé. Le compteur est le ledger de runs : si des caractères ont été consommés hors pipeline ce mois-ci, la projection sous-estime.</td>
+  </tr>
+  <tr>
+    <td><code>TM_PATH</code></td><td><code>./tm.sqlite</code></td>
+    <td>Changer de fichier = repartir sans mémoire : tout est retraduit et repayé. Un fichier partagé entre tomes est ce qui fait monter le taux de réutilisation.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_CACHE_PATH</code></td><td><code>./llm_cache.sqlite</code></td>
+    <td>Le supprimer rend un re-run payant. Le garder rend un re-run identique <strong>gratuit et instantané</strong>.</td>
+  </tr>
+  <tr>
+    <td><code>EPUBCHECK_JAR</code> / <code>EPUBCHECK_BIN</code></td><td>vide</td>
+    <td>Non renseigné = validation EPUB <em>ignorée</em> (et non échouée) : la porte QA passe sur les seuls contrôles statiques. Le rapport le dit via <code>epubcheck_skipped</code>.</td>
+  </tr>
+  <tr>
+    <td><code>RUN_TIMEOUT_SECONDS</code></td><td><code>0</code></td>
+    <td>Borne un livre. Utile en batch pour qu'un fournisseur bloqué ne fige pas la série. Le dépassement donne <strong>exit 8</strong>, et la dépense déjà engagée est quand même enregistrée.</td>
+  </tr>
+  <tr>
+    <td><code>NMT_MAX_ATTEMPTS</code> / <code>NMT_RETRY_BASE_MS</code></td><td>3 / 200</td>
+    <td>Réessais sur erreur transitoire, en backoff. Attention : <strong>chaque tentative consomme des caractères</strong> chez le fournisseur, et le compteur le reflète.</td>
+  </tr>
+  <tr>
+    <td><code>LOG_LEVEL</code></td><td><code>info</code></td>
+    <td><code>debug</code> détaille le routage segment par segment dans <code>logs.ndjson</code>. Les payloads ne sont jamais journalisés.</td>
+  </tr>
+</table>
+</div>
+
+<h3>8.1 Le montage expérimental : Claude Code CLI au lieu de l'API</h3>
+
+<p>
+  <code>LLM_CHAT_PROVIDER=claude-cli</code> remplace l'appel HTTP par un sous-processus
+  <code>claude -p --output-format json</code>, authentifié par la session de l'application. Aucune
+  clé API, donc aucune enveloppe <code>op run</code> : le <code>Justfile</code> le détecte et lance
+  directement. <code>LLM_MODEL</code> accepte alors un alias du CLI (<code>opus</code>,
+  <code>sonnet</code>, <code>haiku</code>) ou un nom de modèle complet.
+</p>
+
+<pre><code>EPUB_TRANSLATOR_LLM_CHAT_PROVIDER=claude-cli
+EPUB_TRANSLATOR_LLM_MODEL=opus
+EPUB_TRANSLATOR_LLM_CLI_BIN=                  <span class="cmt"># vide = "claude" depuis le PATH</span>
+<span class="cmt"># Les tarifs restent renseignés : ils ne facturent rien ici, ils font du</span>
+<span class="cmt"># plafond par livre un indicateur de quota consommé.</span>
+EPUB_TRANSLATOR_LLM_INPUT_PER_MTOK_USD=15.00
+EPUB_TRANSLATOR_LLM_OUTPUT_PER_MTOK_USD=75.00</code></pre>
+
+<div class="card key">
+  <span class="label">La mesure qui rend le montage viable</span>
+  <p style="margin-top:0">
+    L'adaptateur passe <code>--system-prompt</code>, qui <strong>remplace</strong> le prompt système
+    de l'agent, et <code>--tools ""</code>, qui coupe l'outillage. Sans ces deux options, chaque
+    invocation traîne le préambule complet de Claude Code. Mesuré le 8 août 2026, sur un prompt
+    d'une ligne :
+  </p>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Invocation</th><th class="num">Tokens d'entrée mis en cache</th><th class="num">Équivalent API</th></tr>
+    <tr><td><code>claude -p</code> nu</td><td class="num">48 870</td><td class="num">0,2936 $</td></tr>
+    <tr><td>avec <code>--system-prompt</code> + <code>--tools ""</code></td><td class="num">2 027</td><td class="num">0,0126 $</td></tr>
+  </table>
+  </div>
+  <p style="margin-bottom:0">
+    <strong>24× de surcharge en moins par appel</strong>, et un tome en fait plus de soixante-huit.
+  </p>
+</div>
+
+<div class="card warn">
+  <span class="label">Ce que ce montage vous fait perdre</span>
+  <ul style="margin-bottom:0">
+    <li><strong>Le garde-fou budgétaire cesse de décrire une dépense réelle.</strong> Un abonnement
+      n'a pas de coût marginal. Garder les tarifs publiés du modèle transforme le plafond par livre
+      en <em>indicateur de quota</em> — c'est le meilleur substitut que le pipeline sache calculer,
+      mais ce n'est plus une facture.</li>
+    <li><strong>Le <code>cache_control</code> vous échappe.</strong> L'adaptateur Anthropic marque
+      explicitement le préfixe stable ; ici c'est le CLI qui décide. Le préfixe reste identique
+      octet pour octet entre les lots d'un chapitre, donc le cache par contenu du fournisseur
+      <em>peut</em> se déclencher seul. <code>llm_cache_read_tokens</code> dans
+      <code>report.json</code> est le nombre qui le dit — le premier à regarder après un vrai run.</li>
+    <li><strong>Pas de sortie structurée native.</strong> Le CLI n'a pas d'équivalent au schéma JSON
+      de l'API : le schéma devient une instruction. Le décodeur tolérant et le rattrapage en
+      demi-lots absorbent la différence, au prix de quelques lots dégradés de plus.</li>
+    <li><code>MaxTokens</code> est ignoré (le CLI n'expose pas le réglage) : c'est la limite du
+      modèle qui s'applique.</li>
+  </ul>
+</div>
+
+<p>
+  Avant de lancer un tome, la vérification de bout en bout — elle consomme du quota, donc elle est
+  explicitement optionnelle :
+</p>
+
+<pre><code>EPUB_TRANSLATOR_LIVE_CLI_TEST=1 EPUB_TRANSLATOR_LLM_MODEL=opus \
+  go test ./tests/integration/ -run TestLiterary_ClaudeCLI -v
+<span class="cmt"># → traduit 3 segments, vérifie les placeholders, et affiche les compteurs :</span>
+<span class="cmt">#   usage: input=2 output=164 cache_read=0 cache_creation=2847</span></code></pre>
+
+<h2 id="artefacts">9. Lire les artefacts d'un run</h2>
+
+<pre><code>runs/20260808-142312/
+├── translated.epub   <span class="cmt">← le livre</span>
+├── report.json       <span class="cmt">← segments, hits TM, tokens, coûts, bloc QA</span>
+├── segments.jsonl    <span class="cmt">← 1 ligne par segment (entrée de eval --segments)</span>
+├── metrics.json      <span class="cmt">← métriques à plat, noms canoniques</span>
+└── logs.ndjson       <span class="cmt">← logs structurés</span></code></pre>
+
+<div class="card note">
+  <span class="label">Les artefacts sont écrits même si la QA échoue</span>
+  <p style="margin-top:0">
+    Un run qui sort en <strong>exit 5</strong> a quand même produit son EPUB et ses rapports :
+    c'est ce qui permet de diagnostiquer. Regardez d'abord, dans <code>report.json</code>, le bloc
+    <code>qa</code> : <code>placeholder_restore_ratio</code> (seuil 0,995),
+    <code>untranslated_segments</code>, <code>missing_spine_docs</code>,
+    <code>glossary_violations</code>, <code>epubcheck_passed</code>.
+  </p>
+</div>
+
+<h4>Les statuts d'un segment dans <code>segments.jsonl</code></h4>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Statut</th><th>Signifie</th></tr>
+  <tr><td><code>reused</code></td><td>Servi par la mémoire de traduction. Zéro appel, zéro coût.</td></tr>
+  <tr><td><code>translated</code></td><td>Brouillon NMT. En mode littéraire, c'est le signe que le LLM n'a <em>pas</em> pu le raffiner (lot dégradé) — cherchez le warning correspondant dans <code>logs.ndjson</code>.</td></tr>
+  <tr><td><code>post_edited</code></td><td>Réécrit par le LLM, placeholders vérifiés. C'est le statut nominal en mode littéraire.</td></tr>
+</table>
+</div>
+
+<h4>Relecture humaine, côte à côte</h4>
+
+<pre><code>just compare runs/&lt;id&gt;/segments.jsonl relecture.html   <span class="cmt"># tableau EN | FR dans le navigateur</span>
+just carve "books/vol1.epub" en-ch1.epub chapter_1.xhtml <span class="cmt"># isoler 1 chapitre pour itérer vite</span></code></pre>
+
+<h2 id="exit">10. Codes de sortie et diagnostic</h2>
+
+<div class="widget" id="w-exit">
+  <span class="wlabel">Cliquez un code pour le diagnostic</span>
+  <div class="exitgrid" id="exitgrid"></div>
+  <div class="exitbox" id="exitbox"></div>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    R["run"] --> F1{"flags valides ?"}
+    F1 -->|"non"| E2["exit 2"]
+    F1 -->|"oui"| F2{"config chargeable ?<br/>bible présente ?"}
+    F2 -->|"non"| E2
+    F2 -->|"oui"| F3{"extract / parse /<br/>segmentation ok ?"}
+    F3 -->|"non"| E3["exit 3"]
+    F3 -->|"oui"| F4{"projection sous<br/>les 3 plafonds ?"}
+    F4 -->|"non"| E7["exit 7 — zéro appel payant"]
+    F4 -->|"oui"| F5{"fournisseur répond ?"}
+    F5 -->|"non"| E4["exit 4"]
+    F5 -->|"oui"| F6{"recomposition ok ?"}
+    F6 -->|"non"| E6["exit 6"]
+    F6 -->|"oui"| F7{"porte QA passée ?"}
+    F7 -->|"non"| E5["exit 5 — artefacts écrits quand même"]
+    F7 -->|"oui"| OK["exit 0"]
+    R -.->|"Ctrl-C ou timeout"| E8["exit 8"]
+</pre>
+<figcaption>Chaque code correspond à une étape précise, ce qui rend le diagnostic mécanique.</figcaption>
+</figure>
+
+<h2 id="docker">11. Docker et aide-mémoire <code>just</code></h2>
+
+<h3>Compose : quatre services, trois profils</h3>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Service</th><th>Profil</th><th>Rôle</th></tr>
+  <tr><td><code>app</code></td><td>défaut</td><td>Exécute le CLI. Lit <code>.env.local</code>, monte <code>./books</code>, <code>./runs</code>, <code>./data</code>.</td></tr>
+  <tr><td><code>nmt</code></td><td>défaut</td><td>Le NMT de dev intégré, démarré avec l'app.</td></tr>
+  <tr><td><code>libretranslate</code></td><td><code>real-nmt</code></td><td>Vrai NMT local EN→FR.</td></tr>
+  <tr><td><code>comet</code></td><td><code>eval</code></td><td>Service COMET-QE. Image lourde : volontairement hors du profil par défaut.</td></tr>
+</table>
+</div>
+
+<pre><code>mkdir -p books runs data
+cp &lt;votre-livre&gt;.epub books/source.epub
+just docker-build
+just up                                        <span class="cmt"># build + run app (+ nmt), sortie dans ./runs</span>
+docker compose logs -f app
+just down</code></pre>
+
+<div class="card warn">
+  <span class="label">Ce que le compose ne couvre pas, par conception</span>
+  <p style="margin-top:0">
+    Le mode littéraire <em>fonctionne</em> via <code>app</code> (il lit <code>.env.local</code>, donc
+    la clé API), mais le LLM est une API externe, pas un service hébergé : pour l'activer en
+    conteneur il faut adapter la <code>command:</code> du service <code>app</code>
+    (<code>--mode literary --series … --glossary …</code>).
+  </p>
+</div>
+
+<h3>Aide-mémoire <code>just</code></h3>
+
+<p><code>just --list</code> affiche tout, avec les arguments documentés. Les plus utiles :</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Recette</th><th>Fait quoi</th></tr>
+  <tr><td><code>just preflight</code></td><td>Vérifie les outils et pingue l'endpoint NMT (non bloquant).</td></tr>
+  <tr><td><code>just print-config-vars</code></td><td>Affiche les <code>EPUB_TRANSLATOR_*</code> réellement résolus — le premier réflexe quand « ça ne prend pas ma config ».</td></tr>
+  <tr><td><code>just nmt-dev</code> · <code>just libretranslate-up</code> · <code>just comet-up</code></td><td>Démarrer les services.</td></tr>
+  <tr><td><code>just run &lt;in.epub&gt; [outdir]</code></td><td>Traduction NMT.</td></tr>
+  <tr><td><code>just literary &lt;in&gt; &lt;série&gt; [glossaire] [run-id]</code></td><td>Traduction littéraire.</td></tr>
+  <tr><td><code>just estimate &lt;in.epub&gt;</code></td><td>Projection de coût.</td></tr>
+  <tr><td><code>just series-bible &lt;dir&gt; &lt;série&gt; [samples] [merge]</code></td><td>Construire les bibles de toute la série.</td></tr>
+  <tr><td><code>just bible &lt;db&gt; &lt;série&gt;</code></td><td>Afficher une bible en clair — <strong>à faire avant un run complet</strong>, une erreur s'y propage partout.</td></tr>
+  <tr><td><code>just glossary-suggest &lt;in&gt; [out] [min]</code></td><td>Extraire les noms propres.</td></tr>
+  <tr><td><code>just eval-ref &lt;cand&gt; &lt;ref&gt;</code> · <code>just eval-qe &lt;segments&gt;</code></td><td>chrF · COMET-QE.</td></tr>
+  <tr><td><code>just compare &lt;segments&gt; &lt;out.html&gt;</code> · <code>just carve …</code></td><td>Relecture côte à côte · découper un chapitre.</td></tr>
+  <tr><td><code>just check</code> · <code>just ci-local</code> · <code>just fuzz</code></td><td>fmt + lint + tests + audit doc · idem avec preflight · fuzzing (hors CI).</td></tr>
+  <tr><td><code>just docs-audit</code></td><td>Vérifie que ces deux documents illustrés couvrent encore toute la surface du CLI (commandes, flags, variables, recettes, codes de sortie). Échoue quand une nouveauté n'a pas été documentée.</td></tr>
+</table>
+</div>
+
+<h3>Symptômes fréquents</h3>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Symptôme</th><th>Cause probable</th><th>Correctif</th></tr>
+  <tr><td><code>unable to build the "libretranslate" NMT provider</code></td><td><code>NMT_ENDPOINT</code> vide pour un moteur qui en exige un</td><td>Renseigner l'endpoint, ou passer à <code>google</code> qui fournit son hôte.</td></tr>
+  <tr><td><code>unable to use the google NMT provider</code></td><td>Clé API absente</td><td><code>NMT_API_KEY</code> + facturation activée sur le projet GCP.</td></tr>
+  <tr><td>exit 7 dès le lancement</td><td>Projection au-dessus d'un plafond</td><td>Lancer <code>estimate</code>, puis ajuster le plafond ou le modèle. Ne jamais désactiver le garde-fou « pour voir ».</td></tr>
+  <tr><td>Beaucoup de segments <code>translated</code> en mode littéraire</td><td>Lots LLM dégradés (refus, troncature)</td><td>Chercher <code>literary batch kept its draft</code> dans <code>logs.ndjson</code> ; baisser <code>LLM_BATCH_SIZE</code>.</td></tr>
+  <tr><td>Le re-run repaie tout</td><td>Bible modifiée entre deux runs, ou cache LLM supprimé</td><td>Ne pas utiliser <code>--update-bible</code> ; conserver <code>llm_cache.sqlite</code>.</td></tr>
+  <tr><td>chrF très bas alors que la lecture est bonne</td><td>Référence d'une autre édition</td><td>Utiliser COMET-QE (<code>eval --segments</code>).</td></tr>
+  <tr><td><code>epubcheck</code> jamais exécuté</td><td>ni <code>EPUBCHECK_JAR</code> ni <code>EPUBCHECK_BIN</code> résolus</td><td>Renseigner le chemin du jar ; vérifier <code>epubcheck_skipped</code> dans le rapport.</td></tr>
+</table>
+</div>
+
+<footer>
+  epub-translator · mode d'emploi · code figé sur <code>6192dae</code> ·
+  compléments texte : <code>docs/INSTALLATION.md</code>, <code>docs/guide-traduction.md</code>,
+  <code>docs/evaluation-qualite.md</code>, <code>docs/ameliorer-traduction.md</code>
+</footer>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#151824', primaryColor: '#252840', primaryTextColor: '#e2e4f0',
+      primaryBorderColor: '#2a2d3e', lineColor: '#8b8fa8', secondaryColor: '#1a1d27',
+      tertiaryColor: '#1f2f3a', fontFamily: "'SF Mono','Fira Code',ui-monospace,monospace",
+      fontSize: '12px'
+    },
+    flowchart: { curve: 'basis', padding: 14 },
+    sequence: { actorMargin: 40, width: 150 }
+  });
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var P = 'EPUB_TRANSLATOR_';
+
+  function pickGroup(rootId, onPick) {
+    var root = document.getElementById(rootId);
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      var kids = root.querySelectorAll('button');
+      for (var i = 0; i < kids.length; i++) kids[i].className = '';
+      b.className = 'active';
+      onPick(b.getAttribute('data-v'));
+    });
+  }
+
+  /* ── Générateur de config ───────────────────────────────────────── */
+  var cfg = { nmt: 'http', mode: 'nmt', llm: 'anthropic', qe: 'off' };
+  var LLM = {
+    anthropic: { base: '', model: 'claude-sonnet-5', ref: 'op://Dev/anthropic-epub-translator/credential', mult: '1.30', cacheRead: '0.30', in: '3.00', out: '15.00' },
+    openai:    { base: 'https://api.openai.com/v1', model: 'gpt-5.4', ref: 'op://Dev/openai-epub-translator/credential', mult: '1.0', cacheRead: '0', in: '2.50', out: '10.00' },
+    deepseek:  { base: 'https://api.deepseek.com', model: 'deepseek-chat', ref: 'op://Dev/deepseek-epub-translator/credential', mult: '1.0', cacheRead: '0', in: '0.27', out: '1.10' },
+    // Pas de clé : le CLI s'authentifie via sa propre session. Les tarifs
+    // restent renseignés — ils ne facturent rien, ils font du plafond par livre
+    // un indicateur de quota consommé.
+    'claude-cli': { base: '', model: 'opus', ref: '', mult: '1.30', cacheRead: '0.30', in: '15.00', out: '75.00' }
+  };
+  function line(k, v, comment) {
+    return '<span class="k">' + P + k + '</span>=<span class="v">' + v + '</span>' +
+      (comment ? '   <span class="c"># ' + comment + '</span>' : '') + '\n';
+  }
+  function head(t) { return '<span class="c"># ── ' + t + ' ─────────────────────</span>\n'; }
+
+  function renderCfg() {
+    var o = '<span class="c">### .env.local — non secret, gitignoré</span>\n';
+    o += head('brouillon NMT');
+    if (cfg.nmt === 'http') {
+      o += line('NMT_PROVIDER', 'http');
+      o += line('NMT_ENDPOINT', 'http://localhost:8081/translate', 'lancer: just nmt-dev');
+    } else if (cfg.nmt === 'google') {
+      o += line('NMT_PROVIDER', 'google');
+      o += line('NMT_API_KEY', '', 'vide: injecté depuis .env.op');
+      o += line('NMT_ENDPOINT', '', 'vide: l\'adaptateur connaît l\'hôte');
+      o += line('NMT_FREE_CHARS_PER_MONTH', '500000');
+      o += line('COST_PER_1000_CHARS_USD', '0.02', '20 $ / M caractères');
+    } else {
+      o += line('NMT_PROVIDER', 'libretranslate');
+      o += line('NMT_ENDPOINT', 'http://localhost:5050/translate', 'just libretranslate-up');
+    }
+    o += '\n' + head('stockage');
+    o += line('TM_PATH', './data/tm.sqlite', 'partagé entre les tomes = réutilisation');
+    if (cfg.mode === 'literary') {
+      o += line('NARRATIVE_PATH', './data/series.sqlite');
+      o += line('LLM_CACHE_PATH', './data/llm-cache.sqlite', 'ne pas supprimer: re-runs gratuits');
+    }
+    if (cfg.mode === 'literary') {
+      var L = LLM[cfg.llm];
+      o += '\n' + head('LLM (mode littéraire)');
+      o += line('LLM_CHAT_PROVIDER', cfg.llm);
+      if (L.base) o += line('LLM_BASE_URL', L.base);
+      o += line('LLM_MODEL', L.model, cfg.llm === 'claude-cli' ? 'alias CLI: opus | sonnet | haiku' : '');
+      if (cfg.llm === 'claude-cli') {
+        o += line('LLM_CLI_BIN', '', 'vide: "claude" depuis le PATH');
+        o += line('LLM_API_KEY', '', 'inutile: le CLI a sa propre session');
+      } else {
+        o += line('LLM_API_KEY', '', 'vide: injecté depuis .env.op');
+      }
+      o += '\n' + head(cfg.llm === 'claude-cli'
+        ? 'tarifs — ils ne facturent rien ici, ils mesurent le quota'
+        : 'tarifs — sans eux le garde-fou ne compare rien');
+      o += line('LLM_INPUT_PER_MTOK_USD', L.in);
+      o += line('LLM_OUTPUT_PER_MTOK_USD', L.out);
+      o += line('LLM_CACHE_READ_PER_MTOK_USD', L.cacheRead, L.cacheRead === '0' ? 'pas de prompt cache' : '');
+      o += line('LLM_TOKEN_MULTIPLIER', L.mult, L.mult === '1.30' ? 'tokenizer plus dense' : '');
+    }
+    if (cfg.qe === 'on') {
+      o += '\n' + head('qualité (COMET-QE)');
+      o += line('COMET_ENDPOINT', 'http://localhost:8000/score', 'just comet-dev');
+      o += line('ESCALATE_BELOW_SCORE', '0.80', 'escalade les brouillons faibles');
+    }
+    o += '\n' + head('garde-fous de dépense');
+    o += line('PER_BOOK_BUDGET_USD', cfg.mode === 'literary' ? '7.00' : '2.00',
+      cfg.mode === 'literary' ? 'un tome Sonnet ≈ 4–6,50 $' : '');
+    o += line('DAILY_BUDGET_USD', '5.00');
+    o += line('MONTHLY_BUDGET_USD', '50.00');
+
+    // Le second fichier n'apparaît que si un fournisseur payant est en jeu. Le
+    // CLI s'authentifie via sa propre session : aucun secret à résoudre.
+    var needsLLMSecret = cfg.mode === 'literary' && cfg.llm !== 'claude-cli';
+    var needsNMTSecret = cfg.nmt === 'google';
+    if (needsLLMSecret || needsNMTSecret) {
+      o += '\n<span class="c">### .env.op — QUE des références, committable tel quel</span>\n';
+      if (needsLLMSecret) o += line('LLM_API_KEY', LLM[cfg.llm].ref);
+      if (needsNMTSecret) o += line('NMT_API_KEY', 'op://Dev/gcp-cloud-translation/credential');
+    }
+    document.getElementById('cfg-out').innerHTML = o;
+
+    var cmd, cons;
+    if (cfg.mode === 'literary') {
+      cmd = 'epub-translator series-bible --input-dir ./books/ma-serie --series ma-serie --samples 8\n' +
+            'epub-translator estimate --input ./books/ma-serie/volume-01.epub\n' +
+            'epub-translator run --input ./books/ma-serie/volume-01.epub --output-dir ./runs \\\n' +
+            '  --source-lang en --target-lang fr --mode literary \\\n' +
+            '  --series ma-serie@volume-01 --glossary ./glossary.json';
+      cons = '<b>Conséquence :</b> chaque segment frais est brouillonné par le NMT puis <b>réécrit</b> par le LLM ' +
+        'avec la bible et le glossaire. Le brouillon n\'est jamais persisté en mémoire de traduction — ' +
+        'seule la version raffinée l\'est, et seulement après validation des placeholders.';
+    } else {
+      cmd = 'epub-translator run --input ./books/source.epub --output-dir ./runs \\\n' +
+            '  --source-lang en --target-lang fr';
+      cons = '<b>Conséquence :</b> traduction rapide, coût nul en local. Aucun appel LLM tant que ' +
+        '<code>LLM_ENABLED</code> et <code>LLM_ENDPOINT</code> ne sont pas renseignés.';
+    }
+    if (cfg.nmt === 'google') {
+      cons += ' <b>Attention :</b> le texte du livre est envoyé à Google ; la facturation GCP doit être ' +
+        'activée même pour le palier gratuit.';
+    }
+    if (cfg.qe === 'on') {
+      cons += ' Avec COMET-QE branché, l\'escalade devient <b>pilotée par la qualité</b> et non plus par la longueur.';
+    }
+    if (cfg.llm === 'claude-cli' && cfg.mode === 'literary') {
+      cons += ' <b>Montage expérimental :</b> chaque appel lance un sous-processus <code>claude -p</code> ' +
+        'authentifié par ta session d\'abonnement — aucune clé API, et <code>op run</code> n\'enveloppe ' +
+        'plus la recette. En contrepartie le plafond par livre ne décrit plus une dépense réelle : ' +
+        'garde les tarifs publiés pour qu\'il reste un indicateur de quota.';
+    }
+    document.getElementById('cfg-cons').innerHTML =
+      '<pre style="margin:0 0 0.7rem"><code>' + cmd + '</code></pre>' + cons;
+    document.getElementById('g-llm-group').style.display = cfg.mode === 'literary' ? '' : 'none';
+  }
+  pickGroup('g-nmt', function (v) { cfg.nmt = v; renderCfg(); });
+  pickGroup('g-mode', function (v) { cfg.mode = v; renderCfg(); });
+  pickGroup('g-llm', function (v) { cfg.llm = v; renderCfg(); });
+  pickGroup('g-qe', function (v) { cfg.qe = v; renderCfg(); });
+  document.getElementById('cfg-copy').addEventListener('click', function () {
+    var txt = document.getElementById('cfg-out').innerText;
+    navigator.clipboard.writeText(txt).then(function () {
+      var el = document.getElementById('cfg-copied');
+      el.textContent = 'copié dans le presse-papier';
+      setTimeout(function () { el.textContent = ''; }, 2200);
+    }, function () {
+      document.getElementById('cfg-copied').textContent = 'copie refusée par le navigateur — sélectionnez le bloc';
+    });
+  });
+  renderCfg();
+
+  /* ── Timeline du parcours ───────────────────────────────────────── */
+  var TL = [
+    {
+      t: 'Glossaire', cost: 'gratuit',
+      title: '1. Extraire et curer le glossaire',
+      cmd: 'epub-translator glossary-suggest --input "$EN" --out ./glossary.json --min-count 5',
+      body: 'Heuristique, aucun appel API. Produit un squelette JSON <b>à curer à la main</b> : ' +
+        'garder les vrais noms propres, écrire la forme française, cocher <code>locked</code>, jeter le bruit.' +
+        '<div class="consequence"><b>Effet sur le rendu :</b> un terme verrouillé est masqué avant l\'appel ' +
+        'et resubstitué après — ni le NMT ni le LLM ne peuvent le traduire de travers. Une violation résiduelle ' +
+        '<b>fait échouer la porte QA</b>.</div>'
+    },
+    {
+      t: 'Bible', cost: '≈ 0,65 $ / tome, une fois',
+      title: '2. Construire la bible de série',
+      cmd: 'epub-translator series-bible --input-dir ./books/ma-serie --series ma-serie --samples 8\n' +
+           'just bible ./narrative.sqlite ma-serie   # relire AVANT de traduire',
+      body: 'Style, voix et vouvoiement sont tirés de <b>tous</b> les tomes ; les synopsis sont bornés aux ' +
+        'tomes 1..N. Écrit <code>ma-serie@volume-01</code>, <code>ma-serie@volume-02</code>, …' +
+        '<div class="consequence"><b>Effet sur le rendu :</b> c\'est ce qui donne une voix cohérente ' +
+        'd\'un chapitre à l\'autre. Une erreur dans la bible se propage à tout le tome — d\'où la relecture ' +
+        'avant le premier run complet.</div>'
+    },
+    {
+      t: 'Estimation', cost: '0 appel API',
+      title: '3. Projeter le coût avant de payer',
+      cmd: 'epub-translator estimate --input "$EN"',
+      body: 'Parse + segmente, ne traduit pas. Trois scénarios : NMT seul, hybride, LLM complet.' +
+        '<div class="consequence"><b>Effet :</b> aucun sur le livre. Mais c\'est le <b>même</b> modèle de coût ' +
+        'que le garde-fou du run : si le chiffre annoncé dépasse <code>PER_BOOK_BUDGET_USD</code>, le run ' +
+        'sortira en <b>exit 7</b> sans passer un seul appel.</div>'
+    },
+    {
+      t: 'Traduction', cost: 'le vrai coût',
+      title: '4. Traduire le tome',
+      cmd: 'epub-translator run --input "$EN" --output-dir ./runs \\\n' +
+           '  --source-lang en --target-lang fr \\\n' +
+           '  --mode literary --series ma-serie@volume-01 --glossary ./glossary.json',
+      body: 'Par chapitre : lookup TM → brouillon groupé → réécriture LLM par lots de 50 → restauration ' +
+        'des placeholders → persistance.' +
+        '<div class="consequence"><b>Effet sur le rendu :</b> sortie dans ' +
+        '<code>runs/&lt;run-id&gt;/translated.epub</code>. Relancer la même commande est <b>gratuit et ' +
+        'instantané</b> tant que la bible n\'a pas bougé : cache LLM + mémoire de traduction.</div>'
+    },
+    {
+      t: 'Évaluation', cost: 'gratuit (service local)',
+      title: '5. Mesurer et relire',
+      cmd: 'EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \\\n' +
+           '  epub-translator eval --segments runs/&lt;id&gt;/segments.jsonl\n' +
+           'just compare runs/&lt;id&gt;/segments.jsonl relecture.html',
+      body: 'COMET-QE note sans référence ; <code>just compare</code> produit un tableau EN | FR pour la ' +
+        'relecture humaine.' +
+        '<div class="consequence"><b>Effet :</b> aucun sur le livre — c\'est une mesure. Ce qu\'on en fait : ' +
+        'compléter le glossaire, ajuster la bible, et relancer. La TM garde ce qui était déjà bon.</div>'
+    }
+  ];
+  var tl = document.getElementById('tl'), tlbody = document.getElementById('tlbody');
+  var tlIdx = 0, tlTimer = null;
+  TL.forEach(function (s, i) {
+    var d = document.createElement('div');
+    d.className = 'tlstep';
+    d.innerHTML = '<b>' + s.t + '</b><span class="cost">' + s.cost + '</span>';
+    d.addEventListener('click', function () { clearInterval(tlTimer); tlIdx = i; renderTL(); });
+    tl.appendChild(d);
+  });
+  function renderTL() {
+    for (var i = 0; i < tl.children.length; i++) {
+      tl.children[i].className = 'tlstep' + (i === tlIdx ? ' on' : (i < tlIdx ? ' done' : ''));
+    }
+    var s = TL[tlIdx];
+    tlbody.innerHTML = '<h5>' + s.title + '</h5><pre><code>' + s.cmd + '</code></pre>' + s.body;
+  }
+  document.getElementById('tl-play').addEventListener('click', function () {
+    clearInterval(tlTimer); tlIdx = 0; renderTL();
+    if (reduce) return;
+    tlTimer = setInterval(function () {
+      if (tlIdx >= TL.length - 1) { clearInterval(tlTimer); return; }
+      tlIdx++; renderTL();
+    }, 4200);
+  });
+  renderTL();
+
+  /* ── Explorateur de flags ───────────────────────────────────────── */
+  var FLAGS = [
+    { f: '--mode literary',
+      proc: 'Charge la bible (échec si absente), draft groupé par chapitre puis réécriture LLM par lots de 50. Un lot en échec dégrade ses segments sur leur brouillon sans annuler le chapitre.',
+      out: 'Les segments passent en <code>post_edited</code>. <code>report.json</code> gagne <code>series_id</code>, <code>bible_version</code> et les compteurs de tokens.',
+      cost: 'Le poste dominant. Compter 4–6,50 $ par tome sur un modèle Sonnet, ~1,60 $ sur Haiku 4.5. Le plafond par défaut de 2 $ refusera donc un run Sonnet — volontairement.' },
+    { f: '--series lumen@volume-01',
+      proc: 'Vise la bible <em>bornée</em> : synopsis des tomes 1 à 1 seulement. Sans le suffixe, on charge la bible du tome le plus récent.',
+      out: 'Change ce que le modèle sait de l\'intrigue, donc le ton. Un modèle au courant de la fin colore les dialogues du début.',
+      cost: 'Neutre — sauf que la taille des synopsis entre dans le préfixe, donc dans le coût d\'entrée de chaque appel.' },
+    { f: '--glossary',
+      proc: 'Chaque terme verrouillé est remplacé par <code>&lt;g id="N"/&gt;</code> avant l\'appel, resubstitué après. Vaut pour le NMT <em>et</em> pour le LLM.',
+      out: 'Terminologie garantie. Les violations restantes sont comptées et <b>font échouer la porte QA</b>.',
+      cost: 'Neutre. Le texte protégé peut être légèrement plus court ou plus long que la source : c\'est le compteur de l\'adaptateur qui fait foi.' },
+    { f: '--update-bible',
+      proc: 'La bible est mise à jour après chaque chapitre et réécrite sur disque.',
+      out: 'La bible sur disque ne ressemble plus à celle du départ : le run suivant ne part pas du même état, donc n\'est plus reproductible.',
+      cost: '<b>≈ ×10.</b> Le préfixe cacheable est réécrit une fois par chapitre au lieu d\'une fois par run : 4,33 $ contre 0,25–0,41 $ sur un tome mesuré.' },
+    { f: '--run-id',
+      proc: 'Aucun effet sur la traduction.',
+      out: 'Nomme le dossier <code>runs/&lt;run-id&gt;/</code>. Réutiliser un identifiant existant <b>écrase</b> ses artefacts.',
+      cost: 'Neutre. Utile pour itérer sur un même chapitre découpé (<code>just carve</code>) sans accumuler les dossiers.' },
+    { f: '--resume',
+      proc: 'Journalisé, mais ne modifie pas le déroulé aujourd\'hui : la reprise vient de la mémoire de traduction.',
+      out: 'Aucun effet direct.',
+      cost: 'Relancer un run interrompu ne repaie <b>pas</b> les segments déjà traduits — ils sont servis par la TM.' },
+    { f: '--escalation-rate',
+      proc: '<code>estimate</code> uniquement : la fraction de segments supposée escaladée dans le scénario hybride.',
+      out: 'Change une ligne du tableau imprimé, rien d\'autre.',
+      cost: 'C\'est un paramètre de <em>projection</em>, pas de run : le vrai taux dépend de <code>LLM_ESCALATE_MIN_CHARS</code> ou de COMET-QE.' },
+    { f: '--samples',
+      proc: 'Nombre de documents échantillonnés par tome pour déduire style, voix et vouvoiement.',
+      out: 'Une bible plus riche, donc des instructions de style plus précises dans chaque prompt.',
+      cost: 'Double effet : plus cher à générer <b>et</b> préfixe plus gros relu à chaque appel de tous les runs suivants.' },
+    { f: '--merge',
+      proc: 'Enrichit la bible existante au lieu de l\'écraser.',
+      out: 'Conserve les corrections manuelles ou les tomes déjà profilés.',
+      cost: 'Identique à une génération. Dans les deux cas le préfixe change → le cache LLM est invalidé une fois.' },
+    { f: '--reference-dir',
+      proc: '<code>batch</code> : cherche <code>&lt;dir&gt;/&lt;book-id&gt;.epub</code> après chaque livre réussi. Absent = ignoré silencieusement.',
+      out: 'Ajoute un chrF par livre et une moyenne dans <code>batch-report.json</code>.',
+      cost: 'Gratuit, purement local.' },
+    { f: '--min-count',
+      proc: 'Seuil d\'occurrences pour qu\'un candidat entre dans le glossaire suggéré.',
+      out: 'Bas = beaucoup de bruit à trier. Haut = les noms rares passent à travers.',
+      cost: 'Gratuit. Commencer à 5 sur un roman, puis descendre si des noms manquent.' }
+  ];
+  var flaglist = document.getElementById('flaglist');
+  function renderFlag(i) {
+    for (var k = 0; k < flaglist.children.length; k++) {
+      flaglist.children[k].className = (k === i ? 'active' : '');
+    }
+    document.getElementById('f-proc').innerHTML = FLAGS[i].proc;
+    document.getElementById('f-out').innerHTML = FLAGS[i].out;
+    document.getElementById('f-cost').innerHTML = FLAGS[i].cost;
+  }
+  FLAGS.forEach(function (fl, i) {
+    var b = document.createElement('button');
+    b.textContent = fl.f;
+    b.addEventListener('click', function () { renderFlag(i); });
+    flaglist.appendChild(b);
+  });
+  renderFlag(0);
+
+  /* ── Codes de sortie ────────────────────────────────────────────── */
+  var EXITS = [
+    { c: 0, n: 'Succès', d: 'Le livre est produit et la porte QA est passée.', fix: '—' },
+    { c: 2, n: 'Entrée ou configuration invalide', d: 'Flags manquants ou refusés (langue non supportée, mode inconnu, <code>--series</code> absent en littéraire), configuration illisible, bible introuvable, glossaire illisible, endpoint NMT requis mais vide.', fix: 'Lire le message : il nomme le réglage fautif. <code>just print-config-vars</code> montre ce qui est réellement chargé.' },
+    { c: 3, n: 'Parsing ou segmentation en échec', d: 'ZIP illisible, OPF absent ou mal formé, XHTML non parsable.', fix: 'Vérifier que le fichier est un EPUB sans DRM. Les EPUB nécessitant de l\'OCR ne sont pas supportés.' },
+    { c: 4, n: 'Fournisseur en échec', d: 'Le NMT ou le LLM a échoué après les réessais : service éteint, clé invalide, quota dépassé, modèle inconnu.', fix: 'Tester l\'endpoint à la main. En littéraire, un <b>chapitre entier</b> sans le moindre lot réussi remonte en erreur ; un lot isolé, non.' },
+    { c: 5, n: 'Porte QA en échec', d: 'Restauration des placeholders &lt; 99,5 %, segments non traduits &gt; 0,5 %, documents de spine manquants, violations de glossaire, ou <code>epubcheck</code> en échec.', fix: '<b>Les artefacts existent</b> : ouvrir le bloc <code>qa</code> de <code>report.json</code>, puis chercher les <code>placeholder restore failed</code> dans <code>logs.ndjson</code>.' },
+    { c: 6, n: 'Recomposition en échec', d: 'Impossible de réécrire l\'archive EPUB de sortie.', fix: 'Vérifier les droits et l\'espace disque du répertoire de sortie.' },
+    { c: 7, n: 'Budget dépassé', d: 'La projection pire-cas dépasse le plafond par livre, ou la dépense du jour/du mois plus la projection dépasse le plafond correspondant. <b>Aucun appel payant n\'a été passé.</b>', fix: 'Lancer <code>estimate</code>, puis : relever le plafond en connaissance de cause, changer de modèle, ou vérifier <code>LLM_TOKEN_MULTIPLIER</code>.' },
+    { c: 8, n: 'Interrompu', d: '<kbd>Ctrl-C</kbd>, SIGTERM, ou dépassement de <code>RUN_TIMEOUT_SECONDS</code>.', fix: 'Relancer : la mémoire de traduction resert ce qui était déjà traduit. La dépense engagée a bien été enregistrée dans le ledger.' }
+  ];
+  var eg = document.getElementById('exitgrid'), eb = document.getElementById('exitbox');
+  function renderExit(i) {
+    for (var k = 0; k < eg.children.length; k++) eg.children[k].className = (k === i ? 'active' : '');
+    var e = EXITS[i];
+    eb.innerHTML = '<div class="code">exit ' + e.c + ' — ' + e.n + '</div>' +
+      '<p style="margin:0.5rem 0">' + e.d + '</p>' +
+      '<p style="margin:0"><span style="color:var(--muted)">Que faire :</span> ' + e.fix + '</p>';
+  }
+  EXITS.forEach(function (e, i) {
+    var b = document.createElement('button');
+    b.textContent = 'exit ' + e.c;
+    b.addEventListener('click', function () { renderExit(i); });
+    eg.appendChild(b);
+  });
+  renderExit(4);
+})();
+</script>
+
+</body>
+</html>
