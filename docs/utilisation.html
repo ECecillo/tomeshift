@@ -728,11 +728,13 @@ full-llm         4774        112      4586530       1.7036      31.6095      33.
 <div class="card warn">
   <span class="label">Deux corrections qui font monter les chiffres — volontairement</span>
   <ul style="margin-bottom:0">
-    <li><strong>Le transport CLI réécrit son préfixe à chaque appel.</strong> Avec
-      <code>LLM_CHAT_PROVIDER=claude-cli</code>, chaque invocation est une session neuve : rien ne
-      survit pour être relu. Mesuré sur le chapitre 97 : 281 819 tokens d'<em>écriture</em> de cache,
-      soit six écritures d'un préfixe de ~47 k, là où le modèle « écrit une fois, relit ensuite » en
-      prévoyait une. Le côté entrée était sous-compté d'environ <strong>×1,9</strong>.</li>
+    <li><strong>Le transport CLI est facturé comme s'il réécrivait son préfixe à chaque appel.</strong>
+      Avec <code>LLM_CHAT_PROVIDER=claude-cli</code>, chaque invocation est une session neuve : rien
+      ne <em>garantit</em> qu'un préfixe survive pour être relu. C'est un <strong>majorant</strong>,
+      pas une description — voir les deux mesures ci-dessous. Sans lui, la projection était de
+      <strong>×1,9 à ×3,7</strong> trop basse sur ces mêmes runs, toujours dans le sens qui laisse un
+      plafond budgétaire passer un run. Un plafond qui surestime refuse du travail qu'il pouvait
+      s'offrir ; un plafond qui sous-estime ne borne rien.</li>
     <li><strong>La passe d'escalade ne bénéficie d'aucun cache.</strong> Le post-éditeur HTTP est un
       POST JSON vers un endpoint quelconque, sans <code>cache_control</code> : son préfixe est payé
       plein tarif à chaque appel — ce que le commentaire du code affirmait déjà (« paid once per
@@ -741,6 +743,37 @@ full-llm         4774        112      4586530       1.7036      31.6095      33.
       porte est celle que le projet répète : <em>l'escalade est chère au mot</em>.</li>
   </ul>
 </div>
+
+<h4>Ce que deux runs du même chapitre ont mesuré</h4>
+
+<p>
+  Même chapitre (97 de <code>vol33</code>, 258 segments, 6 lots), même modèle
+  (<code>claude-sonnet-5</code> via <code>claude-cli</code>), même bible v3, à deux semaines
+  d'écart :
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Run</th><th>écriture de cache</th><th>par appel</th><th>lecture de cache</th><th>entrée totale</th><th>sortie / segment</th><th>coût notionnel</th></tr>
+  <tr><td><code>ch97-sonnet</code> · 08/08</td><td class="num">281 819</td><td class="num">46 970</td><td class="num">191 000</td><td class="num">472 833</td><td class="num">207</td><td class="num">1,9153 $</td></tr>
+  <tr><td><code>ch97-cli</code> · 23/08</td><td class="num">83 560</td><td class="num">13 927</td><td class="num">201 885</td><td class="num">285 457</td><td class="num">160</td><td class="num">0,9950 $</td></tr>
+</table>
+</div>
+
+<p>
+  Le premier ressemble exactement à six réécritures complètes du préfixe. Dans le second, les
+  <em>lectures</em> dominent : le cache par contenu du fournisseur se déclenche visiblement de
+  lui-même, ce que le montage posait comme sa question ouverte. Même transport, un facteur
+  <strong>3,4</strong> d'écart sur le terme même que le majorant facture.
+</p>
+
+<p>
+  D'où la conclusion à retenir : sur ce transport, la projection <strong>borne</strong> une dépense,
+  elle ne la prédit pas. Sur le run du 23/08 elle annonçait 1,1373 $ pour 0,9950 $ réels
+  (<strong>+14 %</strong>) ; sur celui du 08/08 le même modèle aurait annoncé 1,1373 $ pour 1,9153 $
+  (<strong>−41 %</strong>). L'erreur change de signe — c'est le signe qu'on tient une borne, pas une
+  loi. L'ancien modèle, lui, se trompait toujours dans le même sens.
+</p>
 
 <h3><code>series-bible</code> — construire la bible avant de traduire</h3>
 

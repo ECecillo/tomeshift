@@ -65,12 +65,17 @@ type TokenRates struct {
 	// Being a measurement, TokenMultiplier does not apply to it: that
 	// correction exists to fix the character heuristic this bypasses.
 	OutputTokensPerSegment float64
-	// PrefixWrittenPerCall says the transport pays to write the cacheable
-	// prefix on every call rather than writing it once and reading it back.
-	// A subprocess-per-call transport (the Claude CLI) is the case it exists
-	// for: each invocation is an independent session, so nothing survives to be
-	// read back. Ignoring it under-counts the input side by ~1.9x on a measured
-	// chapter, all of it in the term the batch size is supposed to control.
+	// PrefixWrittenPerCall prices the cacheable prefix as written on every call
+	// rather than written once and read back. A subprocess-per-call transport
+	// (the Claude CLI) is the case it exists for: each invocation is an
+	// independent session, so nothing is guaranteed to survive to be read.
+	//
+	// It is an upper bound. Two runs of the same chapter measured 46,970 then
+	// 13,927 cache-creation tokens per call — a factor of 3.4 on the very term
+	// this prices — so no single multiplier describes the transport. What it
+	// buys is a bound in the right direction: without it the projection was 1.9x
+	// to 3.7x too low on those runs, and a cap that undershoots does not bound
+	// anything. See llm.RewritesPrefixPerCall for the measurements.
 	PrefixWrittenPerCall bool
 }
 

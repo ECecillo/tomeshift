@@ -115,16 +115,29 @@ func NewChatClient(cfg ChatClientConfig) ChatClient {
 	}
 }
 
-// RewritesPrefixPerCall reports whether a transport pays for the cacheable
-// prefix on every single call instead of writing it once and reading it back.
+// RewritesPrefixPerCall reports whether a transport should be priced as paying
+// for the cacheable prefix on every call instead of writing it once and reading
+// it back. The CLI opens an independent session per invocation, so nothing it
+// was handed last time is guaranteed to survive.
 //
-// It is a property of the transport, not of the model or of the prompt. The CLI
-// opens an independent session per invocation, so the prefix it was handed last
-// time is gone: measured on chapter 97 of vol33 (258 segments, 6 batches), the
-// run reported 281,819 cache-creation tokens — six writes of a ~47k prefix —
-// where the write-once model predicts one. Pricing that as one write and five
-// reads under-counts the input side by about 1.9x, which is the difference
-// between a budget cap that bounds a run and one that waves it through.
+// It is an upper bound, not a description, and the measurements are why. The
+// same chapter (97 of vol33: 258 segments, 6 batches, claude-sonnet-5, bible
+// v3) was run twice, two weeks apart:
+//
+//	          cache creation   per call   cache read   input total   notional
+//	2026-08-08       281,819     46,970      191,000       472,833     $1.9153
+//	2026-08-23        83,560     13,927      201,885       285,457     $0.9950
+//
+// The first looks exactly like six full rewrites; in the second, reads dominate
+// and the CLI's content-keyed cache is evidently hitting on its own. Same
+// transport, a factor of 3.4 apart on the term this flag prices — so what the
+// flag buys is a bound, and the projection's error changes sign between the two
+// runs (-41% then +14%) rather than tracking anything.
+//
+// Keep it anyway: the write-once model was 1.9x to 3.7x too low on those same
+// two runs, always in the direction that lets a budget cap wave a run through.
+// A cap that overshoots refuses work it could have afforded; one that undershoots
+// does not bound anything.
 func RewritesPrefixPerCall(provider string) bool {
 	return provider == ChatProviderClaudeCLI
 }

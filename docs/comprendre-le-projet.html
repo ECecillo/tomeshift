@@ -746,24 +746,28 @@ flowchart LR
 </pre>
 <figcaption>La calibration entre dans le <em>même</em> <code>Project</code> que les deux lecteurs
 partagent : calibrer l'un sans l'autre rétablirait par la porte de service la divergence que le
-modèle unique existe pour empêcher.</figcaption>
+modèle unique existe pour empêcher. Et elle est <em>datée</em> : deux runs du même chapitre à deux
+semaines d'écart ont mesuré 207 puis 160 tokens de sortie par segment — la mesure la plus récente
+est meilleure que l'heuristique, pas définitive.</figcaption>
 </figure>
 
 <h3>Le transport fait partie du prix</h3>
 
 <p>
   Deux faits sur <em>comment</em> les appels sont émis changent la facture d'un facteur, sans rien
-  changer au prompt :
+  changer au prompt. Aucun des deux n'est un réglage : ils se déduisent de qui exécute la passe.
 </p>
 
 <div class="table-wrap">
 <table>
   <tr><th>Fait</th><th>Effet mesuré</th><th>Où c'est décidé</th></tr>
   <tr>
-    <td>La CLI ouvre une <strong>session neuve à chaque appel</strong> : le préfixe cacheable est
-      réécrit, jamais relu.</td>
-    <td>281 819 tokens d'écriture de cache sur un chapitre de 6 lots — six écritures d'un préfixe de
-      ~47 k. Côté entrée : <strong>×1,9</strong> de sous-comptage.</td>
+    <td>La CLI ouvre une <strong>session neuve à chaque appel</strong> : rien ne garantit qu'un
+      préfixe cacheable survive pour être relu. Facturé comme réécrit à chaque appel — un
+      <strong>majorant</strong>, pas une description.</td>
+    <td>Deux runs du même chapitre : 46 970 puis <strong>13 927</strong> tokens d'écriture par appel,
+      un facteur 3,4 sur le terme même qu'on facture. Sans le majorant, la projection était de ×1,9 à
+      ×3,7 trop basse — toujours dans le sens qui laisse passer un run.</td>
     <td><code>llm.RewritesPrefixPerCall</code>, lu depuis le provider de chat : personne ne devrait
       avoir à configurer ça.</td>
   </tr>

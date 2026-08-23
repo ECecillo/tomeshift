@@ -5,6 +5,11 @@
 /books/
 /epub/
 
+# Side-by-side review pages built by `just compare` from a run's segments.jsonl.
+# They embed the book's source text and its translation, so they belong with the
+# books: never committed. Only the illustrated docs under docs/ are tracked.
+/*.html
+
 # Runtime artifacts and local data
 /runs/
 /data/
