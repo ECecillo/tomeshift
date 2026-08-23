@@ -3,6 +3,7 @@ package integration_test
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -210,4 +211,105 @@ func TestSeriesBible_RebuildIsIdempotent(t *testing.T) {
 	// Same content, same version: the version identifies the bible, not the
 	// number of times it was written.
 	require.Equal(t, first, second)
+}
+
+// TestSeriesBible_DryRunProjectsWithoutCallingTheProvider pins the affordance
+// the projection exists for: seeing the size of the job before committing to
+// it. A bible build is one call per chapter across every volume — the largest
+// job this CLI issues, and the one `estimate` cannot price.
+func TestSeriesBible_DryRunProjectsWithoutCallingTheProvider(t *testing.T) {
+	t.Parallel()
+
+	booksDir := t.TempDir()
+	writeEPUBAt(t, filepath.Join(booksDir, "volume-01.epub"), []string{
+		`<h1>One</h1><p>Alice arrives in the capital.</p>`,
+		`<h1>Two</h1><p>Alice meets Bruno at the market.</p>`,
+	})
+	writeEPUBAt(t, filepath.Join(booksDir, "volume-02.epub"), []string{
+		`<h1>One</h1><p>Alice wakes at the manor.</p>`,
+	})
+
+	var called int
+	srv := openaitest.NewServer(func(openaitest.Request) string {
+		called++
+		return "must not be reached"
+	})
+	t.Cleanup(srv.Close)
+
+	dbPath := filepath.Join(t.TempDir(), "narrative.sqlite")
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NarrativePath:       dbPath,
+			LLMChatProvider:     "openai",
+			LLMBaseURL:          srv.URL + "/v1",
+			LLMModel:            "test-model",
+			LLMInputPerMTokUSD:  1,
+			LLMOutputPerMTokUSD: 5,
+		}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := commandexec.Execute([]string{
+		"series-bible", "--input-dir", booksDir, "--series", "series-a",
+		"--samples", "1", "--dry-run",
+	}, &stdout, &stderr, loader)
+
+	require.Equal(t, exitcode.Success, code, "stderr: %s", stderr.String())
+	require.Zero(t, called, "a dry run must not reach the provider")
+
+	out := stdout.String()
+	require.Contains(t, out, "2 volumes, 3 chapters")
+	// 1 style + 3 map + 2 reduce.
+	require.Contains(t, out, "6 calls")
+	require.Contains(t, out, "style")
+	require.Contains(t, out, "map")
+	require.Contains(t, out, "reduce")
+	require.Contains(t, out, "total")
+
+	// The store is never opened either: nothing is created as a side effect of
+	// asking what the job would cost.
+	_, err := os.Stat(dbPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+// TestSeriesBible_BudgetCapStopsBeforeTheFirstCall closes the gap this command
+// carried until now: it could spend without a projection or a cap, and it is
+// the largest spender of the lot.
+func TestSeriesBible_BudgetCapStopsBeforeTheFirstCall(t *testing.T) {
+	t.Parallel()
+
+	booksDir := t.TempDir()
+	writeEPUBAt(t, filepath.Join(booksDir, "volume-01.epub"), []string{
+		`<h1>One</h1><p>` + strings.Repeat("Alice arrives in the capital. ", 400) + `</p>`,
+	})
+
+	var called int
+	srv := openaitest.NewServer(func(openaitest.Request) string {
+		called++
+		return "must not be reached"
+	})
+	t.Cleanup(srv.Close)
+
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NarrativePath:       filepath.Join(t.TempDir(), "narrative.sqlite"),
+			LLMChatProvider:     "openai",
+			LLMBaseURL:          srv.URL + "/v1",
+			LLMModel:            "test-model",
+			LLMInputPerMTokUSD:  100,
+			LLMOutputPerMTokUSD: 500,
+			PerBookBudgetUSD:    0.0001,
+		}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := commandexec.Execute([]string{
+		"series-bible", "--input-dir", booksDir, "--series", "series-a", "--samples", "1",
+	}, &stdout, &stderr, loader)
+
+	require.Equal(t, exitcode.BudgetExceeded, code)
+	require.Zero(t, called, "the cap must stop the job before the first provider call")
+	// The message names the setting, so a refused build points at the knob
+	// rather than looking like a failure.
+	require.Contains(t, stderr.String(), "EPUB_TRANSLATOR_PER_BOOK_BUDGET_USD")
 }

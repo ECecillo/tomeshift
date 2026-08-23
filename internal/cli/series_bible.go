@@ -23,6 +23,11 @@ type SeriesBibleCommand struct {
 	// Merge enriches existing bibles instead of overwriting them, keeping a
 	// curated style guide in place.
 	Merge bool
+	// DryRun prints the cost projection and stops before the first provider
+	// call. A bible build is the largest job this CLI issues — one call per
+	// chapter across every volume — and it is the one job `estimate` cannot
+	// price, since `estimate` projects translating a book.
+	DryRun bool
 }
 
 // ParseSeriesBibleArgs parses flags for `epub-translator series-bible`.
@@ -35,6 +40,7 @@ func ParseSeriesBibleArgs(args []string, stderr io.Writer) (SeriesBibleCommand, 
 	fs.StringVar(&cmd.Series, "series", "", "series identifier (required)")
 	fs.IntVar(&cmd.Samples, "samples", 3, "spine documents sampled per volume for style, voices and address rules")
 	fs.BoolVar(&cmd.Merge, "merge", false, "enrich existing bibles instead of overwriting them")
+	fs.BoolVar(&cmd.DryRun, "dry-run", false, "print the cost projection and exit without calling the provider")
 
 	if err := fs.Parse(args); err != nil {
 		return SeriesBibleCommand{}, fmt.Errorf("unable to parse cli flags, err: %w", err)

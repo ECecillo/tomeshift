@@ -206,10 +206,16 @@ seed-bible input series samples="8" merge="":
 # synopsis per volume, produced by map-reduce, and scoped to volumes 1..N.
 # Writes one bible per volume under "<series>@<volume>", plus the full series
 # under "<series>". Re-run only when a new volume is published.
-# Cost: ~1 + (chapters + 1) per volume LLM calls, once, never replayed.
-#   just series-bible "books/lumen" lumen 8
-#   just series-bible "books/lumen" lumen 8 merge
-series-bible input_dir series samples="8" merge="":
+# Cost: one call per non-empty chapter, plus one per volume, plus one for style
+# — once, never replayed. Price it first with `just series-bible-cost`.
+#
+# samples defaults to 3, matching the CLI. It used to default to 8, which is a
+# per-volume-looking number with a series-wide effect: the style pass sends
+# every sampled chapter of every volume in ONE request, so 8 across 33 volumes
+# is a 966,000-token call — past Haiku 4.5's context window entirely.
+#   just series-bible "epub/lumen" lumen 3
+#   just series-bible "epub/lumen" lumen 3 merge
+series-bible input_dir series samples="3" merge="":
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
@@ -218,6 +224,18 @@ series-bible input_dir series samples="8" merge="":
     uses_llm=1
     {{op_guard}}
     "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
+
+# Project the cost of a bible build before paying (0 API calls, no credential).
+# `estimate` prices translating a book and cannot price this; the bible build is
+# the largest job here — one call per chapter across every volume.
+#   just series-bible-cost ./epub/lumen lumen 3
+series-bible-cost input_dir series samples="3":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    set -a; source "{{env_file}}"; set +a
+    go run ./cmd/epub-translator series-bible \
+      --input-dir "{{input_dir}}" --series "{{series}}" \
+      --samples "{{samples}}" --dry-run
 
 # Pretty-print a series bible from a SQLite DB. Args: db path, series id.
 #   just bible ./data/lumen-series.sqlite lumen

@@ -8,6 +8,7 @@ import (
 
 	"github.com/ECecillo/ebooks-translator/internal/cli"
 	"github.com/ECecillo/ebooks-translator/internal/config"
+	"github.com/ECecillo/ebooks-translator/internal/epub"
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 	"github.com/ECecillo/ebooks-translator/internal/glossary"
 	"github.com/ECecillo/ebooks-translator/internal/narrative"
@@ -95,7 +96,15 @@ func styleProfileSamples(ctx context.Context, path string, limit int) ([]string,
 	if err != nil {
 		return nil, err
 	}
+	return styleSamplesFromBook(book, limit), nil
+}
 
+// styleSamplesFromBook is the sampling rule itself, split out so the cost
+// projection can measure exactly what the style pass will send from a book it
+// has already opened. Two copies of "the first N non-empty chapters" would be
+// free to drift, and a projection that samples differently from the run is a
+// projection of nothing.
+func styleSamplesFromBook(book *epub.Book, limit int) []string {
 	if limit < 1 {
 		limit = 1
 	}
@@ -112,7 +121,7 @@ func styleProfileSamples(ctx context.Context, path string, limit int) ([]string,
 		}
 	}
 
-	return samples, nil
+	return samples
 }
 
 // runSuggest scans an EPUB for recurring proper-noun candidates and prints them
