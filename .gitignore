@@ -3,6 +3,7 @@
 
 # Input books (may be copyrighted; never commit)
 /books/
+/epub/
 
 # Runtime artifacts and local data
 /runs/
