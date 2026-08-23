@@ -51,6 +51,14 @@ func runStyleProfile(stdout, stderr io.Writer, cmd cli.StyleProfileCommand, cfg 
 		return exitCodeForError(err)
 	}
 	bible.SeriesID = cmd.Series
+	// This pass owns style, voices and address rules — nothing else. The seed
+	// prompt says to keep summaries empty, but a prompt is an instruction, not
+	// an enforcement, and seedSeriesStyle already drops them for the same
+	// reason. Merged into a bible built by `series-bible`, a volunteered
+	// summary carries a chapter ID, which ValidateBible rejects outright: a
+	// style refresh would quietly turn a working bible into one literary mode
+	// refuses to load.
+	bible.Summaries = nil
 
 	// --merge enriches the existing series bible (e.g. seeding from a later
 	// volume) instead of overwriting it.
