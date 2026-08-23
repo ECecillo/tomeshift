@@ -423,24 +423,66 @@ que dans le processus lancé.</figcaption>
 <pre><code><span class="cmt"># 1. Activer l'intégration CLI ↔ app (c'est elle qui déclenche Touch ID) :</span>
 <span class="cmt">#    app 1Password → Réglages → Développeur → « Intégrer avec le CLI 1Password »</span>
 
-<span class="cmt"># 2. Créer les éléments (ou les créer à la main dans l'app) :</span>
-op item create --category="API Credential" --vault=Dev \
-  --title="anthropic-epub-translator" \
+<span class="cmt"># 2. Trouver VOS coffres et VOS comptes — il n'y a pas de nom par défaut :</span>
+op account list        <span class="cmt"># les comptes connectés</span>
+op vault list          <span class="cmt"># les coffres du compte courant</span>
+
+<span class="cmt"># 3. Si plusieurs comptes sont connectés, épingler celui à utiliser dans .env.local</span>
+<span class="cmt">#    — cela vaut pour les recettes `just`, PAS pour ton terminal :</span>
+<span class="cmt">#      OP_ACCOUNT=my.1password.eu</span>
+
+<span class="cmt"># 4. Créer les éléments. --account est explicite ici : les commandes ci-dessous</span>
+<span class="cmt">#    tournent dans TON shell, qui ne source pas .env.local.</span>
+op item create --account my.1password.eu --category="API Credential" \
+  --vault=Personal --title="anthropic-epub-translator" \
   credential="sk-ant-…"
 
-op item create --category="API Credential" --vault=Dev \
-  --title="gcp-cloud-translation" \
+op item create --account my.1password.eu --category="API Credential" \
+  --vault=Personal --title="gcp-cloud-translation" \
   credential="AIza…"
 
-<span class="cmt"># 3. Vérifier que chaque référence résout (c'est exactement ce que fera `op run`) :</span>
-op read "op://Dev/anthropic-epub-translator/credential"
-op read "op://Dev/gcp-cloud-translation/credential"</code></pre>
+<span class="cmt"># 5. Vérifier que chaque référence résout (c'est ce que fera `op run`) :</span>
+op read --account my.1password.eu "op://Personal/anthropic-epub-translator/credential"
+op read --account my.1password.eu "op://Personal/gcp-cloud-translation/credential"</code></pre>
+
+<div class="card warn">
+  <span class="label">Deux pièges, dans cet ordre</span>
+  <p style="margin-top:0">
+    <strong>1. Le coffre.</strong> <code>Personal</code> ci-dessus est <em>un</em> nom, pas un défaut :
+    <code>op item create --vault=X</code> échoue avec <code>"X" isn't a vault in this account</code> si
+    X n'existe pas chez vous. <code>op vault list</code> d'abord, puis adaptez <code>.env.op</code> —
+    ne renommez pas vos coffres pour coller à une documentation.
+  </p>
+  <p>
+    <strong>2. Le compte.</strong> Une référence <code>op://</code> nomme un <em>coffre</em>, jamais un
+    <em>compte</em>. Avec un compte professionnel et un compte personnel connectés en même temps,
+    <code>op</code> résout contre celui qu'il considère courant — d'où une clé perso cherchée dans le
+    coffre de l'employeur. Le symptôme est trompeur : <code>"Personal" isn't a vault in this
+    account</code> ressemble à un problème de coffre alors que c'est le compte qui est faux.
+  </p>
+  <p style="margin-bottom:0">
+    <strong>Et les deux réglages ne couvrent pas la même chose.</strong>
+    <code>OP_ACCOUNT</code> dans <code>.env.local</code> tranche pour les recettes <code>just</code>,
+    qui sourcent ce fichier ; <strong>votre terminal ne le source pas</strong>, donc les
+    <code>op item create</code> et <code>op read</code> que vous tapez à la main ont besoin de
+    <code>--account</code> (ou d'un <code>export OP_ACCOUNT=…</code> dans la session).
+    <code>just preflight</code> vous avertit si plusieurs comptes sont connectés sans épinglage.
+  </p>
+</div>
 
 <p>
-  Si vos éléments existent déjà sous d'autres noms, ne les renommez pas : <strong>adaptez
-  <code>.env.op</code></strong>. Dans l'app, clic droit sur le champ → « Copier la référence secrète »
-  donne la chaîne <code>op://…</code> exacte.
+  Dans l'app, clic droit sur le champ → « Copier la référence secrète » donne la chaîne
+  <code>op://…</code> exacte, coffre compris.
 </p>
+
+<div class="card note">
+  <span class="label">Projet perso, compte perso</span>
+  <p style="margin-top:0">
+    Si votre poste a les deux comptes, mettez les clés de ce projet dans le <strong>compte
+    personnel</strong>. Une clé rangée dans un coffre géré par l'employeur relève de son
+    administration et disparaît au départ ; ce n'est pas l'endroit d'un projet personnel.
+  </p>
+</div>
 
 <figure>
 <pre class="mermaid">
@@ -616,15 +658,63 @@ full-llm         2841         68       984210       0.0000       4.1832       4.
 
 <h3><code>series-bible</code> — construire la bible avant de traduire</h3>
 
-<pre><code>epub-translator series-bible --input-dir ./books/lumen --series lumen [--samples 8] [--merge]</code></pre>
+<pre><code>epub-translator series-bible --input-dir ./books/lumen --series lumen [--samples 3] [--merge] [--dry-run]</code></pre>
 
 <div class="table-wrap">
 <table>
   <tr><th>Flag</th><th>Défaut</th><th>Effet</th></tr>
   <tr><td><code>--input-dir</code></td><td class="num">requis</td><td>Tous les <code>.epub</code> du dossier, en ordre de publication déduit du nom de fichier.</td></tr>
-  <tr><td><code>--samples</code></td><td class="num">3</td><td>Documents échantillonnés <em>par tome</em> pour le style, les voix et le vouvoiement. Plus haut = bible plus riche et plus chère, et un préfixe plus gros à chaque appel ensuite.</td></tr>
+  <tr><td><code>--samples</code></td><td class="num">3</td><td>Documents échantillonnés <em>par tome</em> pour le style, les voix et le vouvoiement. <strong>Attention</strong> : ils partent tous dans <em>un seul</em> appel, donc l'entrée croît avec la série — voir l'encadré ci-dessous.</td></tr>
   <tr><td><code>--merge</code></td><td><code>false</code></td><td>Enrichit les bibles existantes au lieu de les écraser.</td></tr>
+  <tr><td><code>--dry-run</code></td><td><code>false</code></td><td>Imprime la projection de coût et <strong>s'arrête avant le premier appel</strong>. Rien n'est créé — pas même la base de la bible.</td></tr>
 </table>
+</div>
+
+<h4>La projection de coût</h4>
+
+<p>
+  <code>estimate</code> chiffre la <em>traduction</em> d'un livre ; il ne sait pas chiffrer un build de
+  bible, qui est une autre forme de travail. <code>series-bible</code> porte donc sa propre projection,
+  imprimée systématiquement avant le premier appel, et le plafond par livre s'y applique.
+</p>
+
+<pre><code>epub-translator series-bible --input-dir ./epub/lumen --series lumen --samples 3 --dry-run
+
+series-bible projection for lumen: 33 volumes, 1090 chapters, 1124 calls, samples=3
+stage       calls    in_tokens   out_tokens          usd
+style           1         9703        16000       0.0897
+map          1090      5111788       298660       6.6051
+reduce         33       298660        13200       0.3647
+total        1124      5420151       327860       7.0595</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Étape</th><th>Appels</th><th>Ce qu'elle envoie</th></tr>
+  <tr><td><code>style</code></td><td>1</td><td>Les <code>--samples</code> premiers chapitres de <strong>chaque</strong> tome, concaténés dans une seule requête.</td></tr>
+  <tr><td><code>map</code></td><td>1 par chapitre non vide</td><td>Le texte du chapitre → un résumé de ~274 tokens. <strong>C'est le poste dominant</strong> : 1090 chapitres = 1090 appels.</td></tr>
+  <tr><td><code>reduce</code></td><td>1 par tome</td><td>Les résumés du tome → un synopsis de ~400 tokens.</td></tr>
+</table>
+</div>
+
+<div class="card warn">
+  <span class="label">Le piège de <code>--samples</code></span>
+  <p style="margin-top:0">
+    <code>--samples</code> ressemble à un réglage par tome, mais la passe de style concatène tous les
+    échantillons dans <strong>un seul appel</strong>. Sur 33 tomes, <code>--samples 8</code> envoie
+    <strong>966 526 tokens en une requête</strong> — au-delà de la fenêtre de contexte de Haiku 4.5
+    (200 K), et absurde partout ailleurs. La commande vous avertit au-dessus de 200 000 tokens.
+    <code>--samples 3</code> tient en 9 703 tokens.
+  </p>
+</div>
+
+<div class="card note">
+  <span class="label">Sans tarifs LLM renseignés</span>
+  <p style="margin-top:0">
+    La projection imprime quand même les <strong>tokens</strong> — c'est le cas du montage
+    <code>claude-cli</code>, où il n'y a pas de dollar marginal et où le token est le seul chiffre qui
+    compte. Elle le dit explicitement plutôt que d'afficher 0,0000 $ en silence, et aucun plafond ne
+    s'applique alors.
+  </p>
 </div>
 
 <p>
@@ -980,7 +1070,8 @@ just down</code></pre>
   <tr><td><code>just run &lt;in.epub&gt; [outdir]</code></td><td>Traduction NMT.</td></tr>
   <tr><td><code>just literary &lt;in&gt; &lt;série&gt; [glossaire] [run-id]</code></td><td>Traduction littéraire.</td></tr>
   <tr><td><code>just estimate &lt;in.epub&gt;</code></td><td>Projection de coût.</td></tr>
-  <tr><td><code>just series-bible &lt;dir&gt; &lt;série&gt; [samples] [merge]</code></td><td>Construire les bibles de toute la série.</td></tr>
+  <tr><td><code>just series-bible-cost &lt;dir&gt; &lt;série&gt; [samples]</code></td><td>Projeter le coût du build de bible — 0 appel, aucun credential. Le pendant d'<code>estimate</code> pour ce job.</td></tr>
+  <tr><td><code>just series-bible &lt;dir&gt; &lt;série&gt; [samples] [merge]</code></td><td>Construire les bibles de toute la série. <code>samples</code> vaut 3 par défaut : voir le piège en §6.</td></tr>
   <tr><td><code>just bible &lt;db&gt; &lt;série&gt;</code></td><td>Afficher une bible en clair — <strong>à faire avant un run complet</strong>, une erreur s'y propage partout.</td></tr>
   <tr><td><code>just glossary-suggest &lt;in&gt; [out] [min]</code></td><td>Extraire les noms propres.</td></tr>
   <tr><td><code>just eval-ref &lt;cand&gt; &lt;ref&gt;</code> · <code>just eval-qe &lt;segments&gt;</code></td><td>chrF · COMET-QE.</td></tr>
@@ -1288,9 +1379,13 @@ just down</code></pre>
       out: 'Change une ligne du tableau imprimé, rien d\'autre.',
       cost: 'C\'est un paramètre de <em>projection</em>, pas de run : le vrai taux dépend de <code>LLM_ESCALATE_MIN_CHARS</code> ou de COMET-QE.' },
     { f: '--samples',
-      proc: 'Nombre de documents échantillonnés par tome pour déduire style, voix et vouvoiement.',
+      proc: 'Nombre de documents échantillonnés par tome pour déduire style, voix et vouvoiement. Tous partent dans <b>un seul</b> appel, donc l\'entrée croît avec le nombre de tomes.',
       out: 'Une bible plus riche, donc des instructions de style plus précises dans chaque prompt.',
-      cost: 'Double effet : plus cher à générer <b>et</b> préfixe plus gros relu à chaque appel de tous les runs suivants.' },
+      cost: 'Triple effet : plus cher à générer, préfixe plus gros relu à chaque appel des runs suivants, et sur une longue série la requête unique peut <b>dépasser la fenêtre de contexte</b> (966 k tokens à <code>--samples 8</code> sur 33 tomes). <code>--dry-run</code> le dit avant.' },
+    { f: '--dry-run',
+      proc: '<code>series-bible</code> : mesure la série, imprime la projection et <b>s\'arrête avant le premier appel</b>. Aucune base n\'est ouverte, aucun fichier créé.',
+      out: 'Rien — c\'est une mesure. Le tableau par étape montre où va le coût : la passe <code>map</code> est presque tout.',
+      cost: 'Gratuit. C\'est le pendant d\'<code>estimate</code> pour le build de bible, que <code>estimate</code> ne sait pas chiffrer.' },
     { f: '--merge',
       proc: 'Enrichit la bible existante au lieu de l\'écraser.',
       out: 'Conserve les corrections manuelles ou les tomes déjà profilés.',

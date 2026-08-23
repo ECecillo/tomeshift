@@ -717,6 +717,51 @@ flowchart LR
   </p>
 </div>
 
+<h3>Deux formes de passe, parce que la sortie ne se prédit pas pareil</h3>
+
+<p>
+  <code>LLMPass</code> calcule la sortie comme <code>caractères × expansion</code> : la réponse
+  reformule l'entrée, ce qui est vrai d'une traduction. Un <strong>résumé</strong> ne fonctionne pas
+  comme ça — il fait quelques centaines de tokens que le chapitre en compte deux pages ou quarante.
+  Utiliser <code>LLMPass</code> pour le build de bible reviendrait à facturer un chapitre de 19 000
+  caractères comme si le résumé en faisait 19 000 en retour.
+</p>
+
+<p>
+  D'où <code>SummaryPass</code>, dans le même paquet — un seul endroit applique des tarifs, c'est
+  l'invariant — mais avec une sortie <em>bornée</em> plutôt que proportionnelle, et sans terme de
+  préfixe : chaque appel porte un chapitre différent derrière un prompt système d'une centaine de
+  tokens, très en dessous du minimum cacheable de n'importe quel fournisseur.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>LLMPass</code> (traduction)</th><th><code>SummaryPass</code> (bible)</th></tr>
+  <tr><td>Sortie</td><td>proportionnelle à l'entrée</td><td><strong>bornée</strong> : ~274 tokens par résumé de chapitre, ~400 par synopsis</td></tr>
+  <tr><td>Préfixe</td><td>bible + source du chapitre, répété et cacheable</td><td>aucun — rien à cacher</td></tr>
+  <tr><td>Sans tarifs</td><td>projette 0</td><td>projette quand même les <strong>tokens</strong> : c'est la commande qu'on lance sur un abonnement, où le token est le seul chiffre qui compte</td></tr>
+</table>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    SHAPE["Mesure de la série<br/>chapitres non vides + caractères"] --> P{"ProjectSeriesBible"}
+    P --> S["style : 1 appel<br/>tous les échantillons<br/>de tous les tomes"]
+    P --> M["map : 1 appel par chapitre<br/>← le poste dominant"]
+    P --> R["reduce : 1 appel par tome"]
+    S --> T["Projection totale"]
+    M --> T
+    R --> T
+    T --> C{"dépasse le plafond<br/>par livre ?"}
+    C -->|"oui"| STOP["exit 7<br/>zéro appel fournisseur"]
+    C -->|"non"| GO["build"]
+    T -.->|"--dry-run"| PRINT["impression seule,<br/>rien n'est créé"]
+</pre>
+<figcaption>Jusqu'à cette session, <code>series-bible</code> était la seule commande capable de dépenser
+sans projection ni plafond — et la plus grosse : un appel par chapitre sur toute la série.</figcaption>
+</figure>
+
 <p>
   Ce qui rend la projection juste, c'est de compter les <strong>appels</strong> et pas seulement les
   segments : chaque appel répète le préfixe. C'est pourquoi

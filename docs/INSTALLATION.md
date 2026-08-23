@@ -69,10 +69,23 @@ Aucune clé API ne doit se trouver dans `.env.local`. Elles vivent dans un coffr
 ```bash
 # 1. Dans l'app 1Password : Réglages → Développeur → « Intégrer avec le CLI »
 #    (c'est ce réglage qui déclenche la demande biométrique)
-# 2. Vérifier qu'une référence résout :
-op read "op://Dev/anthropic-epub-translator/credential"
-# 3. Adapter les références de .env.op à ton coffre si besoin.
+# 2. Trouver tes coffres et tes comptes — il n'y a pas de nom par défaut :
+op account list
+op vault list
+# 3. Plusieurs comptes connectés ? Épingler celui à utiliser dans .env.local :
+#      OP_ACCOUNT=my.1password.eu
+#    Une référence op:// nomme un coffre, jamais un compte : sans épinglage,
+#    une clé perso peut être cherchée dans le coffre de l'employeur, et l'erreur
+#    parle du coffre ("X isn't a vault in this account") alors que c'est le
+#    compte qui est faux.
+# 4. Vérifier qu'une référence résout, et adapter .env.op au besoin. --account
+#    est explicite : .env.local n'est sourcé que par les recettes `just`, pas
+#    par ton terminal.
+op read --account my.1password.eu "op://Personal/anthropic-epub-translator/credential"
 ```
+
+> Projet personnel, compte personnel : une clé rangée dans un coffre géré par
+> l'employeur relève de son administration et disparaît au départ.
 
 Les recettes qui appellent un fournisseur sont enveloppées dans
 `op run --env-file=.env.op --` ; les autres non. Concrètement : `estimate`,
