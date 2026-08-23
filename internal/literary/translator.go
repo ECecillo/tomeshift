@@ -247,14 +247,26 @@ func (t *Translator) translateBatch(ctx context.Context, run *chapterRun, b batc
 		Messages:   composeMessages(run.bible, t.glossaryTerms(), run.source, encodePayload(b.items), b.prev),
 		JSONSchema: responseSchema,
 	})
-	if err != nil {
-		return fmt.Errorf("unable to translate literary chapter %s batch %d, err: %w", run.chapterID, b.idx, err)
-	}
-
+	// Usage first, before the error check, for the same reason refine() does it:
+	// a reply that came back empty was still generated and still billed. A
+	// reasoning model that spent its whole budget thinking consumed every one of
+	// those tokens.
 	run.usage.InputTokens += resp.InputTokens
 	run.usage.OutputTokens += resp.OutputTokens
 	run.usage.CacheReadTokens += resp.CacheReadInputTokens
 	run.usage.CacheCreationTokens += resp.CacheCreationInputTokens
+
+	// An empty reply belongs with the unusable ones, not with the fatal ones.
+	// The taxonomy above had two cases — unusable content, retried on halves;
+	// transport and credential errors, fatal — and a reasoning model exposed a
+	// third that had been filed under the wrong one: max_tokens is shared
+	// between thinking and answering, so a batch large enough to think about is
+	// a batch too large to answer. Halving is exactly the fix, and treating it
+	// as fatal left 100 of 258 segments on their raw draft with the run still
+	// reporting success.
+	if err != nil && !errors.Is(err, llm.ErrEmptyResponse) {
+		return fmt.Errorf("unable to translate literary chapter %s batch %d, err: %w", run.chapterID, b.idx, err)
+	}
 
 	// A refusal and a truncated reply both arrive as HTTP 200 with unusable
 	// content, and both used to surface only as "decodeResponse failed, retry

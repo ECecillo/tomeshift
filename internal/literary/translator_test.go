@@ -548,3 +548,83 @@ func renderNode(t *testing.T, n *html.Node) string {
 	require.NoError(t, html.Render(&buf, n))
 	return buf.String()
 }
+
+// emptyOverChat answers with an empty reply — and an error — whenever a batch
+// holds more than maxSegments, the way a reasoning model behaves when the
+// thinking eats the whole max_tokens budget before the answer starts. Smaller
+// batches succeed, which is precisely why halving is the right response.
+type emptyOverChat struct {
+	maxSegments  int
+	usagePerCall llm.ChatResponse
+	calls        int
+}
+
+func (c *emptyOverChat) Chat(_ context.Context, req llm.ChatRequest) (llm.ChatResponse, error) {
+	c.calls++
+	var payload struct {
+		Segments []struct {
+			ID string `json:"id"`
+		} `json:"segments"`
+	}
+	user := req.Messages[len(req.Messages)-1].Content
+	_ = json.Unmarshal([]byte(user[strings.Index(user, "{"):]), &payload)
+
+	usage := c.usagePerCall
+	if len(payload.Segments) > c.maxSegments {
+		return usage, llm.ErrEmptyResponse
+	}
+
+	var sb strings.Builder
+	sb.WriteString(`{"segments":[`)
+	for i, s := range payload.Segments {
+		if i > 0 {
+			sb.WriteByte(',')
+		}
+		fmt.Fprintf(&sb, `{"id":%q,"target_text":"traduit %s"}`, s.ID, s.ID)
+	}
+	sb.WriteString(`]}`)
+	usage.Text = sb.String()
+	return usage, nil
+}
+
+// TestTranslateChapter_EmptyReplyIsRetriedOnHalvedBatches pins the third case
+// in the failure taxonomy. An empty reply used to propagate as a provider
+// error, so the batch died without a retry: on a real chapter that left 100 of
+// 258 segments on their raw NMT draft while the run reported success.
+func TestTranslateChapter_EmptyReplyIsRetriedOnHalvedBatches(t *testing.T) {
+	t.Parallel()
+
+	chat := &emptyOverChat{
+		maxSegments:  2,
+		usagePerCall: llm.ChatResponse{InputTokens: 10, OutputTokens: 7},
+	}
+	translator := &literary.Translator{Chat: chat, Model: "m", BatchSize: 8}
+
+	segs := make([]*segment.Segment, 8)
+	for i := range segs {
+		segs[i] = &segment.Segment{
+			ID:         fmt.Sprintf("ch_0001_p_%04d", i+1),
+			SourceText: fmt.Sprintf("Source %d.", i+1),
+			TargetText: "BROUILLON",
+			Status:     segment.StatusTranslated,
+		}
+	}
+
+	outcome, err := translator.TranslateChapter(
+		context.Background(), narrative.Bible{SeriesID: "s"}, "ch_0001", segs, "", "source")
+	require.NoError(t, err)
+
+	// Every segment is refined: the 8-segment batch came back empty, and the
+	// halving walked down to batches the model could answer.
+	for _, seg := range segs {
+		require.Equal(t, segment.StatusPostEdited, seg.Status, seg.ID)
+		require.NotEqual(t, "BROUILLON", seg.TargetText)
+	}
+	require.Empty(t, outcome.Degraded)
+
+	// The empty calls were billed too. Dropping their usage would under-report
+	// every reasoning model that runs out of budget.
+	require.Equal(t, chat.calls*10, outcome.Usage.InputTokens)
+	require.Equal(t, chat.calls*7, outcome.Usage.OutputTokens)
+	require.Greater(t, chat.calls, 1, "the first call must have been retried")
+}
