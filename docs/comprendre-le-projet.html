@@ -158,7 +158,7 @@
   <h1>epub-translator — comprendre le projet<br/><span style="color:var(--muted);font-size:0.75em">architecture, concepts et logique, illustrés</span></h1>
   <div class="meta">
     Document pédagogique &amp; documentation contributeur · 8 août 2026<br/>
-    Code référencé figé sur <a href="https://github.com/ECecillo/ebooks-translator/tree/6192dae8f3f355ea11c0fe2171b8b13511f742fa"><code>6192dae</code></a>
+    Code référencé figé sur <a href="https://github.com/ECecillo/ebooks-translator/tree/50e0c04e01abc86b64cb0a946e156abad25d154e"><code>50e0c04</code></a>
     · Source de vérité architecture : <code>docs/ARCHITECTURE.md</code>
     · Pour <em>utiliser</em> l'outil : <a href="utilisation.html">utilisation.html</a>
   </div>
@@ -232,9 +232,9 @@ flowchart LR
     L --> M["EPUB FR + artefacts"]
 </pre>
 <figcaption>Vue d'ensemble. Le point d'entrée est
-<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/cmd/epub-translator/main.go#L10-L14"><code>cmd/epub-translator/main.go</code></a>,
+<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/cmd/epub-translator/main.go#L10-L14"><code>cmd/epub-translator/main.go</code></a>,
 la boucle est
-<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/pipeline/orchestrator.go#L74-L227"><code>Orchestrator.Run</code></a>.</figcaption>
+<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/pipeline/orchestrator.go#L75-L250"><code>Orchestrator.Run</code></a>.</figcaption>
 </figure>
 
 <div class="card key">
@@ -244,7 +244,7 @@ la boucle est
     segmentation, garde-fou budgétaire, recomposition, QA, ledger, artefacts : identiques. Seuls
     <em>comment on projette le coût</em> et <em>comment on traduit</em> diffèrent — c'est
     exactement ce qu'abstrait l'interface
-    <a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/pipeline/mode.go#L21-L38"><code>translationMode</code></a>
+    <a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/pipeline/mode.go#L27-L44"><code>translationMode</code></a>
     (4 méthodes : <code>Init</code>, <code>Project</code>, <code>Translate</code>, <code>Cost</code>).
     Ajouter un troisième mode, c'est implémenter cette interface, pas toucher au pipeline.
   </p>
@@ -350,7 +350,7 @@ recomposition réécrit ces nœuds en place.</figcaption>
   <span class="label">Détail qui compte</span>
   <p style="margin-top:0">
     <code>Segment.Node</code> est un <em>pointeur</em> dans l'arbre parsé
-    (<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/segment/segmenter.go#L51-L61">segmenter.go:51</a>).
+    (<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/segment/segmenter.go#L51-L61">segmenter.go:51</a>).
     Restaurer une traduction, c'est muter l'arbre ; recomposer, c'est re-sérialiser l'arbre muté dans
     un nouveau ZIP. Il n'y a jamais de « recollage » de chaînes de caractères, donc jamais de
     désalignement entre ce qu'on a traduit et ce qu'on écrit.
@@ -359,7 +359,7 @@ recomposition réécrit ces nœuds en place.</figcaption>
     Balises traduites : <code>p</code>, <code>h1</code>…<code>h6</code>. Balises ignorées
     entièrement : <code>head</code>, <code>script</code>, <code>style</code>, <code>code</code>,
     <code>pre</code>
-    (<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/epub/xhtml.go#L12-L20">xhtml.go:12</a>).
+    (<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/epub/xhtml.go#L12-L20">xhtml.go:12</a>).
   </p>
 </div>
 
@@ -373,7 +373,7 @@ recomposition réécrit ces nœuds en place.</figcaption>
 
 <p>
   Deux traitements distincts, selon le nœud enfant rencontré
-  (<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/segment/placeholder.go#L37-L113">placeholder.go:37</a>) :
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/segment/placeholder.go#L37-L113">placeholder.go:37</a>) :
 </p>
 
 <ul>
@@ -406,7 +406,7 @@ recomposition réécrit ces nœuds en place.</figcaption>
 </p>
 
 <p>
-  <a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/segment/placeholder.go#L229-L287"><code>validateTokens</code></a>
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/segment/placeholder.go#L229-L287"><code>validateTokens</code></a>
   fait donc un <em>pré-vol</em> complet — présence, unicité, appariement ouvrant/fermant — <strong>avant
   de toucher au nœud</strong>. En cas d'échec, le nœud garde son markup source : le segment dégrade en
   « non traduit », la QA le compte, et le run continue. Jamais de markup cassé en sortie.
@@ -434,7 +434,7 @@ flowchart TB
   Avant d'être stocké ou cherché, un segment est <strong>normalisé</strong> : espaces multiples
   écrasés, espaces insécables remplacés, apostrophes et guillemets typographiques repliés sur leur
   équivalent ASCII, tirets cadratins → tiret simple, <code>…</code> → <code>...</code>
-  (<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/segment/normalizer.go#L8-L25">normalizer.go:8</a>).
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/segment/normalizer.go#L8-L25">normalizer.go:8</a>).
 </p>
 
 <pre><code>« He said,  “Wait.” »          →  He said, "Wait."      → sha256 → 3f9c…
@@ -454,7 +454,7 @@ flowchart TB
     Une entrée TM porte un tag <code>engine</code> : <code>nmt-google</code>,
     <code>nmt-libretranslate</code>, <code>literary</code>, <code>llm-postedit</code>. En mode
     littéraire, <strong>un brouillon n'est jamais un hit</strong>
-    (<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/pipeline/orchestrator.go#L642-L657"><code>lookupTranslation</code></a>
+    (<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/pipeline/orchestrator.go#L673-L688"><code>lookupTranslation</code></a>
     rejette les moteurs <code>nmt-*</code>). Sans cette règle, un brouillon écrit par un ancien run
     serait resservi comme traduction finie et ce segment ne serait <em>plus jamais</em> raffiné.
     Le mode littéraire ne persiste d'ailleurs que ce que le LLM a produit — et seulement
@@ -493,7 +493,7 @@ flowchart TB
 </pre>
 <figcaption>Mode <code>nmt</code>. L'escalade ne peut jamais dégrader la sortie : en cas d'échec on
 retombe sur le brouillon — mais l'appel est quand même facturé, et compté comme tel
-(<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/pipeline/orchestrator.go#L560-L591">orchestrator.go:560</a>).</figcaption>
+(<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/pipeline/orchestrator.go#L584-L615">orchestrator.go:560</a>).</figcaption>
 </figure>
 
 <div class="widget" id="w-sim">
@@ -551,14 +551,14 @@ sequenceDiagram
     P->>TM: persiste UNIQUEMENT les segments raffinés
 </pre>
 <figcaption>Un chapitre en mode littéraire
-(<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/pipeline/mode.go#L178-L255">mode.go:178</a>).</figcaption>
+(<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/pipeline/mode.go#L184-L275">mode.go:178</a>).</figcaption>
 </figure>
 
 <h3>Le prompt : une partie figée, une partie volatile</h3>
 
 <p>
   Chaque appel LLM est composé de deux messages
-  (<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/literary/prompt.go#L22-L113">prompt.go:22</a>) :
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/literary/prompt.go#L22-L113">prompt.go:22</a>) :
 </p>
 
 <div class="table-wrap">
@@ -594,7 +594,7 @@ sequenceDiagram
   Un lot part avec 50 segments. Si la réponse en omet (petit modèle qui s'arrête, JSON tronqué), le
   code ne relance pas identiquement : il <strong>redécoupe les segments manquants en deux moitiés</strong>
   et recommence, récursivement, jusqu'à un segment
-  (<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/literary/translator.go#L243-L299">translator.go:243</a>).
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/literary/translator.go#L252-L320">translator.go:243</a>).
   Ce qui reste sans réponse garde son brouillon NMT.
 </p>
 
@@ -629,7 +629,7 @@ Seules les réponses <em>inutilisables</em> se réparent par découpage.</figcap
   <p style="margin-top:0">
     Un modèle qui connaît la vraie nature d'un personnage colore ses dialogues du tome 1. Le
     bornage est encodé dans l'identifiant lui-même —
-    <a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/narrative/types.go#L60-L71"><code>ScopedSeriesID</code></a>
+    <a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/narrative/types.go#L59-L67"><code>ScopedSeriesID</code></a>
     produit <code>lumen@volume-01</code> — donc ni le schéma de la base ni les flags du run n'ont eu
     à changer.
   </p>
@@ -711,7 +711,7 @@ flowchart LR
   <p style="margin-top:0">
     <strong>Il n'y a qu'un seul modèle de coût.</strong> <code>estimate</code> et le garde-fou du run
     passent tous deux par
-    <a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/cost/model.go#L108-L117"><code>Model.Project</code></a>.
+    <a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/cost/model.go#L108-L117"><code>Model.Project</code></a>.
     Ce que <code>estimate</code> annonce est donc exactement ce que le plafond par livre applique —
     impossible qu'ils divergent.
   </p>
@@ -765,7 +765,7 @@ sans projection ni plafond — et la plus grosse : un appel par chapitre sur tou
 <p>
   Ce qui rend la projection juste, c'est de compter les <strong>appels</strong> et pas seulement les
   segments : chaque appel répète le préfixe. C'est pourquoi
-  <a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/cost/model.go#L36-L66"><code>LLMPass</code></a>
+  <a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/cost/model.go#L36-L66"><code>LLMPass</code></a>
   sépare <code>Segments</code>, <code>Chars</code>, <code>Calls</code>, <code>PrefixChars</code>,
   et détaille la forme <em>par chapitre</em> plutôt qu'en moyenne : un chapitre long a à la fois un
   préfixe plus gros et plus d'appels pour le relire, et la moyenne écrase précisément cette
@@ -809,7 +809,7 @@ fausserait la projection du run suivant.</figcaption>
 
 <p>
   La porte de qualité combine des seuils statiques et un validateur externe
-  (<a href="https://github.com/ECecillo/ebooks-translator/blob/6192dae8f3f355ea11c0fe2171b8b13511f742fa/internal/qa/checks.go#L11-L41">checks.go:11</a>) :
+  (<a href="https://github.com/ECecillo/ebooks-translator/blob/50e0c04e01abc86b64cb0a946e156abad25d154e/internal/qa/checks.go#L11-L41">checks.go:11</a>) :
 </p>
 
 <div class="table-wrap">
@@ -1033,7 +1033,7 @@ just check</code></pre>
 </div>
 
 <footer>
-  epub-translator · document pédagogique · code figé sur <code>6192dae</code> ·
+  epub-translator · document pédagogique · code figé sur <code>50e0c04</code> ·
   diagrammes Mermaid · animations en JavaScript natif, aucune dépendance externe hors Mermaid
 </footer>
 
