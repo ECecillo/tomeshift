@@ -25,8 +25,10 @@ type openAIChatRequest struct {
 }
 
 type openAIResponseFmt struct {
-	Type       string          `json:"type"` // "json_schema"
-	JSONSchema openAISchemaDef `json:"json_schema"`
+	Type string `json:"type"` // "json_schema" | "json_object"
+	// Omitted in json_object mode: a host that rejects the json_schema form
+	// also rejects an empty one alongside it.
+	JSONSchema *openAISchemaDef `json:"json_schema,omitempty"`
 }
 
 type openAISchemaDef struct {
@@ -51,7 +53,25 @@ type OpenAICompatibleClient struct {
 	BaseURL string
 	APIKey  string
 	Client  *http.Client
+	// SchemaMode is how a JSONSchema request is expressed on the wire. The
+	// contract is shared but its structured-output corner is not: DeepSeek
+	// answers 400 "This response_format type is unavailable now" to the
+	// json_schema form OpenAI accepts, so the capability travels with the
+	// client instead of being assumed from the endpoint's shape.
+	SchemaMode SchemaMode
 }
+
+// SchemaMode names how far a host's structured-output support goes.
+type SchemaMode int
+
+const (
+	// SchemaModeJSONSchema sends the full schema and gets it enforced.
+	SchemaModeJSONSchema SchemaMode = iota
+	// SchemaModeJSONObject asks only for well-formed JSON. The schema itself
+	// then rides in the prompt, and the literary decoder's lenient parse plus
+	// its halving retry absorb the difference.
+	SchemaModeJSONObject
+)
 
 // ChatClientConfig selects and configures a chat client.
 //
@@ -76,7 +96,11 @@ func NewChatClient(cfg ChatClientConfig) ChatClient {
 		return NewAnthropicClient(cfg.BaseURL, cfg.APIKey)
 	case ChatProviderClaudeCLI:
 		return NewCLIChatClient(cfg.CLIBin)
-	case ChatProviderOpenAI, ChatProviderDeepSeek, ChatProviderOpenAICompatible, "":
+	case ChatProviderDeepSeek:
+		client := NewOpenAICompatibleClient(cfg.BaseURL, cfg.APIKey)
+		client.SchemaMode = SchemaModeJSONObject
+		return client
+	case ChatProviderOpenAI, ChatProviderOpenAICompatible, "":
 		return NewOpenAICompatibleClient(cfg.BaseURL, cfg.APIKey)
 	default:
 		return NewOpenAICompatibleClient(cfg.BaseURL, cfg.APIKey)
@@ -101,9 +125,14 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, req ChatRequest) (Cha
 
 	body := openAIChatRequest{Model: req.Model, Messages: req.Messages, MaxTokens: req.MaxTokens}
 	if len(req.JSONSchema) > 0 {
-		body.ResponseFormat = &openAIResponseFmt{
-			Type:       "json_schema",
-			JSONSchema: openAISchemaDef{Name: "response", Schema: req.JSONSchema},
+		switch c.SchemaMode {
+		case SchemaModeJSONObject:
+			body.ResponseFormat = &openAIResponseFmt{Type: "json_object"}
+		default:
+			body.ResponseFormat = &openAIResponseFmt{
+				Type:       "json_schema",
+				JSONSchema: &openAISchemaDef{Name: "response", Schema: req.JSONSchema},
+			}
 		}
 	}
 

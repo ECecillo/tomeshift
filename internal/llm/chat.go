@@ -8,9 +8,15 @@ import (
 
 // ChatMessage is a single turn in a chat-completion request.
 // Role is one of "system", "user", or "assistant".
+// The tags are load-bearing on the wire, not decoration. Without them Go
+// marshals "Role"/"Content", which Go itself then decodes again case
+// -insensitively — so a Go test stub accepts what a strict server rejects.
+// DeepSeek's parser is strict: it answered 400 "missing field `role`" for every
+// request until these existed. The Anthropic adapter never had the bug because
+// it maps onto its own tagged struct.
 type ChatMessage struct {
-	Role    string
-	Content string
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 // ChatRequest is a provider-agnostic chat-completion request.
