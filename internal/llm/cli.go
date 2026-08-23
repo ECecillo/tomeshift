@@ -139,18 +139,23 @@ func (c *CLIChatClient) Chat(ctx context.Context, req ChatRequest) (ChatResponse
 		return ChatResponse{}, fmt.Errorf("unable to complete via %s (subtype=%q): %s, err: %w",
 			c.bin(), out.Subtype, truncate(out.Result, 200), ErrProviderStatus)
 	}
-	if strings.TrimSpace(out.Result) == "" {
-		return ChatResponse{}, ErrEmptyResponse
-	}
-
-	return ChatResponse{
-		Text:                     out.Result,
+	usage := ChatResponse{
 		InputTokens:              out.Usage.InputTokens,
 		OutputTokens:             out.Usage.OutputTokens,
 		CacheReadInputTokens:     out.Usage.CacheReadInputTokens,
 		CacheCreationInputTokens: out.Usage.CacheCreationInputTokens,
 		StopReason:               out.StopReason,
-	}, nil
+	}
+
+	// The usage rides along with the error, as it does on the HTTP adapters: an
+	// empty reply was still generated and still billed, and the caller treats
+	// this as a retry-on-halves case rather than a fatal one.
+	if strings.TrimSpace(out.Result) == "" {
+		return usage, ErrEmptyResponse
+	}
+
+	usage.Text = out.Result
+	return usage, nil
 }
 
 func (c *CLIChatClient) bin() string {

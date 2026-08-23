@@ -208,14 +208,20 @@ func TestCLIChatClient_ReportsFailures(t *testing.T) {
 		require.Contains(t, err.Error(), "not json at all")
 	})
 
-	t.Run("empty result", func(t *testing.T) {
+	t.Run("empty result still reports its usage", func(t *testing.T) {
 		t.Parallel()
-		bin, _, _ := fakeCLI(t, `{"type":"result","subtype":"success","result":"   "}`, 0)
+		bin, _, _ := fakeCLI(t, `{"type":"result","subtype":"success","result":"   ",
+			"usage":{"input_tokens":11,"output_tokens":16000,"cache_read_input_tokens":900}}`, 0)
 
-		_, err := llm.NewCLIChatClient(bin).Chat(context.Background(), llm.ChatRequest{
+		resp, err := llm.NewCLIChatClient(bin).Chat(context.Background(), llm.ChatRequest{
 			Messages: []llm.ChatMessage{{Role: "user", Content: "u"}},
 		})
+		// Unusable content, but the tokens were generated and billed — and the
+		// caller retries this on halved batches rather than failing the chapter.
 		require.ErrorIs(t, err, llm.ErrEmptyResponse)
+		require.Equal(t, 11, resp.InputTokens)
+		require.Equal(t, 16000, resp.OutputTokens)
+		require.Equal(t, 900, resp.CacheReadInputTokens)
 	})
 }
 

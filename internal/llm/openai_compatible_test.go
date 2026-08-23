@@ -189,3 +189,59 @@ func TestNewChatClient_DeepSeekAsksForJSONObjectOnly(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, llm.SchemaModeJSONSchema, openai.SchemaMode)
 }
+
+// TestOpenAICompatible_MapsCacheCountersAndUncachedInput covers two things the
+// adapter silently got wrong: it read neither host's cache counter, and it
+// reported prompt_tokens as InputTokens even though that total already includes
+// the cached part — which ChatResponse defines as the uncached remainder.
+func TestOpenAICompatible_MapsCacheCountersAndUncachedInput(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name  string
+		usage string
+	}{
+		{"deepseek", `"prompt_tokens":1000,"completion_tokens":50,"prompt_cache_hit_tokens":800`},
+		{"openai", `"prompt_tokens":1000,"completion_tokens":50,"prompt_tokens_details":{"cached_tokens":800}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{` + tc.usage + `}}`))
+			}))
+			t.Cleanup(srv.Close)
+
+			resp, err := llm.NewOpenAICompatibleClient(srv.URL, "k").Chat(context.Background(), llm.ChatRequest{
+				Model: "m", Messages: []llm.ChatMessage{{Role: "user", Content: "u"}},
+			})
+			require.NoError(t, err)
+
+			require.Equal(t, 800, resp.CacheReadInputTokens)
+			require.Equal(t, 200, resp.InputTokens, "the cached part must not be counted twice")
+			require.Equal(t, 50, resp.OutputTokens)
+		})
+	}
+}
+
+// An empty reply still consumed tokens. The caller needs them to price the
+// attempt, and needs the error to know the content is unusable.
+func TestOpenAICompatible_EmptyReplyCarriesItsUsage(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":""},"finish_reason":"length"}],
+			"usage":{"prompt_tokens":900,"completion_tokens":16000,"prompt_cache_hit_tokens":400}}`))
+	}))
+	t.Cleanup(srv.Close)
+
+	resp, err := llm.NewOpenAICompatibleClient(srv.URL, "k").Chat(context.Background(), llm.ChatRequest{
+		Model: "m", Messages: []llm.ChatMessage{{Role: "user", Content: "u"}},
+	})
+	require.ErrorIs(t, err, llm.ErrEmptyResponse)
+	require.Equal(t, 500, resp.InputTokens)
+	require.Equal(t, 16000, resp.OutputTokens)
+	require.Equal(t, 400, resp.CacheReadInputTokens)
+}

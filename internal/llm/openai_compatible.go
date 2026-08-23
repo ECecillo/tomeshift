@@ -44,6 +44,14 @@ type openAIChatResponse struct {
 	Usage struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
+		// Two hosts, two spellings of the same number. DeepSeek splits the
+		// prompt into hit/miss; OpenAI nests a cached count. Reading neither is
+		// what made a cached run report zero cache and bill its whole prefix
+		// twice over in the report.
+		PromptCacheHitTokens int `json:"prompt_cache_hit_tokens"`
+		PromptTokensDetails  struct {
+			CachedTokens int `json:"cached_tokens"`
+		} `json:"prompt_tokens_details"`
 	} `json:"usage"`
 }
 
@@ -170,16 +178,27 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, req ChatRequest) (Cha
 	if err := json.NewDecoder(resp.Body).Decode(&decoded); err != nil {
 		return ChatResponse{}, fmt.Errorf("unable to decode chat response, err: %w", err)
 	}
-	if len(decoded.Choices) == 0 || decoded.Choices[0].Message.Content == "" {
-		return ChatResponse{}, ErrEmptyResponse
+	// prompt_tokens is the total on this contract, unlike Anthropic's, where
+	// input_tokens is already the uncached remainder. ChatResponse follows the
+	// Anthropic meaning, so the cached part is subtracted rather than counted
+	// twice.
+	cacheRead := max(decoded.Usage.PromptCacheHitTokens, decoded.Usage.PromptTokensDetails.CachedTokens)
+	usage := ChatResponse{
+		InputTokens:          max(decoded.Usage.PromptTokens-cacheRead, 0),
+		OutputTokens:         decoded.Usage.CompletionTokens,
+		CacheReadInputTokens: cacheRead,
 	}
 
-	return ChatResponse{
-		Text:         decoded.Choices[0].Message.Content,
-		InputTokens:  decoded.Usage.PromptTokens,
-		OutputTokens: decoded.Usage.CompletionTokens,
-		StopReason:   normalizeFinishReason(decoded.Choices[0].FinishReason),
-	}, nil
+	if len(decoded.Choices) == 0 || decoded.Choices[0].Message.Content == "" {
+		// The usage rides along with the error: those tokens were generated and
+		// billed even though nothing usable came back, and a caller that drops
+		// them under-reports every reasoning model that runs out of budget.
+		return usage, ErrEmptyResponse
+	}
+
+	usage.Text = decoded.Choices[0].Message.Content
+	usage.StopReason = normalizeFinishReason(decoded.Choices[0].FinishReason)
+	return usage, nil
 }
 
 // normalizeFinishReason maps OpenAI's finish_reason onto the stop reasons the
