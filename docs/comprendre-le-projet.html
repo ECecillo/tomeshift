@@ -872,6 +872,8 @@ flowchart TB
     LIT --> LLM["llm"]
     NAR --> LLM
     CE --> EVAL["eval"]
+    CE --> PROG["progress<br/>barre de progression"]
+    PROG -.->|"pipeline.Reporter"| PIPE
 </pre>
 <figcaption>Une dépendance ne remonte jamais : <code>pipeline</code> ne connaît pas
 <code>commandexec</code>, et aucun package métier ne connaît la CLI.</figcaption>
@@ -883,7 +885,7 @@ flowchart TB
   <tr><td><code>cli</code></td><td>Parse et valide les flags. Aucune logique métier.</td><td>—</td></tr>
   <tr><td><code>config</code></td><td>Charge <code>EPUB_TRANSLATOR_*</code> dans une struct, applique les défauts par fournisseur, valide.</td><td><code>Load()</code>, <code>CostModel()</code></td></tr>
   <tr><td><code>commandexec</code></td><td>Assemble l'orchestrateur, dispatche les commandes, traduit les erreurs en codes de sortie.</td><td><code>ConfigLoader</code></td></tr>
-  <tr><td><code>pipeline</code></td><td>Le run de bout en bout, le garde-fou budgétaire, les artefacts.</td><td><code>translationMode</code>, <code>QualityEstimator</code></td></tr>
+  <tr><td><code>pipeline</code></td><td>Le run de bout en bout, le garde-fou budgétaire, les artefacts.</td><td><code>translationMode</code>, <code>QualityEstimator</code>, <code>Reporter</code></td></tr>
   <tr><td><code>epub</code></td><td>ZIP, OPF, spine, arbre XHTML, recomposition.</td><td><code>Extractor</code>, <code>Parser</code>, <code>Recomposer</code></td></tr>
   <tr><td><code>segment</code></td><td>Découpage, normalisation, hash, placeholders.</td><td><code>Segmenter</code>, <code>PlaceholderManager</code></td></tr>
   <tr><td><code>tm</code></td><td>Mémoire de traduction + ledger de dépense (SQLite).</td><td><code>Store</code></td></tr>
@@ -895,6 +897,7 @@ flowchart TB
   <tr><td><code>qa</code></td><td>Contrôles statiques + <code>epubcheck</code>.</td><td><code>EPUBChecker</code></td></tr>
   <tr><td><code>cost</code></td><td>Le modèle de coût unique et les scénarios d'<code>estimate</code>.</td><td><code>Model</code></td></tr>
   <tr><td><code>eval</code></td><td>chrF (avec référence) et client COMET (sans référence).</td><td>—</td></tr>
+  <tr><td><code>progress</code></td><td>La barre de progression du terminal. Ne connaît ni le pipeline ni la CLI : <code>commandexec</code> la construit et l'injecte comme <code>pipeline.Reporter</code>.</td><td><code>Bar</code>, <code>IsTerminal()</code></td></tr>
 </table>
 </div>
 
@@ -999,6 +1002,7 @@ flowchart TB
   <tr><td>8</td><td>Les erreurs sont enveloppées <code>unable to &lt;contexte&gt;, err: %w</code>, avec des sentinelles dans <code>errors.go</code>.</td><td><code>errors.Is</code> ne marche plus, donc le mapping vers les codes de sortie non plus.</td></tr>
   <tr><td>9</td><td>Un lot LLM en échec dégrade le chapitre, il ne l'annule pas — mais il est loggé.</td><td>Soit on perd les lots réussis, soit on ne sait plus pourquoi une partie n'est pas raffinée.</td></tr>
   <tr><td>10</td><td>Les artefacts sont écrits même quand la QA échoue.</td><td>Un run raté devient indiagnosticable.</td></tr>
+  <tr><td>11</td><td>La progression affichée n'est <strong>jamais</strong> une source de données : elle se déduit des mêmes compteurs que <code>report.json</code>, et un segment est signalé <strong>une fois</strong> — frais dans la boucle NMT ou via <code>literary.Translator.OnBatch</code>, réutilisé au hit TM. Le montant affiché sort de <code>mode.Cost</code>, celui qui écrit <code>actual_cost_usd</code> : le dernier chiffre vu est celui du rapport.</td><td>Une barre qui dépasse 100 %, ou qui gèle un chapitre entier, et une CLI dont stdout n'est plus analysable.</td></tr>
 </table>
 </div>
 

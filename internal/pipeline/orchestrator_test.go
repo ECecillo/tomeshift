@@ -515,3 +515,190 @@ func readZipEntry(t *testing.T, zipPath, entry string) string {
 	t.Fatalf("entry %q not found in %q", entry, zipPath)
 	return ""
 }
+
+// recordingReporter captures what a run reported, so the assertions can be made
+// on the sequence a watcher would have seen rather than on rendered text.
+type recordingReporter struct {
+	stages   []string
+	total    int
+	chapters int
+	fresh    int
+	reused   int
+	costs    []float64
+	finished int
+}
+
+func (r *recordingReporter) Stage(name string) { r.stages = append(r.stages, name) }
+func (r *recordingReporter) Total(segments, chapters int) {
+	r.total, r.chapters = segments, chapters
+}
+func (r *recordingReporter) Chapter(int) {}
+func (r *recordingReporter) Advance(fresh, reused int) {
+	r.fresh += fresh
+	r.reused += reused
+}
+func (r *recordingReporter) Cost(usd float64) {
+	r.costs = append(r.costs, usd)
+}
+func (r *recordingReporter) Finish() { r.finished++ }
+
+// lastCost is the figure a watcher was left looking at.
+func (r *recordingReporter) lastCost() float64 {
+	if len(r.costs) == 0 {
+		return 0
+	}
+	return r.costs[len(r.costs)-1]
+}
+
+func TestOrchestrator_Run_ReportsProgress(t *testing.T) {
+	t.Parallel()
+
+	srv := nmttest.NewServer(nil)
+	t.Cleanup(srv.Close)
+
+	orch := newOrchestrator(t, translate.NewHTTPTranslator(srv.URL, ""))
+	rep := &recordingReporter{}
+	orch.Progress = rep
+
+	cfg := pipeline.RunConfig{
+		InputPath:  writeFixtureEPUB(t),
+		OutputDir:  filepath.Join(t.TempDir(), "run"),
+		SourceLang: "en",
+		TargetLang: "fr",
+		RunID:      "progress-run",
+		BookID:     "fixture",
+	}
+
+	result, err := orch.Run(t.Context(), cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, []string{"extract", "parse", "segment", "translate", "recompose", "qa"}, rep.stages)
+	require.Equal(t, result.TotalSegments, rep.total)
+	require.Equal(t, 1, rep.chapters)
+	// Every segment is accounted for exactly once, and the split matches the
+	// report — which is what makes the bar's percentage mean the same thing as
+	// report.json.
+	require.Equal(t, result.NMTSegments, rep.fresh)
+	require.Equal(t, result.TMHits, rep.reused)
+	require.Equal(t, result.TotalSegments, rep.fresh+rep.reused)
+	require.Equal(t, 1, rep.finished)
+}
+
+func TestOrchestrator_Run_ReportsProgress_TMReuseOnRerun(t *testing.T) {
+	t.Parallel()
+
+	srv := nmttest.NewServer(nil)
+	t.Cleanup(srv.Close)
+
+	orch := newOrchestrator(t, translate.NewHTTPTranslator(srv.URL, ""))
+	input := writeFixtureEPUB(t)
+	cfg := pipeline.RunConfig{
+		InputPath:  input,
+		OutputDir:  filepath.Join(t.TempDir(), "first"),
+		SourceLang: "en",
+		TargetLang: "fr",
+		RunID:      "first",
+		BookID:     "fixture",
+	}
+	_, err := orch.Run(t.Context(), cfg)
+	require.NoError(t, err)
+
+	rep := &recordingReporter{}
+	orch.Progress = rep
+	cfg.OutputDir = filepath.Join(t.TempDir(), "second")
+	cfg.RunID = "second"
+	result, err := orch.Run(t.Context(), cfg)
+	require.NoError(t, err)
+
+	require.Equal(t, result.TotalSegments, rep.reused, "a re-run is all TM reuse")
+	require.Zero(t, rep.fresh)
+}
+
+func TestOrchestrator_Run_ReportsFinishOnFailure(t *testing.T) {
+	t.Parallel()
+
+	orch := newOrchestrator(t, nil)
+	rep := &recordingReporter{}
+	orch.Progress = rep
+
+	_, err := orch.Run(t.Context(), pipeline.RunConfig{
+		InputPath:  filepath.Join(t.TempDir(), "absent.epub"),
+		OutputDir:  filepath.Join(t.TempDir(), "run"),
+		SourceLang: "en",
+		TargetLang: "fr",
+		RunID:      "failed",
+		BookID:     "absent",
+	})
+	require.Error(t, err)
+
+	// The caller is about to write the error to the same stream, so the line
+	// must have been closed first.
+	require.Equal(t, 1, rep.finished)
+	require.Equal(t, []string{"extract"}, rep.stages)
+	require.Zero(t, rep.total)
+}
+
+func TestOrchestrator_Run_ReportsRunningCost(t *testing.T) {
+	t.Parallel()
+
+	srv := nmttest.NewServer(nil)
+	t.Cleanup(srv.Close)
+
+	orch := newOrchestrator(t, translate.NewHTTPTranslator(srv.URL, ""))
+	// A priced provider with no free allowance, so every character costs.
+	orch.CostModel = cost.Model{Per1000CharsUSD: 20}
+	rep := &recordingReporter{}
+	orch.Progress = rep
+
+	result, err := orch.Run(t.Context(), pipeline.RunConfig{
+		InputPath:  writeFixtureEPUB(t),
+		OutputDir:  filepath.Join(t.TempDir(), "run"),
+		SourceLang: "en",
+		TargetLang: "fr",
+		RunID:      "cost-run",
+		BookID:     "fixture",
+	})
+	require.NoError(t, err)
+
+	// One repricing per fresh segment, monotonically rising, and landing exactly
+	// on the figure report.json carries — the bar and the report are the same
+	// arithmetic over the same counters.
+	require.Len(t, rep.costs, result.NMTSegments)
+	require.Positive(t, rep.lastCost())
+	require.InDelta(t, result.ActualCostUSD, rep.lastCost(), 1e-9)
+	for i := 1; i < len(rep.costs); i++ {
+		require.GreaterOrEqual(t, rep.costs[i], rep.costs[i-1], "spend cannot go down")
+	}
+}
+
+func TestOrchestrator_Run_TMHitsCostNothing(t *testing.T) {
+	t.Parallel()
+
+	srv := nmttest.NewServer(nil)
+	t.Cleanup(srv.Close)
+
+	orch := newOrchestrator(t, translate.NewHTTPTranslator(srv.URL, ""))
+	orch.CostModel = cost.Model{Per1000CharsUSD: 20}
+	input := writeFixtureEPUB(t)
+	cfg := pipeline.RunConfig{
+		InputPath:  input,
+		OutputDir:  filepath.Join(t.TempDir(), "first"),
+		SourceLang: "en",
+		TargetLang: "fr",
+		RunID:      "first",
+		BookID:     "fixture",
+	}
+	_, err := orch.Run(t.Context(), cfg)
+	require.NoError(t, err)
+
+	rep := &recordingReporter{}
+	orch.Progress = rep
+	cfg.OutputDir, cfg.RunID = filepath.Join(t.TempDir(), "second"), "second"
+	result, err := orch.Run(t.Context(), cfg)
+	require.NoError(t, err)
+
+	// Nothing was sent to the provider, so nothing was repriced and the run is
+	// free — which is the whole point of the TM.
+	require.Empty(t, rep.costs)
+	require.Zero(t, result.ActualCostUSD)
+}

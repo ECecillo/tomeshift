@@ -14,6 +14,12 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/translate"
 )
 
+// costFn prices what the run has consumed at the instant it is called. It is
+// built by Run, where the meter baseline lives, and handed to the translation
+// loops so a watcher can be told what the book has cost so far. It is pure and
+// cheap: arithmetic over the counters plus one read of the adapter's meter.
+type costFn func() float64
+
 // translationMode is the only part of a run that differs between the NMT and
 // literary pipelines. Everything around it — extract, parse, segment, the
 // budget guardrail, recompose, QA, the spend ledger, artifacts and the QA gate
@@ -29,7 +35,7 @@ type translationMode interface {
 	// goes. It returns the translated segments in spine order.
 	Translate(
 		ctx context.Context, log *zap.Logger,
-		chapters []chapterSegments, usedFreeChars int, result *RunResult,
+		chapters []chapterSegments, usedFreeChars int, result *RunResult, price costFn,
 	) ([]segment.Segment, error)
 	// Cost prices what result says has been consumed so far. It is pure and
 	// callable at any point, including after a failure, because a run that died
@@ -96,7 +102,7 @@ func (m *nmtMode) Cost(result *RunResult, usedFreeChars int) float64 {
 
 func (m *nmtMode) Translate(
 	ctx context.Context, log *zap.Logger,
-	chapters []chapterSegments, usedFreeChars int, result *RunResult,
+	chapters []chapterSegments, usedFreeChars int, result *RunResult, price costFn,
 ) ([]segment.Segment, error) {
 	// This walks the flattened copies, not chapters, so chapters keeps its
 	// source text. That is harmless — and only harmless — because Segment.Node
@@ -104,7 +110,7 @@ func (m *nmtMode) Translate(
 	// document either way, and Run recomposes from the returned slice. Anything
 	// added after Translate must read the return value, not chapters.
 	segments := flattenChapters(chapters)
-	if err := m.orch.translateSegments(ctx, m.cfg, log, segments, result); err != nil {
+	if err := m.orch.translateSegments(ctx, m.cfg, log, segments, result, price); err != nil {
 		return nil, err
 	}
 	return segments, nil
@@ -177,12 +183,18 @@ func (m *literaryMode) Cost(result *RunResult, usedFreeChars int) float64 {
 
 func (m *literaryMode) Translate(
 	ctx context.Context, log *zap.Logger,
-	chapters []chapterSegments, usedFreeChars int, result *RunResult,
+	chapters []chapterSegments, usedFreeChars int, result *RunResult, price costFn,
 ) ([]segment.Segment, error) {
 	o := m.orch
 	if o.LiteraryTranslator == nil {
 		return nil, literary.ErrNilChatClient
 	}
+
+	// A chapter is one TranslateChapter call, so without this hook the report
+	// would freeze for the whole of it. Wired here rather than by the CLI so
+	// that fresh segments are counted in exactly one place: this, and TM hits
+	// below.
+	o.LiteraryTranslator.OnBatch = func(segments int) { o.progress().Advance(segments, 0) }
 
 	translated := make([]segment.Segment, 0, result.TotalSegments)
 	for i := range chapters {
@@ -190,6 +202,7 @@ func (m *literaryMode) Translate(
 			return nil, err
 		}
 
+		o.progress().Chapter(i + 1)
 		chapter := &chapters[i]
 
 		// Resolve the chapter against the TM first, then draft everything it
@@ -205,6 +218,7 @@ func (m *literaryMode) Translate(
 			if reused {
 				seg.Status = segment.StatusReused
 				result.TMHits++
+				o.progress().Advance(0, 1)
 				continue
 			}
 			fresh = append(fresh, seg)
@@ -238,6 +252,12 @@ func (m *literaryMode) Translate(
 			}
 			m.persist(ctx, log, seg)
 		}
+
+		// Priced per chapter, not per batch: TranslateChapter reports the tokens
+		// it consumed when it returns, so a mid-chapter figure would be the
+		// previous chapter's — worse than one that lags a whole chapter and says
+		// so by only moving at the seam.
+		o.progress().Cost(price())
 
 		// Frozen by default: keep the bible (and thus the system prefix / prompt
 		// cache) stable across chapters and re-runs. Evolve it only when the run

@@ -51,6 +51,12 @@ type Translator struct {
 	// this value. 0 uses defaultBatchSize.
 	BatchSize int
 	Glossary  *glossary.Glossary
+	// OnBatch, when set, is called with the number of segments a batch covered
+	// once that call has returned — successfully or not, since a degraded batch
+	// is as finished as a good one. It exists so a chapter, which is a single
+	// TranslateChapter call and the longest thing a run does, can still report
+	// its advancement. It must not block: the batch walk is what waits on it.
+	OnBatch func(segments int)
 }
 
 type requestSegment struct {
@@ -199,6 +205,9 @@ func (t *Translator) TranslateChapter(
 		})
 		if err != nil {
 			batchErrs = append(batchErrs, err)
+		}
+		if t.OnBatch != nil {
+			t.OnBatch(len(batchItems))
 		}
 	}
 	if len(missingItems(items, run.targets)) == len(items) {

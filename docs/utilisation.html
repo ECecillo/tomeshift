@@ -611,7 +611,7 @@ consomment sans les modifier.</figcaption>
 
 <pre><code>epub-translator run --input &lt;f.epub&gt; --output-dir &lt;dir&gt; --source-lang en --target-lang fr \
   [--mode nmt|literary] [--series &lt;id&gt;] [--glossary &lt;f.json&gt;] [--run-id &lt;id&gt;] \
-  [--update-bible] [--resume]</code></pre>
+  [--update-bible] [--resume] [--no-progress]</code></pre>
 
 <div class="table-wrap">
 <table>
@@ -624,9 +624,46 @@ consomment sans les modifier.</figcaption>
   <tr><td><code>--glossary</code></td><td class="num">—</td><td>Les termes <code>locked</code> sont masqués avant l'appel et resubstitués après. Une violation résiduelle fait <strong>échouer la porte QA</strong>.</td></tr>
   <tr><td><code>--run-id</code></td><td>horodatage UTC</td><td>Nomme le dossier d'artefacts. Réutiliser le même identifiant <strong>écrase</strong> les artefacts précédents.</td></tr>
   <tr><td><code>--update-bible</code></td><td><code>false</code></td><td>Laisse la bible évoluer pendant le run. <span class="badge bad">déconseillé</span> Casse le préfixe cacheable (≈ ×10 sur le coût) et rend les re-runs non reproductibles.</td></tr>
+  <tr><td><code>--no-progress</code></td><td><code>false</code></td><td>Coupe la barre de progression. Elle ne s'affiche de toute façon que si <code>stderr</code> est un terminal : redirigée ou en CI, il n'y a rien à couper. Le flag sert au cas que la détection ne couvre pas — une session capturée, un lecteur d'écran.</td></tr>
   <tr><td><code>--resume</code></td><td><code>false</code></td><td>Aujourd'hui un simple marqueur journalisé : la reprise vient <em>de fait</em> de la mémoire de traduction, qui resert tout ce qui a déjà été traduit. Relancer un run interrompu ne repaie pas le travail déjà fait.</td></tr>
 </table>
 </div>
+
+<p>
+  Pendant le run, une ligne réécrite en place sur <code>stderr</code> dit où on en est. Elle n'existe
+  que si <code>stderr</code> est un terminal, de sorte que <code>just ci-local</code> ou
+  <code>2&gt; run.log</code> ne récoltent pas des retours chariot :
+</p>
+
+<figure>
+<pre><code>extract   … 0s
+segment   … 0s
+translate [███░░░░░░░░░░░░░░░░░░░░░]  14% 604/4269 seg · $1.4450 · 0s · eta 2s
+translate [███████████░░░░░░░░░░░░░]  49% 2077/4269 seg · tm 2% · $4.4734 · 1s · eta 1s
+qa        [████████████████████████] 100% 4269/4269 seg · tm 2% · $9.3898 · 3s
+run cost completed: 4269 segments, 87 tm hits, 4182 nmt, output=runs/cost/translated.epub</code></pre>
+<figcaption>Capture réelle sur <code>vol1.epub</code> (469 492 caractères) : le tarif Google est
+appliqué, palier gratuit désactivé, mais le brouillon vient du serveur NMT local — d'où des durées
+en secondes là où un vrai fournisseur en mettrait des minutes.</figcaption>
+</figure>
+
+<ul>
+  <li><code>ch</code> n'apparaît qu'en mode littéraire : le mode NMT aplatit le livre et ne suit pas
+    les chapitres.</li>
+  <li><code>tm</code> est la part des segments servis par la mémoire de traduction. C'est ce qui
+    explique une barre qui avance vite puis ralentit : les hits sont instantanés, les appels
+    fournisseur non.</li>
+  <li>Le montant est la dépense <em>réelle cumulée</em>, calculée par le même modèle de coût que
+    <code>actual_cost_usd</code> dans <code>report.json</code> : le dernier chiffre affiché est celui
+    que le rapport porte. Il n'apparaît pas quand il vaut 0 — un moteur auto-hébergé sans passe LLM
+    ne coûte rien, et une colonne de <code>$0.0000</code> serait du bruit. En mode littéraire il
+    n'avance qu'aux <em>coutures de chapitre</em> : c'est là que le fournisseur rend les tokens qu'il
+    a consommés.</li>
+  <li>L'ETA est retenue avant 10 % du livre — extrapoler la vitesse d'une rafale de hits TM
+    annoncerait quelques secondes pour une heure de travail.</li>
+  <li>La dernière ligne, elle, part sur <code>stdout</code> : c'est la seule sortie analysable, et la
+  barre ne s'y mélange jamais.</li>
+</ul>
 
 <h3><code>estimate</code> — projeter le coût sans payer</h3>
 
@@ -782,7 +819,7 @@ EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
 <h3><code>batch</code> — traiter un dossier de livres</h3>
 
 <pre><code>epub-translator batch --input-dir ./books/serie --output-dir ./runs \
-  [--glossary ./glossary.json] [--reference-dir ./refs]</code></pre>
+  [--glossary ./glossary.json] [--reference-dir ./refs] [--no-progress]</code></pre>
 
 <ul>
   <li><strong>Mode NMT uniquement</strong> — pas de mode littéraire en batch.</li>
@@ -794,6 +831,8 @@ EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
   <li><code>--reference-dir</code> : si <code>&lt;dir&gt;/&lt;book-id&gt;.epub</code> existe, un chrF
     est calculé pour ce livre et injecté dans le rapport agrégé. Sans référence pour un livre donné,
     on passe en silence.</li>
+  <li>Chaque livre a sa propre barre de progression, préfixée de son <code>book_id</code> et refermée
+    par la ligne de récapitulatif du livre. <code>--no-progress</code> les coupe toutes.</li>
   <li><kbd>Ctrl-C</kbd> arrête proprement <em>entre</em> deux livres.</li>
 </ul>
 
@@ -1370,6 +1409,10 @@ just down</code></pre>
       proc: 'Aucun effet sur la traduction.',
       out: 'Nomme le dossier <code>runs/&lt;run-id&gt;/</code>. Réutiliser un identifiant existant <b>écrase</b> ses artefacts.',
       cost: 'Neutre. Utile pour itérer sur un même chapitre découpé (<code>just carve</code>) sans accumuler les dossiers.' },
+    { f: '--no-progress',
+      proc: 'Aucun effet sur le traitement : la barre est purement décorative et se déduit des compteurs que <code>report.json</code> publie déjà. Rien n\'est mesuré en plus pour elle.',
+      out: 'Sans le flag, une ligne réécrite en place sur <b>stderr</b> — étape, jauge, segments faits/total, chapitre en mode littéraire, part de TM, <b>dépense cumulée</b>, temps écoulé et ETA (retenue avant 10 %, sinon un livre plein de hits TM annoncerait 8 s pour une heure de travail). stdout reste la seule ligne analysable, avant comme après.',
+      cost: 'Gratuit, et c\'est le seul endroit où l\'on voit la facture monter en direct : le montant affiché sort du même modèle de coût que <code>actual_cost_usd</code>. La barre est repeinte au maximum toutes les 100 ms, donc un livre entièrement servi par la TM ne coûte pas plus d\'affichage qu\'un livre traduit.' },
     { f: '--resume',
       proc: 'Journalisé, mais ne modifie pas le déroulé aujourd\'hui : la reprise vient de la mémoire de traduction.',
       out: 'Aucun effet direct.',

@@ -40,6 +40,24 @@ func TestParseRunArgs(t *testing.T) {
 			},
 		},
 		{
+			name: "progress bar opted out",
+			args: []string{
+				"--input", "book.epub",
+				"--output-dir", "./runs",
+				"--source-lang", "en",
+				"--target-lang", "fr",
+				"--no-progress",
+			},
+			want: RunCommand{
+				Input:      "book.epub",
+				OutputDir:  "./runs",
+				SourceLang: "en",
+				TargetLang: "fr",
+				Mode:       "nmt",
+				NoProgress: true,
+			},
+		},
+		{
 			name: "literary mode",
 			args: []string{
 				"--input", "book.epub",

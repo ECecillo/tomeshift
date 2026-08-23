@@ -19,6 +19,7 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/llm"
 	"github.com/ECecillo/ebooks-translator/internal/narrative"
 	"github.com/ECecillo/ebooks-translator/internal/pipeline"
+	"github.com/ECecillo/ebooks-translator/internal/progress"
 	"github.com/ECecillo/ebooks-translator/internal/qa"
 	"github.com/ECecillo/ebooks-translator/internal/segment"
 	"github.com/ECecillo/ebooks-translator/internal/tm"
@@ -154,6 +155,10 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg config.Config
 	defer closeOrch()
 	orch.Logger = logger
 
+	// stderr, not stdout: the bar is for a human watching, and stdout stays the
+	// single parsable summary line.
+	orch.Progress = progress.New(stderr, !cmd.NoProgress && progress.IsTerminal(stderr), "")
+
 	baseCtx, stop := signalContext()
 	defer stop()
 	ctx, cancel := withRunTimeout(baseCtx, cfg.RunTimeoutSeconds)
@@ -214,6 +219,9 @@ func runBatch(stdout, stderr io.Writer, cmd cli.BatchCommand, cfg config.Config)
 	baseCtx, stop := signalContext()
 	defer stop()
 
+	// Resolved once: every book gets its own bar, all writing to the same line.
+	showProgress := !cmd.NoProgress && progress.IsTerminal(stderr)
+
 	outcomes := make([]pipeline.BookOutcome, 0, len(epubs))
 	var firstErr error
 	for _, in := range epubs {
@@ -232,6 +240,7 @@ func runBatch(stdout, stderr io.Writer, cmd cli.BatchCommand, cfg config.Config)
 			continue
 		}
 		orch.Logger = logger
+		orch.Progress = progress.New(stderr, showProgress, bookID)
 
 		ctx, cancel := withRunTimeout(baseCtx, cfg.RunTimeoutSeconds)
 		result, runErr := orch.Run(ctx, pipeline.RunConfig{

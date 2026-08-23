@@ -628,3 +628,33 @@ func TestTranslateChapter_EmptyReplyIsRetriedOnHalvedBatches(t *testing.T) {
 	require.Equal(t, chat.calls*7, outcome.Usage.OutputTokens)
 	require.Greater(t, chat.calls, 1, "the first call must have been retried")
 }
+
+func TestTranslator_OnBatchReportsEverySegmentOnce(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(25)
+	// The second batch fails outright: its segments are as finished as the
+	// others', so progress must not stall on them.
+	chat := &echoChat{errOnCall: 2}
+	var reported []int
+	tr := literary.Translator{
+		Chat:      chat,
+		BatchSize: 10,
+		OnBatch:   func(segments int) { reported = append(reported, segments) },
+	}
+
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	require.NoError(t, err)
+
+	require.Equal(t, []int{10, 10, 5}, reported, "each batch reports its own size, failed or not")
+}
+
+func TestTranslator_OnBatchIsOptional(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(3)
+	tr := literary.Translator{Chat: &echoChat{}}
+
+	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	require.NoError(t, err)
+}

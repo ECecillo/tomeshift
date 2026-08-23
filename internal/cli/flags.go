@@ -40,6 +40,11 @@ type RunCommand struct {
 	// Resume is set by --resume, used to request continuation from a prior
 	// run state instead of starting from scratch.
 	Resume bool
+	// NoProgress is set by --no-progress to silence the terminal progress bar.
+	// The bar already draws only on a terminal, so this is for the case the
+	// detection cannot cover: a terminal whose output someone is reading as
+	// text anyway (a captured session, a screen reader).
+	NoProgress bool
 }
 
 // ParseRunArgs parses and validates flags for `epub-translator run`, producing a
@@ -59,6 +64,7 @@ func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 	fs.StringVar(&cmd.Series, "series", "", "series identifier for literary mode")
 	fs.BoolVar(&cmd.UpdateBible, "update-bible", false, "literary mode: evolve the series bible during the run (default: frozen)")
 	fs.BoolVar(&cmd.Resume, "resume", false, "resume a previous run")
+	fs.BoolVar(&cmd.NoProgress, "no-progress", false, "disable the terminal progress bar (auto-disabled when stderr is not a terminal)")
 
 	if err := fs.Parse(args); err != nil {
 		return RunCommand{}, fmt.Errorf("unable to parse cli flags, err: %w", err)
@@ -101,9 +107,9 @@ func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 // command surface and required run flags.
 func PrintRootUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage:")
-	_, _ = fmt.Fprintln(w, "  epub-translator run --input <file.epub> --output-dir <dir> --source-lang en --target-lang fr [--mode nmt|literary] [--series <id>] [--glossary <file>] [--run-id <id>] [--resume]")
+	_, _ = fmt.Fprintln(w, "  epub-translator run --input <file.epub> --output-dir <dir> --source-lang en --target-lang fr [--mode nmt|literary] [--series <id>] [--glossary <file>] [--run-id <id>] [--resume] [--no-progress]")
 	_, _ = fmt.Fprintln(w, "  epub-translator estimate --input <file.epub> [--escalation-rate 0.15]")
-	_, _ = fmt.Fprintln(w, "  epub-translator batch --input-dir <dir> --output-dir <dir> [--glossary <file>]")
+	_, _ = fmt.Fprintln(w, "  epub-translator batch --input-dir <dir> --output-dir <dir> [--glossary <file>] [--no-progress]")
 	_, _ = fmt.Fprintln(w, "  epub-translator eval --candidate <out.epub> --reference <human-fr.epub>")
 	_, _ = fmt.Fprintln(w, "  epub-translator glossary-suggest --input <file.epub> [--min-count 3] [--out glossary.json]")
 	_, _ = fmt.Fprintln(w, "  epub-translator style-profile --input <file.epub> --series <id> [--samples 3]")

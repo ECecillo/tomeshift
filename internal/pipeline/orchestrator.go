@@ -62,6 +62,7 @@ type Orchestrator struct {
 	DailyUSD           float64          // daily spend cap; <= 0 disables the check
 	MonthlyUSD         float64          // monthly spend cap; <= 0 disables the check
 	Logger             *zap.Logger
+	Progress           Reporter // optional; nil disables terminal progress reporting
 }
 
 // Run executes the full pipeline and always attempts to emit run artifacts. It
@@ -80,20 +81,29 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	)
 	started := time.Now().UTC()
 
+	// Deferred first so it runs last: the caller writes its failure message to
+	// the same stream, and it must not land inside the bar's line.
+	prog := o.progress()
+	defer prog.Finish()
+
+	prog.Stage(string(StageExtract))
 	raw, err := o.Extractor.Extract(ctx, cfg.InputPath)
 	if err != nil {
 		return nil, &StageError{Stage: StageExtract, Err: err}
 	}
 
+	prog.Stage(string(StageParse))
 	book, err := o.Parser.Parse(ctx, raw)
 	if err != nil {
 		return nil, &StageError{Stage: StageParse, Err: err}
 	}
 
+	prog.Stage(string(StageSegment))
 	chapters, err := o.segmentBookByChapter(ctx, book)
 	if err != nil {
 		return nil, &StageError{Stage: StageSegment, Err: err}
 	}
+	prog.Total(countSegments(chapters), len(chapters))
 	log.Info("segmented book",
 		zap.Int("segments", countSegments(chapters)), zap.Int("chapters", len(chapters)))
 
@@ -154,6 +164,16 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	// every book, so a run is charged the delta over its own lifetime.
 	sentBefore := o.charsSent()
 
+	// costNow prices what has been consumed at this instant, through the same
+	// mode that prices the final figure. The meter delta is folded into a copy
+	// rather than into result: result.NMTChars is the run's record and belongs
+	// to finalise, which must stay the single writer.
+	costNow := func() float64 {
+		snapshot := *result
+		snapshot.NMTChars = o.charsSent() - sentBefore
+		return mode.Cost(&snapshot, usedFreeChars)
+	}
+
 	var finalised bool
 	finalise := func() {
 		if finalised {
@@ -168,17 +188,20 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 		o.recordSpend(ctx, cfg, log, result)
 	}()
 
-	segments, err := mode.Translate(ctx, log, chapters, usedFreeChars, result)
+	prog.Stage(string(StageTranslate))
+	segments, err := mode.Translate(ctx, log, chapters, usedFreeChars, result, costNow)
 	if err != nil {
 		return nil, &StageError{Stage: StageTranslate, Err: err}
 	}
 
+	prog.Stage(string(StageRecompose))
 	outputEPUB := fmt.Sprintf("%s/translated.epub", cfg.OutputDir)
 	if err := o.Recomposer.Recompose(ctx, raw, book, outputEPUB); err != nil {
 		return nil, &StageError{Stage: StageRecompose, Err: err}
 	}
 	result.OutputEPUB = outputEPUB
 
+	prog.Stage(string(StageQA))
 	report := qa.Evaluate(book, segments)
 	check, err := o.EPUBCheck.Check(ctx, outputEPUB)
 	if err != nil {
@@ -511,7 +534,7 @@ func (o *Orchestrator) segmentBookByChapter(ctx context.Context, book *epub.Book
 // Pricing belongs to the mode, not to the translation loop.
 func (o *Orchestrator) translateSegments(
 	ctx context.Context, cfg RunConfig, log *zap.Logger,
-	segments []segment.Segment, result *RunResult,
+	segments []segment.Segment, result *RunResult, price costFn,
 ) error {
 	pm := o.Placeholders
 	if pm == nil {
@@ -536,6 +559,7 @@ func (o *Orchestrator) translateSegments(
 		if reused {
 			seg.Status = segment.StatusReused
 			result.TMHits++
+			o.progress().Advance(0, 1)
 		} else {
 			seg.Status = segment.StatusTranslated
 			result.NMTSegments++
@@ -589,6 +613,13 @@ func (o *Orchestrator) translateSegments(
 					}
 				}
 			}
+
+			// Reported here, not at the top of the iteration: a fresh segment
+			// is only done once its optional post-edit has been attempted, and
+			// that call is the slow part a watcher is waiting on. A TM hit costs
+			// nothing, which is why only this branch reprices.
+			o.progress().Advance(1, 0)
+			o.progress().Cost(price())
 		}
 
 		if o.Glossary != nil {

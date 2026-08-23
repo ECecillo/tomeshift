@@ -17,6 +17,8 @@ type BatchCommand struct {
 	// ReferenceDir optionally holds human reference translations named
 	// <book-id>.epub; when present each produced book is chrF-scored against it.
 	ReferenceDir string
+	// NoProgress is set by --no-progress to silence the per-book progress bar.
+	NoProgress bool
 }
 
 // ParseBatchArgs parses flags for `epub-translator batch`.
@@ -31,6 +33,7 @@ func ParseBatchArgs(args []string, stderr io.Writer) (BatchCommand, error) {
 	fs.StringVar(&cmd.TargetLang, "target-lang", "fr", "target language code (V1=fr)")
 	fs.StringVar(&cmd.Glossary, "glossary", "", "optional shared glossary file path (applied to every book)")
 	fs.StringVar(&cmd.ReferenceDir, "reference-dir", "", "optional directory of <book-id>.epub human references for chrF scoring")
+	fs.BoolVar(&cmd.NoProgress, "no-progress", false, "disable the per-book progress bar (auto-disabled when stderr is not a terminal)")
 
 	if err := fs.Parse(args); err != nil {
 		return BatchCommand{}, fmt.Errorf("unable to parse cli flags, err: %w", err)
