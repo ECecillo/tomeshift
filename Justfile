@@ -46,7 +46,14 @@ preflight:
     set -uo pipefail
     fail=0
 
-    test -f "{{env_file}}" || { echo "missing {{env_file}} (cp .env.example {{env_file}})"; fail=1; }
+    # Sourced first, so every check below sees the same environment a recipe
+    # would — OP_ACCOUNT included.
+    if [ -f "{{env_file}}" ]; then
+      set -a; source "{{env_file}}"; set +a
+    else
+      echo "missing {{env_file}} (cp .env.example {{env_file}})"
+      fail=1
+    fi
 
     # Toolchain: one check instead of the five hand-written ones that used to
     # miss python3, sqlite3, uv and docker entirely.
@@ -78,18 +85,22 @@ preflight:
         fail=1
       else
         echo "1password: ok ($(op whoami --format=json 2>/dev/null | sed -n 's/.*"url": "\([^"]*\)".*/\1/p'))"
+        # A secret reference names a vault, never an account. With more than one
+        # account signed in, an unpinned reference resolves against whichever op
+        # considers current — which is how a personal key ends up looked up in a
+        # work account, or not found at all.
+        if [ -z "${OP_ACCOUNT:-}" ] && [ "$(op account list --format=json 2>/dev/null | grep -c '"url"')" -gt 1 ]; then
+          echo "1password: several accounts signed in and OP_ACCOUNT is unset — pin it in {{env_file}} (op account list)"
+        fi
       fi
     fi
 
-    if [ -f "{{env_file}}" ]; then
-      set -a; source "{{env_file}}"; set +a
-      if [ -n "${EPUB_TRANSLATOR_NMT_ENDPOINT:-}" ] && command -v curl >/dev/null; then
-        curl -fsS --max-time 2 "${EPUB_TRANSLATOR_NMT_ENDPOINT%/}/health" >/dev/null 2>&1 && \
-          echo "nmt endpoint health: ok" || \
-          echo "nmt endpoint health: unavailable (non-blocking)"
-      else
-        echo "nmt endpoint health: skipped (curl or endpoint missing)"
-      fi
+    if [ -n "${EPUB_TRANSLATOR_NMT_ENDPOINT:-}" ] && command -v curl >/dev/null; then
+      curl -fsS --max-time 2 "${EPUB_TRANSLATOR_NMT_ENDPOINT%/}/health" >/dev/null 2>&1 && \
+        echo "nmt endpoint health: ok" || \
+        echo "nmt endpoint health: unavailable (non-blocking)"
+    else
+      echo "nmt endpoint health: skipped (curl or endpoint missing)"
     fi
 
     exit $fail
