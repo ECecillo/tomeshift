@@ -218,3 +218,125 @@ func TestSQLiteStore_EmptyHash(t *testing.T) {
 	_, _, err := store.Lookup(ctx, "")
 	require.ErrorIs(t, err, ErrEmptyHash)
 }
+
+func TestSQLiteStore_MeasuredLLM_WeightsBySegment(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := t.Context()
+
+	record := func(runID string, segments, out int) {
+		require.NoError(t, store.RecordRun(ctx, RunSpend{
+			RunID: runID, BookID: "b",
+			StartedAt: time.Now().UTC(), EndedAt: time.Now().UTC(),
+			LLMProvider: "claude-cli", LLMModel: "claude-sonnet-5",
+			LLMSegments: segments, LLMOutputTokens: out,
+			LLMInputTokens: 10, LLMCacheReadTokens: 20, LLMCacheCreationTokens: 30,
+		}))
+	}
+	record("small", 20, 8000)    // 400 tokens/segment
+	record("volume", 4000, 4000) // 1 token/segment
+
+	measured, err := store.MeasuredLLM(ctx, "claude-cli", "claude-sonnet-5")
+	require.NoError(t, err)
+	require.Equal(t, 2, measured.Attempts)
+	require.Equal(t, 4020, measured.Segments)
+	require.Equal(t, 12000, measured.OutputTokens)
+	require.Equal(t, 20, measured.InputTokens, "both rows' 10 input tokens")
+	require.Equal(t, 40, measured.CacheReadTokens)
+	require.Equal(t, 60, measured.CacheCreationTokens)
+
+	// Weighted by segments, so the 4000-segment volume dominates: 12000/4020,
+	// not the mean of 400 and 1. A smoke test must not outvote a book.
+	require.InDelta(t, 12000.0/4020.0, measured.OutputTokensPerSegment(), 1e-9)
+}
+
+func TestSQLiteStore_MeasuredLLM_IgnoresWhatCannotCalibrate(t *testing.T) {
+	t.Parallel()
+
+	store := newTestStore(t)
+	ctx := t.Context()
+
+	base := RunSpend{
+		BookID: "b", StartedAt: time.Now().UTC(), EndedAt: time.Now().UTC(),
+		LLMProvider: "claude-cli", LLMModel: "claude-sonnet-5",
+	}
+	usable := base
+	usable.RunID, usable.LLMSegments, usable.LLMOutputTokens = "usable", 100, 20000
+
+	// A run that died before its LLM pass: segments 0.
+	crashed := base
+	crashed.RunID = "crashed"
+
+	// A transport that reports no usage (the HTTP post-editor): segments but no
+	// tokens. Counting it would say the model emits 0 tokens per segment.
+	unmeasured := base
+	unmeasured.RunID, unmeasured.LLMSegments = "unmeasured", 500
+
+	// Another model entirely: verbosity does not transfer across models.
+	other := usable
+	other.RunID, other.LLMModel = "other", "claude-haiku-4-5"
+
+	for _, spend := range []RunSpend{usable, crashed, unmeasured, other} {
+		require.NoError(t, store.RecordRun(ctx, spend))
+	}
+
+	measured, err := store.MeasuredLLM(ctx, "claude-cli", "claude-sonnet-5")
+	require.NoError(t, err)
+	require.Equal(t, 1, measured.Attempts)
+	require.Equal(t, 100, measured.Segments)
+	require.InDelta(t, 200.0, measured.OutputTokensPerSegment(), 1e-9)
+}
+
+func TestSQLiteStore_MeasuredLLM_NoSamplesIsZeroNotAnError(t *testing.T) {
+	t.Parallel()
+
+	measured, err := newTestStore(t).MeasuredLLM(t.Context(), "claude-cli", "claude-sonnet-5")
+	require.NoError(t, err)
+	require.Zero(t, measured.Attempts)
+	// 0 is what tells the cost model to keep its heuristic.
+	require.Zero(t, measured.OutputTokensPerSegment())
+}
+
+func TestNewSQLiteStore_AddsTheLLMColumnsToAnOlderLedger(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "older.sqlite")
+
+	// run_attempts as it shipped, without the LLM columns. CREATE TABLE IF NOT
+	// EXISTS would leave it exactly like this.
+	older, err := sql.Open("sqlite", path)
+	require.NoError(t, err)
+	_, err = older.Exec(`CREATE TABLE run_attempts (
+  attempt_id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, book_id TEXT NOT NULL,
+  started_at TEXT NOT NULL, ended_at TEXT NOT NULL, actual_cost_usd REAL NOT NULL,
+  nmt_engine TEXT NOT NULL DEFAULT '', nmt_chars INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL)`)
+	require.NoError(t, err)
+	_, err = older.Exec(`INSERT INTO run_attempts
+  (run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_engine, nmt_chars, created_at)
+VALUES ('old', 'b', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z', 1.5, 'nmt-google', 1000, '2026-08-01T00:00:00Z')`)
+	require.NoError(t, err)
+	require.NoError(t, older.Close())
+
+	store, err := NewSQLiteStore(path)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	// The pre-existing row survives, and a new one can carry the LLM counters.
+	spend, err := store.SpendSince(t.Context(), time.Date(2026, 7, 1, 0, 0, 0, 0, time.UTC))
+	require.NoError(t, err)
+	require.InDelta(t, 1.5, spend, 0.0001)
+
+	require.NoError(t, store.RecordRun(t.Context(), RunSpend{
+		RunID: "new", BookID: "b", StartedAt: time.Now().UTC(), EndedAt: time.Now().UTC(),
+		LLMProvider: "claude-cli", LLMModel: "m", LLMSegments: 10, LLMOutputTokens: 2000,
+	}))
+	measured, err := store.MeasuredLLM(t.Context(), "claude-cli", "m")
+	require.NoError(t, err)
+	require.InDelta(t, 200.0, measured.OutputTokensPerSegment(), 1e-9)
+
+	// The old row contributes nothing rather than a zero: it predates the
+	// columns, so it has no measurement to offer.
+	require.Equal(t, 1, measured.Attempts)
+}

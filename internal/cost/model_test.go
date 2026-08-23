@@ -105,3 +105,127 @@ func TestModel_CountsRunesNotBytes(t *testing.T) {
 	proj := m.Project([]segment.Segment{{SourceText: "café"}}, LLMPass{}, 0)
 	require.Equal(t, 4, proj.Chars)
 }
+
+func TestTokenRates_PrefixWrittenPerCall(t *testing.T) {
+	t.Parallel()
+
+	// One chapter, six calls, a prefix of 35000 English chars (~8750 tokens at
+	// the EN ratio) and no frozen part, so the arithmetic is checkable by hand.
+	pass := LLMPass{
+		Segments: 258, Chars: 31149, Calls: 6,
+		Chapters: []ChapterShape{{SourceChars: 35000, Calls: 6}},
+	}
+	rates := TokenRates{
+		InputPerMTokUSD:     3,
+		OutputPerMTokUSD:    15,
+		CacheReadPerMTokUSD: 0.30,
+	}
+
+	writeOnceIn, writeOnceOut, writeOnceUSD := rates.Project(pass)
+
+	rates.PrefixWrittenPerCall = true
+	perCallIn, perCallOut, perCallUSD := rates.Project(pass)
+
+	// The same tokens travel either way — the transport changes the rate they
+	// are billed at, not the size of the prompt.
+	require.Equal(t, writeOnceIn, perCallIn)
+	require.Equal(t, writeOnceOut, perCallOut)
+
+	// Six writes at 1.25x input instead of one write plus five reads at 0.1x.
+	perCall := 35000.0 / 4 // charsPerTokenEN
+	writes := 6 * perCall / 1e6 * 3 * 1.25
+	saved := perCall/1e6*3*1.25 + 5*perCall/1e6*0.30
+	require.InDelta(t, writeOnceUSD-saved+writes, perCallUSD, 1e-9)
+	require.Greater(t, perCallUSD, writeOnceUSD, "a session-per-call transport cannot be cheaper")
+}
+
+func TestTokenRates_PrefixWrittenPerCall_IgnoredWhenTheProviderDoesNotCache(t *testing.T) {
+	t.Parallel()
+
+	pass := LLMPass{
+		Segments: 10, Chars: 1200, Calls: 3,
+		Chapters: []ChapterShape{{SourceChars: 4000, Calls: 3}},
+	}
+	// No cache read rate: the prefix is paid at full input rate on every call
+	// already, so there is no write premium to add and nothing to change.
+	rates := TokenRates{InputPerMTokUSD: 3, OutputPerMTokUSD: 15}
+
+	_, _, without := rates.Project(pass)
+	rates.PrefixWrittenPerCall = true
+	_, _, with := rates.Project(pass)
+
+	require.InDelta(t, without, with, 1e-12)
+}
+
+func TestTokenRates_MeasuredOutputBeatsTheHeuristic(t *testing.T) {
+	t.Parallel()
+
+	// The measured chapter: 258 segments, 31149 source chars, 6 calls.
+	pass := LLMPass{
+		Segments: 258, Chars: 31149, Calls: 6,
+		Chapters:     []ChapterShape{{SourceChars: 31149, Calls: 6}},
+		ContextRunes: LiteraryContextRunes,
+	}
+	rates := TokenRates{
+		InputPerMTokUSD: 3, OutputPerMTokUSD: 15, CacheReadPerMTokUSD: 0.30,
+		PromptOverheadTokens: 20024, TokenMultiplier: 1.3,
+	}
+
+	_, heuristicOut, heuristicUSD := rates.Project(pass)
+	// The heuristic's answer on that chapter, which the run then contradicted.
+	require.InDelta(t, 16180, heuristicOut, 40)
+
+	// What the run actually consumed: 53409 output tokens, i.e. 207 per segment.
+	rates.OutputTokensPerSegment = 53409.0 / 258.0
+	_, measuredOut, measuredUSD := rates.Project(pass)
+
+	require.Equal(t, 53409, measuredOut)
+	require.Greater(t, measuredUSD, heuristicUSD)
+
+	// The multiplier corrects the character heuristic, so it must not also
+	// scale a figure that came from the provider's own tokenizer.
+	rates.TokenMultiplier = 2.6
+	_, doubled, _ := rates.Project(pass)
+	require.Equal(t, measuredOut, doubled)
+}
+
+func TestTokenRates_MeasuredOutputOnlyTouchesTheOutputSide(t *testing.T) {
+	t.Parallel()
+
+	pass := LLMPass{
+		Segments: 100, Chars: 12000, Calls: 2,
+		Chapters: []ChapterShape{{SourceChars: 12000, Calls: 2}},
+	}
+	rates := TokenRates{InputPerMTokUSD: 3, OutputPerMTokUSD: 15, CacheReadPerMTokUSD: 0.30}
+
+	baseIn, _, _ := rates.Project(pass)
+	rates.OutputTokensPerSegment = 207
+	withIn, withOut, _ := rates.Project(pass)
+
+	// The input side is dominated by the prefix, which a run measures from the
+	// bible it loaded — a measurement of output verbosity says nothing about it.
+	require.Equal(t, baseIn, withIn)
+	require.Equal(t, 20700, withOut)
+}
+
+func TestTokenRates_UncachedPassIgnoresTheChatTransport(t *testing.T) {
+	t.Parallel()
+
+	// The escalation pass: one call per segment, no chapter source, no cache.
+	pass := LLMPass{Segments: 50, Chars: 6000, Calls: 50, Uncached: true}
+	rates := TokenRates{
+		InputPerMTokUSD: 3, OutputPerMTokUSD: 15, CacheReadPerMTokUSD: 0.30,
+		PromptOverheadTokens: 20000,
+	}
+
+	_, _, plain := rates.Project(pass)
+
+	// Neither the chat provider's cache nor its session behaviour can change
+	// what a different service, which caches nothing, is charged.
+	rates.PrefixWrittenPerCall = true
+	_, _, withTransport := rates.Project(pass)
+	require.InDelta(t, plain, withTransport, 1e-12)
+
+	// And the prefix is paid in full on every call: 50 x 20000 tokens at $3/Mtok.
+	require.Greater(t, plain, 50*20000/1e6*3.0*0.99)
+}

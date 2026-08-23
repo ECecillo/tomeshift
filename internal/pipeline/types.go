@@ -32,23 +32,31 @@ type RunConfig struct {
 
 // RunResult is the machine-readable summary emitted as report.json.
 type RunResult struct {
-	SchemaVersion          int       `json:"schema_version"`
-	RunID                  string    `json:"run_id"`
-	BookID                 string    `json:"book_id"`
-	Mode                   string    `json:"mode"`
-	SeriesID               string    `json:"series_id,omitempty"`
-	BibleVersion           int       `json:"bible_version,omitempty"`
-	StartedAt              time.Time `json:"started_at"`
-	EndedAt                time.Time `json:"ended_at"`
-	TotalSegments          int       `json:"total_segments"`
-	TMHits                 int       `json:"tm_hits"`
-	TMHitRatio             float64   `json:"tm_hit_ratio"`
-	NMTSegments            int       `json:"nmt_segments"`
-	NMTEngine              string    `json:"nmt_engine,omitempty"` // provider the chars below were sent to
-	NMTChars               int       `json:"nmt_chars"`            // source chars sent to it (free-tier accounting)
-	LLMAttempts            int       `json:"llm_attempts"`         // post-edit calls made, usable or not — this is what was billed
-	LLMChars               int       `json:"llm_chars"`            // source chars those calls carried
-	LLMSegments            int       `json:"llm_segments"`
+	SchemaVersion int       `json:"schema_version"`
+	RunID         string    `json:"run_id"`
+	BookID        string    `json:"book_id"`
+	Mode          string    `json:"mode"`
+	SeriesID      string    `json:"series_id,omitempty"`
+	BibleVersion  int       `json:"bible_version,omitempty"`
+	StartedAt     time.Time `json:"started_at"`
+	EndedAt       time.Time `json:"ended_at"`
+	TotalSegments int       `json:"total_segments"`
+	TMHits        int       `json:"tm_hits"`
+	TMHitRatio    float64   `json:"tm_hit_ratio"`
+	NMTSegments   int       `json:"nmt_segments"`
+	NMTEngine     string    `json:"nmt_engine,omitempty"` // provider the chars below were sent to
+	NMTChars      int       `json:"nmt_chars"`            // source chars sent to it (free-tier accounting)
+	LLMAttempts   int       `json:"llm_attempts"`         // post-edit calls made, usable or not — this is what was billed
+	LLMChars      int       `json:"llm_chars"`            // source chars those calls carried
+	LLMSegments   int       `json:"llm_segments"`
+	// LLMPassSegments is how many segments the LLM pass carried, usable result
+	// or not — unlike LLMSegments, which counts the ones it improved. It is the
+	// denominator that pairs with the token counters below, and the one the
+	// ledger keeps: dividing a degraded batch's tokens by the segments it did
+	// not deliver would report a model as more verbose the worse it behaved.
+	LLMPassSegments        int       `json:"llm_pass_segments,omitempty"`
+	LLMProvider            string    `json:"llm_provider,omitempty"`
+	LLMModel               string    `json:"llm_model,omitempty"`
 	LLMEscalationRatio     float64   `json:"llm_escalation_ratio"`
 	LLMInputTokens         int       `json:"llm_input_tokens"`
 	LLMOutputTokens        int       `json:"llm_output_tokens"`

@@ -63,6 +63,12 @@ type Orchestrator struct {
 	MonthlyUSD         float64          // monthly spend cap; <= 0 disables the check
 	Logger             *zap.Logger
 	Progress           Reporter // optional; nil disables terminal progress reporting
+	// LLMProvider and LLMModel name what the LLM pass talks to. The pipeline
+	// does no routing with them — the clients are already built — it records
+	// them, because a measured token count is only reusable if you know what
+	// produced it.
+	LLMProvider string
+	LLMModel    string
 }
 
 // Run executes the full pipeline and always attempts to emit run artifacts. It
@@ -119,6 +125,8 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 		StartedAt:     started,
 		TotalSegments: countSegments(chapters),
 		NMTEngine:     o.nmtEngine(),
+		LLMProvider:   o.LLMProvider,
+		LLMModel:      o.LLMModel,
 	}
 	mode.Init(result)
 
@@ -297,13 +305,20 @@ func (o *Orchestrator) recordSpend(ctx context.Context, cfg RunConfig, log *zap.
 	}
 
 	if err := o.TM.RecordRun(ctx, tm.RunSpend{
-		RunID:         cfg.RunID,
-		BookID:        cfg.BookID,
-		StartedAt:     result.StartedAt,
-		EndedAt:       result.EndedAt,
-		ActualCostUSD: result.ActualCostUSD,
-		NMTEngine:     result.NMTEngine,
-		NMTChars:      result.NMTChars,
+		RunID:                  cfg.RunID,
+		BookID:                 cfg.BookID,
+		StartedAt:              result.StartedAt,
+		EndedAt:                result.EndedAt,
+		ActualCostUSD:          result.ActualCostUSD,
+		NMTEngine:              result.NMTEngine,
+		NMTChars:               result.NMTChars,
+		LLMProvider:            result.LLMProvider,
+		LLMModel:               result.LLMModel,
+		LLMSegments:            result.LLMPassSegments,
+		LLMInputTokens:         result.LLMInputTokens,
+		LLMOutputTokens:        result.LLMOutputTokens,
+		LLMCacheReadTokens:     result.LLMCacheReadTokens,
+		LLMCacheCreationTokens: result.LLMCacheCreationTokens,
 	}); err != nil {
 		log.Warn("unable to record run spend", zap.Error(err))
 	}
@@ -595,6 +610,7 @@ func (o *Orchestrator) translateSegments(
 				// was usable. LLMSegments stays the count of segments actually
 				// improved, which is what the escalation ratio means.
 				result.LLMAttempts++
+				result.LLMPassSegments++
 				result.LLMChars += utf8.RuneCountInString(seg.SourceText)
 
 				if postEdited {

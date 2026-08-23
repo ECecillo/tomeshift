@@ -675,22 +675,71 @@ en secondes là où un vrai fournisseur en mettrait des minutes.</figcaption>
   LLM), LLM complet.
 </p>
 
-<pre><code>estimate for volume-01: 2841 segments over 68 chapters, 412903 source chars, batch=50, escalation=15%
-free tier: 500000 chars/month, 0 billable this run
+<figure>
+<pre><code>estimate for vol33: 4774 segments over 45 chapters, 585180 source chars, batch=50, escalation=15%
+free tier: 500000 chars/month, 85180 billable this run
+calibration: 207 output tokens/segment measured on claude-cli/claude-sonnet-5 over 258 segments in 1 past attempt(s)
 strategy     llm_segs  llm_calls    in_tokens      nmt_usd      llm_usd    total_usd
-nmt-only            0          0            0       0.0000       0.0000       0.0000
-hybrid            426        426       218400       0.0000       1.2104       1.2104
-full-llm         2841         68       984210       0.0000       4.1832       4.1832</code></pre>
+nmt-only            0          0            0       1.7036       0.0000       1.7036
+hybrid            716        716     18713658       1.7036      58.3643      60.0679
+full-llm         4774        112      4586530       1.7036      31.6095      33.3131</code></pre>
+<figcaption>La troisième ligne est nouvelle : sans mesure au ledger, elle dit
+<code>calibration: none yet — output tokens come from the character heuristic</code>.</figcaption>
+</figure>
 
 <div class="card key">
   <span class="label">Pourquoi cette commande est fiable</span>
   <p style="margin-top:0">
-    <code>estimate</code> et le garde-fou du run passent par le <strong>même</strong> modèle de coût
-    et lisent le <strong>même</strong> compteur de palier gratuit dans le ledger. Ce que
-    <code>estimate</code> annonce est ce que le plafond par livre applique. Corollaire : si les
-    tarifs LLM ne sont pas renseignés dans <code>.env.local</code>, la projection vaut 0 $ et le
-    plafond ne compare plus rien.
+    <code>estimate</code> et le garde-fou du run passent par le <strong>même</strong> modèle de coût,
+    lisent le <strong>même</strong> compteur de palier gratuit dans le ledger et appliquent la
+    <strong>même</strong> calibration. Ce que <code>estimate</code> annonce est ce que le plafond par
+    livre applique. Corollaire : si les tarifs LLM ne sont pas renseignés dans
+    <code>.env.local</code>, la projection vaut 0 $ et le plafond ne compare plus rien.
   </p>
+</div>
+
+<h4>La calibration : ce que les runs passés ont mesuré</h4>
+
+<p>
+  L'heuristique par caractères prédit la <em>longueur</em> d'une traduction ; elle ne prédit pas ce
+  qu'un modèle dépense à la produire. Sur le chapitre 97 de <code>vol33</code> elle projetait 16 180
+  tokens de sortie contre <strong>53 409</strong> consommés — 207 par segment au lieu de 63. Pas une
+  marge, un facteur.
+</p>
+
+<p>
+  Le ledger (<code>run_attempts</code>) conserve donc les compteurs de tokens de chaque tentative,
+  avec le couple <code>(llm_provider, llm_model)</code> qui les a produits. Le run suivant — et
+  <code>estimate</code> — remplacent l'heuristique de sortie par cette mesure. La clé est le modèle
+  et son transport, pas le livre : la verbosité d'un modèle se transporte d'un tome à l'autre, alors
+  que rien dans les caractères d'un livre ne la prédit.
+</p>
+
+<ul>
+  <li>Une tentative morte avant sa passe LLM, ou dont le transport ne rapporte aucun usage, ne
+    calibre rien : la moyenne ne compte que les tentatives qui ont des segments <em>et</em> des
+    tokens. Sinon la projection deviendrait moins chère à chaque run planté.</li>
+  <li>La moyenne est pondérée par les segments : un tome de 4 000 segments en dit plus sur un modèle
+    qu'un test de 20, et faire la moyenne des deux ratios leur donnerait le même poids.</li>
+  <li>Ledger absent = rien de mesuré. <code>estimate</code> n'en crée pas un : c'est une commande
+    sèche, elle ne laisse pas une base de données derrière elle.</li>
+</ul>
+
+<div class="card warn">
+  <span class="label">Deux corrections qui font monter les chiffres — volontairement</span>
+  <ul style="margin-bottom:0">
+    <li><strong>Le transport CLI réécrit son préfixe à chaque appel.</strong> Avec
+      <code>LLM_CHAT_PROVIDER=claude-cli</code>, chaque invocation est une session neuve : rien ne
+      survit pour être relu. Mesuré sur le chapitre 97 : 281 819 tokens d'<em>écriture</em> de cache,
+      soit six écritures d'un préfixe de ~47 k, là où le modèle « écrit une fois, relit ensuite » en
+      prévoyait une. Le côté entrée était sous-compté d'environ <strong>×1,9</strong>.</li>
+    <li><strong>La passe d'escalade ne bénéficie d'aucun cache.</strong> Le post-éditeur HTTP est un
+      POST JSON vers un endpoint quelconque, sans <code>cache_control</code> : son préfixe est payé
+      plein tarif à chaque appel — ce que le commentaire du code affirmait déjà (« paid once per
+      segment ») pendant que l'arithmétique facturait une écriture puis N relectures bon marché. La
+      ligne <code>hybrid</code> monte donc franchement. C'est un majorant, et la conclusion qu'il
+      porte est celle que le projet répète : <em>l'escalade est chère au mot</em>.</li>
+  </ul>
 </div>
 
 <h3><code>series-bible</code> — construire la bible avant de traduire</h3>
@@ -1016,6 +1065,17 @@ EPUB_TRANSLATOR_LLM_OUTPUT_PER_MTOK_USD=75.00</code></pre>
     <code>untranslated_segments</code>, <code>missing_spine_docs</code>,
     <code>glossary_violations</code>, <code>epubcheck_passed</code>.
   </p>
+</div>
+
+<h4>Les champs de <code>report.json</code> qui servent à la calibration</h4>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Champ</th><th>Ce qu'il dit</th></tr>
+  <tr><td><code>llm_pass_segments</code></td><td>Combien de segments la passe LLM a <em>portés</em>, résultat exploitable ou non — à distinguer de <code>llm_segments</code>, qui compte ceux qu'elle a améliorés. C'est le dénominateur qui va avec les compteurs de tokens : diviser les tokens d'un lot dégradé par les segments qu'il n'a pas livrés rendrait un modèle d'autant plus « verbeux » qu'il se comporte mal.</td></tr>
+  <tr><td><code>llm_provider</code> / <code>llm_model</code></td><td>Qui a consommé ces tokens. C'est la clé sous laquelle la mesure est réutilisable. Renseignés en mode littéraire seulement : le post-éditeur HTTP est choisi par endpoint, pas par modèle, et ne rapporte aucun usage à attribuer.</td></tr>
+  <tr><td><code>llm_cache_creation_tokens</code></td><td>Le préfixe écrit dans le cache. Sur <code>claude-cli</code>, en le divisant par le nombre d'appels on voit s'il est réécrit à chaque fois — c'est le premier chiffre à regarder pour comprendre une facture.</td></tr>
+</table>
 </div>
 
 <h4>Les statuts d'un segment dans <code>segments.jsonl</code></h4>

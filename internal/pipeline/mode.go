@@ -75,7 +75,7 @@ func (m *nmtMode) Init(result *RunResult) { result.Mode = ModeNMT }
 // expensive per word. cost.EstimateScenarios builds the hybrid scenario the
 // same way, which is what makes `estimate` and this run agree.
 func postEditPass(segments, chars int) cost.LLMPass {
-	return cost.LLMPass{Segments: segments, Chars: chars, Calls: segments}
+	return cost.LLMPass{Segments: segments, Chars: chars, Calls: segments, Uncached: true}
 }
 
 func (m *nmtMode) Project(chapters []chapterSegments, usedFreeChars int) cost.Projection {
@@ -190,11 +190,24 @@ func (m *literaryMode) Translate(
 		return nil, literary.ErrNilChatClient
 	}
 
-	// A chapter is one TranslateChapter call, so without this hook the report
-	// would freeze for the whole of it. Wired here rather than by the CLI so
-	// that fresh segments are counted in exactly one place: this, and TM hits
-	// below.
-	o.LiteraryTranslator.OnBatch = func(segments int) { o.progress().Advance(segments, 0) }
+	// A chapter is one TranslateChapter call, so without this hook both the
+	// progress and the spend would freeze for the whole of it. Wired here rather
+	// than by the CLI because this is now the run's ONLY accumulation path for
+	// LLM tokens: refine must not add Outcome.Usage on top, or every chapter
+	// would be billed twice.
+	//
+	// A batch is reported whether it succeeded or degraded, so the counters hold
+	// what was consumed and not what was usable — which is what the ledger and
+	// the budget guardrail need.
+	o.LiteraryTranslator.OnBatch = func(segments int, usage literary.Usage) {
+		result.LLMPassSegments += segments
+		result.LLMInputTokens += usage.InputTokens
+		result.LLMOutputTokens += usage.OutputTokens
+		result.LLMCacheReadTokens += usage.CacheReadTokens
+		result.LLMCacheCreationTokens += usage.CacheCreationTokens
+		o.progress().Advance(segments, 0)
+		o.progress().Cost(price())
+	}
 
 	translated := make([]segment.Segment, 0, result.TotalSegments)
 	for i := range chapters {
@@ -253,12 +266,6 @@ func (m *literaryMode) Translate(
 			m.persist(ctx, log, seg)
 		}
 
-		// Priced per chapter, not per batch: TranslateChapter reports the tokens
-		// it consumed when it returns, so a mid-chapter figure would be the
-		// previous chapter's — worse than one that lags a whole chapter and says
-		// so by only moving at the seam.
-		o.progress().Cost(price())
-
 		// Frozen by default: keep the bible (and thus the system prefix / prompt
 		// cache) stable across chapters and re-runs. Evolve it only when the run
 		// explicitly opts in.
@@ -288,19 +295,15 @@ func (m *literaryMode) refine(
 	// TranslateChapter rewrites the segments in place. The chapter's whole
 	// source goes in the cacheable prefix; only the tail of the previous
 	// chapter still has to travel per call.
+	//
+	// Its Outcome.Usage is deliberately ignored: the OnBatch hook wired in
+	// Translate already accumulated the same tokens, batch by batch, and it did
+	// so before this function was reached — so a chapter where every batch
+	// failed has still been counted, which is what the deferred spend recorder
+	// needs. Adding it here as well would double every chapter's bill.
 	outcome, err := m.orch.LiteraryTranslator.TranslateChapter(
 		ctx, m.bible, chapter.ID, fresh,
 		adjacentChapterText(chapters, idx-1), chapterSourceText(chapter.Segments))
-
-	// Before the error check, deliberately. A chapter where every batch failed
-	// still returns the usage it consumed getting there — a refusal and a
-	// truncation are both billable responses — and the deferred spend recorder
-	// would otherwise price that chapter as if the calls never happened.
-	result.LLMInputTokens += outcome.Usage.InputTokens
-	result.LLMOutputTokens += outcome.Usage.OutputTokens
-	result.LLMCacheReadTokens += outcome.Usage.CacheReadTokens
-	result.LLMCacheCreationTokens += outcome.Usage.CacheCreationTokens
-
 	if err != nil {
 		return err
 	}

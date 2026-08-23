@@ -53,6 +53,25 @@ type TokenRates struct {
 	// It scales token counts, never rates, and never applies to token counts
 	// the provider reported itself.
 	TokenMultiplier float64
+	// OutputTokensPerSegment replaces the output heuristic with what past runs
+	// of this model actually emitted, read off the spend ledger. 0 means no
+	// measurement exists yet and the character heuristic stands.
+	//
+	// It exists because the heuristic is not a little off, it is off by a
+	// factor: chapter 97 of vol33 projected 16,180 output tokens and consumed
+	// 53,409 — 207 per segment against 63. Characters can predict the length of
+	// a translation; they cannot predict how much a model spends producing it.
+	//
+	// Being a measurement, TokenMultiplier does not apply to it: that
+	// correction exists to fix the character heuristic this bypasses.
+	OutputTokensPerSegment float64
+	// PrefixWrittenPerCall says the transport pays to write the cacheable
+	// prefix on every call rather than writing it once and reading it back.
+	// A subprocess-per-call transport (the Claude CLI) is the case it exists
+	// for: each invocation is an independent session, so nothing survives to be
+	// read back. Ignoring it under-counts the input side by ~1.9x on a measured
+	// chapter, all of it in the term the batch size is supposed to control.
+	PrefixWrittenPerCall bool
 }
 
 func (r TokenRates) outputExpansion() float64 {
@@ -97,7 +116,10 @@ func (r TokenRates) frozenPrefixTokens(pass LLMPass) float64 {
 
 // prefixCost prices the cacheable prefix across the whole pass, chapter by
 // chapter: each writes its own prefix once and reads it back on every further
-// call. It also returns the input tokens those prefixes account for.
+// call — unless the transport reopens a session per call, in which case every
+// call writes. It also returns the input tokens those prefixes account for,
+// which do not depend on that distinction: the same tokens travel either way,
+// only the rate they are billed at changes.
 func (r TokenRates) prefixCost(pass LLMPass, factor float64) (tokens, usd float64) {
 	frozen := r.frozenPrefixTokens(pass)
 
@@ -114,8 +136,15 @@ func (r TokenRates) prefixCost(pass LLMPass, factor float64) (tokens, usd float6
 		perCall := (frozen + float64(chapter.SourceChars)/charsPerTokenEN) * factor
 		tokens += perCall * float64(chapter.Calls)
 
-		if !r.caches() {
+		if pass.Uncached || !r.caches() {
 			usd += float64(chapter.Calls) * perCall / 1e6 * r.InputPerMTokUSD
+			continue
+		}
+		if r.PrefixWrittenPerCall {
+			// Every call writes, none reads back. Not the same thing as an
+			// uncached provider: the write premium is still charged, and it is
+			// the dominant term — 1.25x input on the whole prefix, per call.
+			usd += float64(chapter.Calls) * perCall / 1e6 * r.InputPerMTokUSD * r.cacheWriteMultiplier()
 			continue
 		}
 		usd += perCall / 1e6 * r.InputPerMTokUSD * r.cacheWriteMultiplier()
@@ -146,14 +175,19 @@ func (r TokenRates) Project(pass LLMPass) (inputTokens, outputTokens int, usd fl
 		jsonOverheadInChars/charsPerTokenEN)
 	volatile := payload + float64(pass.Calls)*float64(pass.ContextRunes)/charsPerTokenFR
 
+	// A measurement wins over the heuristic, and carries no factor: it is
+	// already what the tokenizer counted.
 	output := float64(pass.Segments) * (charsPerSegment*r.outputExpansion()/charsPerTokenFR +
-		jsonOverheadOutChars/charsPerTokenFR)
+		jsonOverheadOutChars/charsPerTokenFR) * factor
+	if r.OutputTokensPerSegment > 0 {
+		output = float64(pass.Segments) * r.OutputTokensPerSegment
+	}
 
 	prefixTokens, prefixUSD := r.prefixCost(pass, factor)
 
 	inputTokens = int(prefixTokens + volatile*factor + 0.5)
-	outputTokens = int(output*factor + 0.5)
-	usd = prefixUSD + volatile*factor/1e6*r.InputPerMTokUSD + output*factor/1e6*r.OutputPerMTokUSD
+	outputTokens = int(output + 0.5)
+	usd = prefixUSD + volatile*factor/1e6*r.InputPerMTokUSD + output/1e6*r.OutputPerMTokUSD
 	return inputTokens, outputTokens, usd
 }
 
@@ -242,7 +276,7 @@ func (m Model) EstimateScenarios(
 	// the chapter source. Pricing it like the literary pass made `estimate`
 	// disagree with what a hybrid run would actually be charged.
 	postEditPass := func(segs, chars int) LLMPass {
-		return LLMPass{Segments: segs, Chars: chars, Calls: segs}
+		return LLMPass{Segments: segs, Chars: chars, Calls: segs, Uncached: true}
 	}
 
 	hybridSegs := int(float64(total)*escalationRate + 0.5)

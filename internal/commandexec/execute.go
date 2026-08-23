@@ -20,6 +20,7 @@ import (
 	"github.com/ECecillo/ebooks-translator/internal/exitcode"
 	"github.com/ECecillo/ebooks-translator/internal/llm"
 	"github.com/ECecillo/ebooks-translator/internal/pipeline"
+	"github.com/ECecillo/ebooks-translator/internal/tm"
 )
 
 // ConfigLoader loads runtime configuration for command execution. It is
@@ -137,6 +138,41 @@ func newCachedChatClient(cfg config.Config) (llm.ChatClient, func() error, error
 		return nil, nil, fmt.Errorf("unable to open llm cache, err: %w", err)
 	}
 	return &llm.CachedChatClient{Inner: inner, Cache: cache}, cache.Close, nil
+}
+
+// calibrateLLMTokens overlays what the ledger has measured for this chat
+// provider and model onto model's rates, and returns a sentence describing what
+// it did — empty when nothing has been measured yet.
+//
+// Both the run and `estimate` call it, which is what keeps them in agreement:
+// the projection the per-book cap enforces and the projection `estimate` prints
+// must stay the same arithmetic, calibration included. Calibrating only one of
+// them would reintroduce, through the back door, the disagreement the single
+// cost model exists to prevent.
+//
+// Best effort by design. A ledger that cannot be read leaves the heuristic
+// standing rather than stopping a run: this refines an estimate, unlike the
+// free-tier read, which fails closed because it guards a bill.
+func calibrateLLMTokens(
+	ctx context.Context, store tm.Store, cfg config.Config, model cost.Model,
+) (cost.Model, string) {
+	if store == nil || cfg.LLMChatProvider == "" {
+		return model, ""
+	}
+
+	measured, err := store.MeasuredLLM(ctx, cfg.LLMChatProvider, cfg.LLMModel)
+	if err != nil {
+		return model, ""
+	}
+	perSegment := measured.OutputTokensPerSegment()
+	if perSegment <= 0 {
+		return model, ""
+	}
+
+	model.Tokens.OutputTokensPerSegment = perSegment
+	return model, fmt.Sprintf(
+		"calibration: %.0f output tokens/segment measured on %s/%s over %d segments in %d past attempt(s)",
+		perSegment, cfg.LLMChatProvider, cfg.LLMModel, measured.Segments, measured.Attempts)
 }
 
 // openBook extracts and parses an EPUB, tagging the failure with the stage it

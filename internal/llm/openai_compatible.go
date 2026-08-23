@@ -115,6 +115,20 @@ func NewChatClient(cfg ChatClientConfig) ChatClient {
 	}
 }
 
+// RewritesPrefixPerCall reports whether a transport pays for the cacheable
+// prefix on every single call instead of writing it once and reading it back.
+//
+// It is a property of the transport, not of the model or of the prompt. The CLI
+// opens an independent session per invocation, so the prefix it was handed last
+// time is gone: measured on chapter 97 of vol33 (258 segments, 6 batches), the
+// run reported 281,819 cache-creation tokens — six writes of a ~47k prefix —
+// where the write-once model predicts one. Pricing that as one write and five
+// reads under-counts the input side by about 1.9x, which is the difference
+// between a budget cap that bounds a run and one that waves it through.
+func RewritesPrefixPerCall(provider string) bool {
+	return provider == ChatProviderClaudeCLI
+}
+
 // NewOpenAICompatibleClient builds a chat-completions adapter targeting baseURL.
 func NewOpenAICompatibleClient(baseURL, apiKey string) *OpenAICompatibleClient {
 	return &OpenAICompatibleClient{

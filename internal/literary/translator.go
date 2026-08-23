@@ -51,12 +51,18 @@ type Translator struct {
 	// this value. 0 uses defaultBatchSize.
 	BatchSize int
 	Glossary  *glossary.Glossary
-	// OnBatch, when set, is called with the number of segments a batch covered
-	// once that call has returned — successfully or not, since a degraded batch
-	// is as finished as a good one. It exists so a chapter, which is a single
-	// TranslateChapter call and the longest thing a run does, can still report
-	// its advancement. It must not block: the batch walk is what waits on it.
-	OnBatch func(segments int)
+	// OnBatch, when set, is called once a batch's call has returned —
+	// successfully or not, since a degraded batch is as finished as a good one —
+	// with the segments it covered and the tokens it consumed. It exists so a
+	// chapter, which is a single TranslateChapter call and the longest thing a
+	// run does, can still report its advancement and its spend as it goes.
+	//
+	// The usage is that batch's own, retries included. A caller that
+	// accumulates it must NOT also add Outcome.Usage: the two are the same
+	// tokens, reported per batch and per chapter.
+	//
+	// It must not block: the batch walk is what waits on it.
+	OnBatch func(segments int, usage Usage)
 }
 
 type requestSegment struct {
@@ -100,6 +106,19 @@ type Usage struct {
 	OutputTokens        int
 	CacheReadTokens     int
 	CacheCreationTokens int
+}
+
+// since returns what happened between a snapshot and u. chapterRun.usage is
+// cumulative over the chapter, so this is how one batch's own consumption is
+// recovered — a batch that retried on halved ones having paid for every
+// attempt.
+func (u Usage) since(before Usage) Usage {
+	return Usage{
+		InputTokens:         u.InputTokens - before.InputTokens,
+		OutputTokens:        u.OutputTokens - before.OutputTokens,
+		CacheReadTokens:     u.CacheReadTokens - before.CacheReadTokens,
+		CacheCreationTokens: u.CacheCreationTokens - before.CacheCreationTokens,
+	}
 }
 
 // contextRunes bounds the French already produced that is re-sent ahead of a
@@ -198,6 +217,7 @@ func (t *Translator) TranslateChapter(
 	batches := chunk(items, t.batchSize())
 	var batchErrs []error
 	for idx, batchItems := range batches {
+		before := run.usage
 		err := t.translateBatch(ctx, run, batch{
 			idx:   idx,
 			items: batchItems,
@@ -206,8 +226,11 @@ func (t *Translator) TranslateChapter(
 		if err != nil {
 			batchErrs = append(batchErrs, err)
 		}
+		// Reported before the error is dealt with, for the same reason the
+		// caller used to add Outcome.Usage before its own error check: a refusal
+		// and a truncation are billable responses.
 		if t.OnBatch != nil {
-			t.OnBatch(len(batchItems))
+			t.OnBatch(len(batchItems), run.usage.since(before))
 		}
 	}
 	if len(missingItems(items, run.targets)) == len(items) {

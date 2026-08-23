@@ -2,7 +2,9 @@ package integration_test
 
 import (
 	"bytes"
+	"fmt"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"testing"
@@ -135,6 +137,12 @@ func TestRun_LiteraryModeEndToEnd(t *testing.T) {
 	require.Equal(t, 4, report.NMTSegments)
 	require.Equal(t, 4, report.LLMSegments)
 	require.Equal(t, 2, report.BibleVersion)
+	// One translation call per chapter, each reporting 12/7 tokens on the fake
+	// provider. The counters are accumulated per batch now, so this is also the
+	// assertion that they are accumulated exactly ONCE: adding the chapter's
+	// Outcome.Usage on top would read 48/28 here.
+	require.Equal(t, 24, report.LLMInputTokens)
+	require.Equal(t, 14, report.LLMOutputTokens)
 	require.True(t, report.QA.Passed(), "QA must pass: %+v", report.QA)
 	require.InDelta(t, 1.0, report.QA.PlaceholderRestoreRatio, 0.0001)
 
@@ -166,6 +174,112 @@ func TestRun_LiteraryModeEndToEnd(t *testing.T) {
 		require.Equal(t, "literary", entry.Engine,
 			"a literary run must only persist refined translations, never the %q draft", entry.Engine)
 	}
+}
+
+// TestEstimate_CalibratesOnWhatARunMeasured is the loop closing: a run records
+// what its LLM pass consumed, and the next projection stops guessing.
+//
+// It matters because the guess is not slightly wrong. On a measured chapter the
+// character heuristic projected 16,180 output tokens against 53,409 consumed —
+// a factor, not a margin — and a per-book cap enforced on the former lets
+// through three times the work it thinks it is allowing.
+func TestEstimate_CalibratesOnWhatARunMeasured(t *testing.T) {
+	t.Parallel()
+
+	input := writeEPUB(t, []string{
+		`<h1>One</h1><p>Alice met <em>Bruno</em>.</p>`,
+		`<h1>Two</h1><p>Alice trusted Bruno.</p>`,
+	})
+	runsDir := filepath.Join(t.TempDir(), "runs")
+	narrativePath := filepath.Join(t.TempDir(), "narrative.sqlite")
+	tmPath := filepath.Join(t.TempDir(), "tm.sqlite")
+	seedLiteraryBible(t, narrativePath, "series-a")
+
+	nmt := nmttest.NewServer(func(text string) string { return "[nmt] " + text })
+	t.Cleanup(nmt.Close)
+	// Answers every requested id, so all four segments come back refined and
+	// the token counters describe a complete pass.
+	chat := openaitest.NewServer(func(req openaitest.Request) string {
+		var out []string
+		for _, id := range requestedIDs(req.Messages[1].Content) {
+			out = append(out, fmt.Sprintf(`{"id":%q,"target_text":"Traduit %s"}`, id, id))
+		}
+		return `{"segments":[` + strings.Join(out, ",") + `]}`
+	})
+	t.Cleanup(chat.Close)
+
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NMTProvider: "http", NMTEndpoint: nmt.URL, LogLevel: "info",
+			TMPath: tmPath, NarrativePath: narrativePath,
+			LLMChatProvider: "openai", LLMBaseURL: chat.URL + "/v1", LLMModel: "test-literary",
+			// Rates, so the projection is not identically zero.
+			LLMInputPerMTokUSD: 3, LLMOutputPerMTokUSD: 15, LLMCacheReadPerMTokUSD: 0.30,
+		}, nil
+	}
+
+	estimate := func() string {
+		var stdout, stderr bytes.Buffer
+		code := commandexec.Execute([]string{
+			"estimate", "--input", input,
+		}, &stdout, &stderr, loader)
+		require.Equal(t, exitcode.Success, code, "stderr: %s", stderr.String())
+		return stdout.String()
+	}
+
+	// Before any run there is no ledger at all, so nothing is measured — and
+	// `estimate` says so rather than quietly projecting on a heuristic.
+	first := estimate()
+	require.Contains(t, first, "calibration: none yet")
+	require.NoFileExists(t, tmPath, "a dry run must not leave a ledger behind")
+
+	var stdout, stderr bytes.Buffer
+	code := commandexec.Execute([]string{
+		"run", "--input", input, "--output-dir", runsDir,
+		"--source-lang", "en", "--target-lang", "fr",
+		"--run-id", "lit", "--mode", "literary", "--series", "series-a",
+	}, &stdout, &stderr, loader)
+	require.Equal(t, exitcode.Success, code, "stderr: %s", stderr.String())
+
+	// The run measured 7 output tokens per call over 2 calls, for 4 segments.
+	report := readReport(t, filepath.Join(runsDir, "lit", "report.json"))
+	require.Equal(t, 14, report.LLMOutputTokens)
+	require.Equal(t, 4, report.LLMPassSegments)
+	require.Equal(t, "openai", report.LLMProvider)
+	require.Equal(t, "test-literary", report.LLMModel)
+
+	second := estimate()
+	require.Contains(t, second, "measured on openai/test-literary")
+	require.Contains(t, second, "over 4 segments in 1 past attempt(s)")
+
+	// And the projection moved: 14/4 = 3.5 output tokens per segment, where the
+	// heuristic had its own idea. Same book, same rates — only the basis
+	// changed, which is the whole point.
+	require.NotEqual(t, fullLLMRow(t, first), fullLLMRow(t, second))
+}
+
+// requestedIDs pulls the segment ids out of a literary request payload.
+var requestedIDPattern = regexp.MustCompile(`"id":"([^"]+)"`)
+
+func requestedIDs(payload string) []string {
+	var ids []string
+	for _, m := range requestedIDPattern.FindAllStringSubmatch(payload, -1) {
+		ids = append(ids, m[1])
+	}
+	return ids
+}
+
+// fullLLMRow isolates the projection line the calibration acts on.
+func fullLLMRow(t *testing.T, out string) string {
+	t.Helper()
+
+	for line := range strings.SplitSeq(out, "\n") {
+		if strings.HasPrefix(line, "full-llm") {
+			return line
+		}
+	}
+	t.Fatalf("no full-llm row in estimate output:\n%s", out)
+	return ""
 }
 
 // TestRun_LiteraryRedraftsAnNMTDraftFromAPreviousRun covers the shadowing

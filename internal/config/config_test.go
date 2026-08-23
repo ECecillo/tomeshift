@@ -86,3 +86,29 @@ func TestApplyProviderDefaults_LeavesOtherProvidersAlone(t *testing.T) {
 	require.NoError(t, cfg.applyProviderDefaults(unset))
 	require.True(t, cfg.CostModel().IsZero())
 }
+
+func TestCostModel_ReadsThePrefixTransportFromTheChatProvider(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		provider string
+		want     bool
+	}{
+		{"the CLI reopens a session per call", "claude-cli", true},
+		{"the HTTP adapter marks the prefix once", "anthropic", false},
+		{"an OpenAI-compatible host has no cache to reopen", "deepseek", false},
+		{"unset means the OpenAI-compatible default", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// It is deliberately not an EPUB_TRANSLATOR_* variable: an operator
+			// choosing a chat provider should not also have to know how that
+			// transport handles a prompt cache.
+			cfg := Config{LLMChatProvider: tt.provider}
+			require.Equal(t, tt.want, cfg.CostModel().Tokens.PrefixWrittenPerCall)
+		})
+	}
+}

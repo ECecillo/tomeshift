@@ -57,6 +57,17 @@ type LLMPass struct {
 	// that covariance and under-counts exactly where the cost concentrates.
 	// Empty means the pass carries no chapter source — the escalation path.
 	Chapters []ChapterShape
+	// Uncached says this pass gets no prompt cache at all, whatever the
+	// provider's rates say. It is a property of the transport executing the
+	// pass, not of the account: the HTTP post-editor is a plain JSON POST to a
+	// custom endpoint with no cache_control, so its prefix is paid in full on
+	// every one of its per-segment calls.
+	//
+	// Without it, the escalation pass borrowed the chat provider's caching —
+	// and then the chat transport's write-per-call correction on top, which is
+	// how a projection for a service that does not cache came to depend on how
+	// another one does.
+	Uncached bool
 	// ContextRunes is the volatile prose each call carries besides its payload.
 	// The literary pass sends the previous batch's French so register and
 	// pronouns survive the seam; the HTTP post-editor sends nothing but the

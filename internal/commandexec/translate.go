@@ -113,6 +113,13 @@ func newOrchestrator(
 		return nil, nil, err
 	}
 
+	// Recorded, not routed: the clients below are already built. The ledger
+	// keeps them so a measured token count stays reusable, and only the literary
+	// path sets them — the HTTP post-editor is picked by endpoint, not by model,
+	// and reports no usage to attribute anyway.
+	orch.LLMProvider = cfg.LLMChatProvider
+	orch.LLMModel = cfg.LLMModel
+
 	orch.NarrativeStore = bible
 	orch.NarrativeProfiler = &narrative.Profiler{Chat: chat, Model: cfg.LLMModel}
 	orch.LiteraryTranslator = &literary.Translator{
@@ -163,6 +170,12 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg config.Config
 	defer stop()
 	ctx, cancel := withRunTimeout(baseCtx, cfg.RunTimeoutSeconds)
 	defer cancel()
+
+	// Before Run, because Run projects the cost and enforces the cap on it.
+	var note string
+	if orch.CostModel, note = calibrateLLMTokens(ctx, store, cfg, orch.CostModel); note != "" {
+		logger.Info(note)
+	}
 
 	result, err := orch.Run(ctx, pipeline.RunConfig{
 		InputPath:   cmd.Input,
@@ -218,6 +231,9 @@ func runBatch(stdout, stderr io.Writer, cmd cli.BatchCommand, cfg config.Config)
 
 	baseCtx, stop := signalContext()
 	defer stop()
+
+	// Calibrated once for the whole batch: it describes the model, not the book.
+	orch.CostModel, _ = calibrateLLMTokens(baseCtx, store, cfg, orch.CostModel)
 
 	// Resolved once: every book gets its own bar, all writing to the same line.
 	showProgress := !cmd.NoProgress && progress.IsTerminal(stderr)

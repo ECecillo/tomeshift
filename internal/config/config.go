@@ -13,6 +13,7 @@ import (
 	"github.com/kelseyhightower/envconfig"
 
 	"github.com/ECecillo/ebooks-translator/internal/cost"
+	"github.com/ECecillo/ebooks-translator/internal/llm"
 	"github.com/ECecillo/ebooks-translator/internal/translate"
 )
 
@@ -216,6 +217,10 @@ func (c Config) CostModel() cost.Model {
 			OutputExpansion:      c.LLMOutputExpansion,
 			PromptOverheadTokens: c.LLMPromptOverheadToks,
 			TokenMultiplier:      c.LLMTokenMultiplier,
+			// A property of the transport, so it is read from the chat provider
+			// rather than configured: no operator should have to know that the
+			// CLI reopens a session per call.
+			PrefixWrittenPerCall: llm.RewritesPrefixPerCall(c.LLMChatProvider),
 		},
 	}
 }

@@ -277,6 +277,10 @@ Pros:
     `translation_llm_cache_creation_tokens` — only when the run consumed LLM
     tokens. A run served entirely from the completion cache consumed none, so
     it reports none rather than replaying the counts of the run that paid.
+- The spend ledger (§16.4) keeps the same LLM counters per attempt, which is
+  what lets a projection be calibrated on measurement rather than on character
+  heuristics. The counters in a run's own `report.json` describe that run; the
+  ledger is what a *later* run can learn from.
 - Retry policy for transient API failures with idempotent segment processing.
 
 ## 11. Security
@@ -370,6 +374,9 @@ CREATE TABLE IF NOT EXISTS segments (
   "tm_hit_ratio": 0.3297,
   "nmt_segments": 2822,
   "llm_segments": 0,
+  "llm_pass_segments": 0,
+  "llm_provider": "claude-cli",
+  "llm_model": "claude-sonnet-5",
   "estimated_cost_usd": 0.0,
   "actual_cost_usd": 0.0,
   "qa": {
@@ -381,6 +388,50 @@ CREATE TABLE IF NOT EXISTS segments (
   }
 }
 ```
+
+### 16.4 Spend Ledger Schema
+```sql
+CREATE TABLE IF NOT EXISTS run_attempts (
+  attempt_id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id          TEXT NOT NULL,
+  book_id         TEXT NOT NULL,
+  started_at      TEXT NOT NULL,
+  ended_at        TEXT NOT NULL,
+  actual_cost_usd REAL NOT NULL,
+  nmt_engine      TEXT NOT NULL DEFAULT '',
+  nmt_chars       INTEGER NOT NULL DEFAULT 0,
+  llm_provider    TEXT NOT NULL DEFAULT '',
+  llm_model       TEXT NOT NULL DEFAULT '',
+  llm_segments    INTEGER NOT NULL DEFAULT 0,
+  llm_input_tokens          INTEGER NOT NULL DEFAULT 0,
+  llm_output_tokens         INTEGER NOT NULL DEFAULT 0,
+  llm_cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+  llm_cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+  created_at      TEXT NOT NULL
+);
+```
+
+It appends one row per execution, never upserting on `run_id`: an attempt that
+paid for half a book and failed is a billing event, and the retry after it is a
+second one.
+
+The columns serve three readers:
+
+- **The free tier** — `nmt_chars` filtered by `nmt_engine`, summed over the
+  calendar month. The filter is load-bearing: the ledger is shared, and the
+  default provider is a local dev server, so summing every engine would let
+  free local translation burn a paid provider's allowance.
+- **The rolling caps** — `actual_cost_usd` summed over the day and the month.
+- **The calibration** — the LLM counters, keyed by `(llm_provider, llm_model)`,
+  because verbosity is a property of a model on a transport and transfers from
+  one book to the next, while nothing about a book's characters predicts it.
+  `llm_segments` counts what the pass *carried*, usable result or not: it is the
+  denominator that pairs with the token counts, and using the segments that came
+  back improved instead would report a model as more verbose the worse it
+  behaved. Only attempts with both a segment count and a non-zero token count
+  are read back — a transport that reports no usage cannot calibrate anything,
+  and averaging its zeros in would make the projection cheaper the more runs had
+  gone unmeasured.
 
 ## 17. Planning Documents
 - Milestone delivery plans: `docs/milestones/`

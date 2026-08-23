@@ -34,9 +34,48 @@ CREATE TABLE IF NOT EXISTS run_attempts (
   actual_cost_usd REAL NOT NULL,
   nmt_engine      TEXT NOT NULL DEFAULT '',
   nmt_chars       INTEGER NOT NULL DEFAULT 0,
+  llm_provider    TEXT NOT NULL DEFAULT '',
+  llm_model       TEXT NOT NULL DEFAULT '',
+  llm_segments    INTEGER NOT NULL DEFAULT 0,
+  llm_input_tokens          INTEGER NOT NULL DEFAULT 0,
+  llm_output_tokens         INTEGER NOT NULL DEFAULT 0,
+  llm_cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+  llm_cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_run_attempts_created_at ON run_attempts (created_at);`
+
+// runAttemptColumns are the columns added to run_attempts after it shipped.
+// CREATE TABLE IF NOT EXISTS is a no-op on an existing table, so a ledger
+// created by an earlier version needs them added explicitly.
+//
+// They record what an LLM pass consumed, which the ledger did not keep: the
+// token counters lived only in each run's report.json, so nothing could learn
+// from a measured run — the projection stayed a theory however many volumes had
+// been translated. llm_provider and llm_model are the key that makes the
+// measurement transferable: verbosity is a property of a model on a transport,
+// not of a book.
+var runAttemptColumns = []string{
+	`ALTER TABLE run_attempts ADD COLUMN llm_provider TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE run_attempts ADD COLUMN llm_model TEXT NOT NULL DEFAULT ''`,
+	`ALTER TABLE run_attempts ADD COLUMN llm_segments INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE run_attempts ADD COLUMN llm_input_tokens INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE run_attempts ADD COLUMN llm_output_tokens INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE run_attempts ADD COLUMN llm_cache_read_tokens INTEGER NOT NULL DEFAULT 0`,
+	`ALTER TABLE run_attempts ADD COLUMN llm_cache_creation_tokens INTEGER NOT NULL DEFAULT 0`,
+}
+
+// migrateRunAttempts adds the columns an older ledger is missing. A
+// duplicate-column error means this already ran, which is the expected outcome
+// on every start after the first.
+func migrateRunAttempts(db *sql.DB) error {
+	for _, stmt := range runAttemptColumns {
+		if _, err := db.Exec(stmt); err != nil && !isDuplicateColumn(err) {
+			return fmt.Errorf("unable to migrate run_attempts table, err: %w", err)
+		}
+	}
+	return nil
+}
 
 // legacyRunColumns brings a pre-existing `runs` table up to the columns
 // run_attempts expects before its rows are folded in. A duplicate-column error
@@ -122,6 +161,10 @@ func NewSQLiteStore(path string) (*SQLiteStore, error) {
 	if _, err := db.Exec(schema); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("unable to initialize tm schema, err: %w", err)
+	}
+	if err := migrateRunAttempts(db); err != nil {
+		_ = db.Close()
+		return nil, err
 	}
 	if err := migrateLegacyRuns(db); err != nil {
 		_ = db.Close()
@@ -210,15 +253,21 @@ func (s *SQLiteStore) RecordRun(ctx context.Context, spend RunSpend) error {
 	}
 
 	const stmt = `INSERT INTO run_attempts
-  (run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_engine, nmt_chars, created_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  (run_id, book_id, started_at, ended_at, actual_cost_usd, nmt_engine, nmt_chars,
+   llm_provider, llm_model, llm_segments,
+   llm_input_tokens, llm_output_tokens, llm_cache_read_tokens, llm_cache_creation_tokens,
+   created_at)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	now := time.Now().UTC().Format(time.RFC3339)
 	if _, err := s.db.ExecContext(ctx, stmt,
 		spend.RunID, spend.BookID,
 		spend.StartedAt.UTC().Format(time.RFC3339),
 		spend.EndedAt.UTC().Format(time.RFC3339),
-		spend.ActualCostUSD, spend.NMTEngine, spend.NMTChars, now,
+		spend.ActualCostUSD, spend.NMTEngine, spend.NMTChars,
+		spend.LLMProvider, spend.LLMModel, spend.LLMSegments,
+		spend.LLMInputTokens, spend.LLMOutputTokens,
+		spend.LLMCacheReadTokens, spend.LLMCacheCreationTokens, now,
 	); err != nil {
 		return fmt.Errorf("unable to record run %q, err: %w", spend.RunID, err)
 	}
@@ -262,6 +311,40 @@ func (s *SQLiteStore) CharsSince(ctx context.Context, since time.Time, engine st
 		return 0, fmt.Errorf("unable to sum run nmt chars, err: %w", err)
 	}
 	return total, nil
+}
+
+// MeasuredLLM returns what past runs of this (provider, model) pair consumed
+// per segment, and how many attempts that averages over.
+//
+// The mean is weighted by segments, not by run: a 4,000-segment volume says
+// more about a model's verbosity than a 20-segment smoke test, and averaging
+// the two ratios would give them equal weight.
+//
+// Only attempts that carried segments AND reported tokens count. A run that
+// failed before its LLM pass has nothing to say about tokens per segment, and
+// neither has one whose transport reports no usage at all — the HTTP
+// post-editor's case. Including either would drag the mean towards zero and
+// make the projection cheaper the more runs had crashed or gone unmeasured.
+func (s *SQLiteStore) MeasuredLLM(ctx context.Context, provider, model string) (MeasuredLLM, error) {
+	if s.db == nil {
+		return MeasuredLLM{}, ErrNilDatabase
+	}
+
+	const query = `SELECT COUNT(*), COALESCE(SUM(llm_segments), 0),
+  COALESCE(SUM(llm_input_tokens), 0), COALESCE(SUM(llm_output_tokens), 0),
+  COALESCE(SUM(llm_cache_read_tokens), 0), COALESCE(SUM(llm_cache_creation_tokens), 0)
+FROM run_attempts
+WHERE llm_provider = ? AND llm_model = ? AND llm_segments > 0 AND llm_output_tokens > 0`
+
+	var m MeasuredLLM
+	if err := s.db.QueryRowContext(ctx, query, provider, model).Scan(
+		&m.Attempts, &m.Segments,
+		&m.InputTokens, &m.OutputTokens, &m.CacheReadTokens, &m.CacheCreationTokens,
+	); err != nil {
+		return MeasuredLLM{}, fmt.Errorf("unable to read measured llm usage for %q/%q, err: %w",
+			provider, model, err)
+	}
+	return m, nil
 }
 
 // Close releases the underlying database handle.

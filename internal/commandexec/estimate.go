@@ -3,6 +3,7 @@ package commandexec
 import (
 	"context"
 	"io"
+	"os"
 
 	"github.com/ECecillo/ebooks-translator/internal/cli"
 	"github.com/ECecillo/ebooks-translator/internal/config"
@@ -31,13 +32,17 @@ func runEstimate(stdout, stderr io.Writer, cmd cli.EstimateCommand, cfg config.C
 
 	ctx := context.Background()
 
-	// The free tier is per calendar month, so what a book costs depends on what
-	// the ledger already spent this month. Plan reads it off the store the same
-	// way a run does, which is what keeps the two projections in agreement — so
-	// the store only has to be attached, not consulted here. It is left unopened
-	// when no free tier is configured, so `estimate` does not create a ledger as
-	// a side effect of a dry run.
-	if cfg.NMTFreeCharsPerMonth > 0 {
+	// Two things want the ledger: the free tier, which is per calendar month, so
+	// what a book costs depends on what has already been spent in it; and the
+	// calibration below. Plan reads the first off the store the same way a run
+	// does, which is what keeps the two projections in agreement — so the store
+	// only has to be attached, not consulted here.
+	//
+	// An absent ledger is not created. `estimate` makes no provider call, and a
+	// dry run that leaves a new database behind is a side effect nobody asked
+	// for; with no ledger there is nothing spent and nothing measured, which is
+	// exactly what a missing file means.
+	if _, err := os.Stat(cfg.TMPath); err == nil {
 		store, err := tm.NewSQLiteStore(cfg.TMPath)
 		if err != nil {
 			writef(stderr, "unable to open translation memory: %v\n", err)
@@ -45,6 +50,14 @@ func runEstimate(stdout, stderr io.Writer, cmd cli.EstimateCommand, cfg config.C
 		}
 		defer func() { _ = store.Close() }()
 		orch.TM = store
+	}
+
+	// The same calibration a run applies, from the same ledger. `estimate` is
+	// the one place it is worth saying out loud: a projection that silently
+	// changed basis between two invocations would be worse than a wrong one.
+	var note string
+	if orch.TM != nil {
+		orch.CostModel, note = calibrateLLMTokens(ctx, orch.TM, cfg, orch.CostModel)
 	}
 
 	plan, err := orch.Plan(ctx, pipeline.RunConfig{
@@ -63,6 +76,11 @@ func runEstimate(stdout, stderr io.Writer, cmd cli.EstimateCommand, cfg config.C
 	if cfg.NMTFreeCharsPerMonth > 0 {
 		writef(stdout, "free tier: %d chars/month, %d billable this run\n",
 			cfg.NMTFreeCharsPerMonth, plan.Scenarios[0].BillableChars)
+	}
+	if note != "" {
+		writef(stdout, "%s\n", note)
+	} else {
+		writef(stdout, "calibration: none yet — output tokens come from the character heuristic\n")
 	}
 	writef(stdout, "%-10s %10s %10s %12s %12s %12s %12s\n",
 		"strategy", "llm_segs", "llm_calls", "in_tokens", "nmt_usd", "llm_usd", "total_usd")

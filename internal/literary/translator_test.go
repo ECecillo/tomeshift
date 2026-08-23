@@ -637,16 +637,33 @@ func TestTranslator_OnBatchReportsEverySegmentOnce(t *testing.T) {
 	// others', so progress must not stall on them.
 	chat := &echoChat{errOnCall: 2}
 	var reported []int
+	var usages []literary.Usage
 	tr := literary.Translator{
 		Chat:      chat,
 		BatchSize: 10,
-		OnBatch:   func(segments int) { reported = append(reported, segments) },
+		OnBatch: func(segments int, usage literary.Usage) {
+			reported = append(reported, segments)
+			usages = append(usages, usage)
+		},
 	}
 
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
 
 	require.Equal(t, []int{10, 10, 5}, reported, "each batch reports its own size, failed or not")
+
+	// Each batch reports its own consumption, not the chapter's running total,
+	// and the batches add up to exactly what the chapter reports — so a caller
+	// accumulating per batch gets the same figure as one reading Outcome.Usage.
+	var sum literary.Usage
+	for _, u := range usages {
+		sum.InputTokens += u.InputTokens
+		sum.OutputTokens += u.OutputTokens
+		sum.CacheReadTokens += u.CacheReadTokens
+		sum.CacheCreationTokens += u.CacheCreationTokens
+	}
+	require.Equal(t, outcome.Usage, sum)
+	require.Equal(t, 100, usages[0].InputTokens, "the first batch's own tokens, not a cumulative total")
 }
 
 func TestTranslator_OnBatchIsOptional(t *testing.T) {

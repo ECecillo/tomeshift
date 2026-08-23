@@ -717,6 +717,67 @@ flowchart LR
   </p>
 </div>
 
+<h3>Une projection qui apprend de ce qui a été mesuré</h3>
+
+<p>
+  L'heuristique par caractères prédit la <em>longueur</em> d'une traduction. Elle ne prédit pas ce
+  qu'un modèle dépense à la produire, et l'écart n'est pas une marge : sur un chapitre mesuré, 16 180
+  tokens de sortie projetés contre <strong>53 409</strong> consommés. Un plafond appliqué sur le
+  premier chiffre laisse passer trois fois le travail qu'il croit autoriser.
+</p>
+
+<p>
+  Le ledger conserve donc, par tentative, les compteurs de tokens et le couple
+  <code>(llm_provider, llm_model)</code> qui les a produits ; la projection suivante remplace son
+  heuristique de sortie par cette mesure. La clé est le modèle et son transport — la verbosité se
+  transporte d'un tome à l'autre, alors que rien dans les caractères d'un livre ne la prédit.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    RUN["run littéraire"] -->|"tokens par lot<br/>via OnBatch"| RES["report.json"]
+    RUN --> LED["ledger run_attempts<br/>+ llm_provider, llm_model"]
+    LED -->|"MeasuredLLM<br/>pondéré par segments"| CAL["calibration :<br/>tokens de sortie / segment"]
+    CAL --> PROJ["Model.Project"]
+    HEUR["heuristique par caractères"] -.->|"seulement si<br/>rien n'est mesuré"| PROJ
+    PROJ --> EST["estimate"]
+    PROJ --> GARDE["garde-fou du run"]
+</pre>
+<figcaption>La calibration entre dans le <em>même</em> <code>Project</code> que les deux lecteurs
+partagent : calibrer l'un sans l'autre rétablirait par la porte de service la divergence que le
+modèle unique existe pour empêcher.</figcaption>
+</figure>
+
+<h3>Le transport fait partie du prix</h3>
+
+<p>
+  Deux faits sur <em>comment</em> les appels sont émis changent la facture d'un facteur, sans rien
+  changer au prompt :
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Fait</th><th>Effet mesuré</th><th>Où c'est décidé</th></tr>
+  <tr>
+    <td>La CLI ouvre une <strong>session neuve à chaque appel</strong> : le préfixe cacheable est
+      réécrit, jamais relu.</td>
+    <td>281 819 tokens d'écriture de cache sur un chapitre de 6 lots — six écritures d'un préfixe de
+      ~47 k. Côté entrée : <strong>×1,9</strong> de sous-comptage.</td>
+    <td><code>llm.RewritesPrefixPerCall</code>, lu depuis le provider de chat : personne ne devrait
+      avoir à configurer ça.</td>
+  </tr>
+  <tr>
+    <td>Le post-éditeur HTTP n'a <strong>aucun cache</strong> : un POST JSON par segment, sans
+      <code>cache_control</code>.</td>
+    <td>Son préfixe est payé plein tarif à chaque appel. C'est ce que le code affirmait déjà en
+      commentaire pendant que son arithmétique facturait une écriture puis N relectures.</td>
+    <td><code>LLMPass.Uncached</code>, porté par la passe : une propriété du service qui l'exécute,
+      pas du compte.</td>
+  </tr>
+</table>
+</div>
+
 <h3>Deux formes de passe, parce que la sortie ne se prédit pas pareil</h3>
 
 <p>
@@ -1003,6 +1064,8 @@ flowchart TB
   <tr><td>9</td><td>Un lot LLM en échec dégrade le chapitre, il ne l'annule pas — mais il est loggé.</td><td>Soit on perd les lots réussis, soit on ne sait plus pourquoi une partie n'est pas raffinée.</td></tr>
   <tr><td>10</td><td>Les artefacts sont écrits même quand la QA échoue.</td><td>Un run raté devient indiagnosticable.</td></tr>
   <tr><td>11</td><td>La progression affichée n'est <strong>jamais</strong> une source de données : elle se déduit des mêmes compteurs que <code>report.json</code>, et un segment est signalé <strong>une fois</strong> — frais dans la boucle NMT ou via <code>literary.Translator.OnBatch</code>, réutilisé au hit TM. Le montant affiché sort de <code>mode.Cost</code>, celui qui écrit <code>actual_cost_usd</code> : le dernier chiffre vu est celui du rapport.</td><td>Une barre qui dépasse 100 %, ou qui gèle un chapitre entier, et une CLI dont stdout n'est plus analysable.</td></tr>
+  <tr><td>12</td><td><code>estimate</code> et le garde-fou du run appliquent la <strong>même</strong> calibration, lue au même ledger. Et une calibration qui ne peut pas être lue laisse l'heuristique en place au lieu d'arrêter le run — contrairement à la lecture du palier gratuit, qui échoue fermé.</td><td>Une projection qui change de base entre deux invocations, ou un run refusé parce qu'un raffinement d'estimation n'a pas pu être lu.</td></tr>
+  <tr><td>13</td><td>Les tokens LLM sont accumulés en <strong>un seul endroit</strong> : le hook <code>OnBatch</code>. <code>Outcome.Usage</code> porte les mêmes tokens vus par chapitre — les additionner tous les deux facture deux fois.</td><td>Un coût exactement doublé, invisible sans une mesure de référence.</td></tr>
 </table>
 </div>
 

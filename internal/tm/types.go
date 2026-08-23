@@ -54,6 +54,51 @@ type RunSpend struct {
 	// cost nothing still consumes the allowance the next one will be billed
 	// against.
 	NMTChars int
+	// LLMProvider and LLMModel identify what consumed the tokens below. They
+	// are the key the projection is calibrated on: how verbose a model is per
+	// segment is a property of that model on that transport, and transfers from
+	// one book to the next — while nothing about a book's characters predicts
+	// it.
+	LLMProvider string
+	LLMModel    string
+	// LLMSegments is how many segments the LLM pass carried, usable result or
+	// not. It is the denominator that pairs with the token counters: counting
+	// only the segments that came back improved would divide the tokens a
+	// degraded batch consumed by the segments it did not deliver.
+	LLMSegments int
+	// The token counters the provider reported, split the way it bills them.
+	// They were previously kept only in each run's report.json, which meant no
+	// second run could learn from the first.
+	LLMInputTokens         int
+	LLMOutputTokens        int
+	LLMCacheReadTokens     int
+	LLMCacheCreationTokens int
+}
+
+// MeasuredLLM is what the ledger has observed for one (provider, model) pair.
+// It holds sums, not ratios: the caller decides which ratio it needs, and a sum
+// stays meaningful when a new one is added to it.
+type MeasuredLLM struct {
+	// Attempts is how many run attempts contributed.
+	Attempts int
+	// Segments is the total the LLM pass carried across them.
+	Segments int
+
+	InputTokens         int
+	OutputTokens        int
+	CacheReadTokens     int
+	CacheCreationTokens int
+}
+
+// OutputTokensPerSegment is the measured output verbosity, or 0 when nothing
+// has been measured yet. It is the one ratio the cost model takes as an input:
+// the input side is dominated by the prefix, which a run measures directly from
+// the bible it loaded.
+func (m MeasuredLLM) OutputTokensPerSegment() float64 {
+	if m.Segments <= 0 {
+		return 0
+	}
+	return float64(m.OutputTokens) / float64(m.Segments)
 }
 
 // Store is the exact-match translation memory and spend ledger used by the
@@ -70,6 +115,10 @@ type Store interface {
 	// CharsSince returns the NMT characters engine was sent at or after since,
 	// which is how much of that provider's monthly free allowance is gone.
 	CharsSince(ctx context.Context, since time.Time, engine string) (int, error)
+	// MeasuredLLM returns what past attempts of this (provider, model) pair
+	// consumed, so a projection can be calibrated on measurement instead of on
+	// character heuristics.
+	MeasuredLLM(ctx context.Context, provider, model string) (MeasuredLLM, error)
 	// Close releases the underlying database handle.
 	Close() error
 }
