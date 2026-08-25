@@ -69,10 +69,37 @@ func New(w io.Writer, enabled bool, prefix string) *Bar {
 	return b
 }
 
-// IsTerminal reports whether w is a character device — a terminal someone is
-// watching. A pipe or a redirected file is not: the bar's carriage returns
-// would land in it as one unreadable line, which is why `just ci-local` and
-// `> run.log` get no bar.
+// hasControllingTerminal reports whether this process is attached to a terminal
+// at all, regardless of where its streams point. Opening /dev/tty succeeds only
+// then. It is a variable so the tests can drive both branches: whether the
+// process running them has a terminal is not something a test may depend on.
+var hasControllingTerminal = func() bool {
+	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
+	if err != nil {
+		return false
+	}
+	_ = tty.Close()
+	return true
+}
+
+// IsTerminal reports whether drawing on w will reach someone watching.
+//
+// A character device is the easy case. A pipe is the one that matters: every
+// recipe needing a credential is wrapped in `op run`, and 1Password masks
+// secrets in the streams it forwards — which it can only do by replacing them
+// with pipes. Measured through it, stderr comes back as prw-rw---- and a bar
+// keyed on "is this a character device" silently turned itself off on exactly
+// the commands a human sits and watches. The frames themselves survive that
+// relay unchanged: `\r` and all, op forwards them byte for byte.
+//
+// So a pipe draws when the process has a controlling terminal. What can be
+// known is that something is relaying our output rather than storing it, plus
+// whether a human is present; what cannot be known is what the relay then does
+// with it. `2>&1 > file` through such a wrapper would collect the carriage
+// returns, which is what --no-progress is for.
+//
+// A regular file never draws. That is the redirection this distinction exists
+// to protect: `2> run.log` keeps a readable log.
 func IsTerminal(w io.Writer) bool {
 	f, ok := w.(interface{ Stat() (os.FileInfo, error) })
 	if !ok {
@@ -82,7 +109,13 @@ func IsTerminal(w io.Writer) bool {
 	if err != nil {
 		return false
 	}
-	return info.Mode()&os.ModeCharDevice != 0
+	if info.Mode()&os.ModeCharDevice != 0 {
+		return true
+	}
+	if info.Mode()&os.ModeNamedPipe != 0 {
+		return hasControllingTerminal()
+	}
+	return false
 }
 
 // Stage announces the stage now starting. Before the book has been segmented

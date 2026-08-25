@@ -624,15 +624,13 @@ consomment sans les modifier.</figcaption>
   <tr><td><code>--glossary</code></td><td class="num">—</td><td>Les termes <code>locked</code> sont masqués avant l'appel et resubstitués après. Une violation résiduelle fait <strong>échouer la porte QA</strong>.</td></tr>
   <tr><td><code>--run-id</code></td><td>horodatage UTC</td><td>Nomme le dossier d'artefacts. Réutiliser le même identifiant <strong>écrase</strong> les artefacts précédents.</td></tr>
   <tr><td><code>--update-bible</code></td><td><code>false</code></td><td>Laisse la bible évoluer pendant le run. <span class="badge bad">déconseillé</span> Casse le préfixe cacheable (≈ ×10 sur le coût) et rend les re-runs non reproductibles.</td></tr>
-  <tr><td><code>--no-progress</code></td><td><code>false</code></td><td>Coupe la barre de progression. Elle ne s'affiche de toute façon que si <code>stderr</code> est un terminal : redirigée ou en CI, il n'y a rien à couper. Le flag sert au cas que la détection ne couvre pas — une session capturée, un lecteur d'écran.</td></tr>
+  <tr><td><code>--no-progress</code></td><td><code>false</code></td><td>Coupe la barre de progression. Elle ne s'affiche de toute façon que si quelqu'un peut la voir (voir l'encadré plus bas) : en CI ou vers un fichier, il n'y a rien à couper. Le flag sert aux cas que la détection ne couvre pas — une session capturée, un lecteur d'écran, ou un log construit à travers un relais.</td></tr>
   <tr><td><code>--resume</code></td><td><code>false</code></td><td>Aujourd'hui un simple marqueur journalisé : la reprise vient <em>de fait</em> de la mémoire de traduction, qui resert tout ce qui a déjà été traduit. Relancer un run interrompu ne repaie pas le travail déjà fait.</td></tr>
 </table>
 </div>
 
 <p>
-  Pendant le run, une ligne réécrite en place sur <code>stderr</code> dit où on en est. Elle n'existe
-  que si <code>stderr</code> est un terminal, de sorte que <code>just ci-local</code> ou
-  <code>2&gt; run.log</code> ne récoltent pas des retours chariot :
+  Pendant le run, une ligne réécrite en place sur <code>stderr</code> dit où on en est :
 </p>
 
 <figure>
@@ -664,6 +662,33 @@ en secondes là où un vrai fournisseur en mettrait des minutes.</figcaption>
   <li>La dernière ligne, elle, part sur <code>stdout</code> : c'est la seule sortie analysable, et la
   barre ne s'y mélange jamais.</li>
 </ul>
+
+<div class="card note">
+  <span class="label">Quand elle s'affiche, et pourquoi ce n'est pas « stderr est un terminal »</span>
+  <p style="margin-top:0">
+    C'était la première règle, et elle éteignait la barre exactement sur les commandes qu'on regarde.
+    Toute recette qui a besoin d'une clé est enveloppée dans <code>op run</code>, et 1Password masque
+    les secrets dans les flux qu'il relaie — ce qu'il ne peut faire qu'en les remplaçant par des
+    <strong>tubes</strong>. Mesuré à travers lui, <code>stderr</code> revient en
+    <code>prw-rw----</code>. Les trames, elles, traversent intactes : <code>op</code> transmet les
+    retours chariot octet pour octet.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <tr><th><code>stderr</code> est…</th><th>Barre</th><th>Pourquoi</th></tr>
+    <tr><td>un terminal (périphérique caractère)</td><td>✅</td><td>Le cas simple.</td></tr>
+    <tr><td>un <strong>tube</strong>, et le process a un terminal de contrôle</td><td>✅</td><td>Quelque chose <em>relaie</em> notre sortie plutôt que de la stocker, et quelqu'un est là. <code>op run</code>, <code>| tee</code>.</td></tr>
+    <tr><td>un tube, sans terminal de contrôle</td><td>❌</td><td>CI, cron, tâche de fond : personne ne regarde.</td></tr>
+    <tr><td>un <strong>fichier</strong> ordinaire</td><td>❌</td><td><code>2&gt; run.log</code> — c'est la redirection que la distinction protège : un log lisible compte plus qu'une barre que personne n'a demandé de stocker.</td></tr>
+  </table>
+  </div>
+  <p style="margin-bottom:0">
+    Ce qu'on peut savoir, c'est que la sortie est relayée et qu'un humain est présent ; ce qu'on ne
+    peut pas savoir, c'est ce que le relais en fait ensuite. Un <code>&gt; log 2&gt;&amp;1</code>
+    <em>à travers</em> un tel relais récolterait les retours chariot — c'est à ça que sert
+    <code>--no-progress</code>.
+  </p>
+</div>
 
 <h3><code>estimate</code> — projeter le coût sans payer</h3>
 
@@ -1537,7 +1562,7 @@ just down</code></pre>
       cost: 'Neutre. Utile pour itérer sur un même chapitre découpé (<code>just carve</code>) sans accumuler les dossiers.' },
     { f: '--no-progress',
       proc: 'Aucun effet sur le traitement : la barre est purement décorative et se déduit des compteurs que <code>report.json</code> publie déjà. Rien n\'est mesuré en plus pour elle.',
-      out: 'Sans le flag, une ligne réécrite en place sur <b>stderr</b> — étape, jauge, segments faits/total, chapitre en mode littéraire, part de TM, <b>dépense cumulée</b>, temps écoulé et ETA (retenue avant 10 %, sinon un livre plein de hits TM annoncerait 8 s pour une heure de travail). stdout reste la seule ligne analysable, avant comme après.',
+      out: 'Sans le flag, une ligne réécrite en place sur <b>stderr</b> — étape, jauge, segments faits/total, chapitre en mode littéraire, part de TM, <b>dépense cumulée</b>, temps écoulé et ETA (retenue avant 10 %, sinon un livre plein de hits TM annoncerait 8 s pour une heure de travail). Elle s\'affiche sur un terminal, et aussi derrière un <b>tube</b> quand le process a un terminal de contrôle — sans quoi <code>op run</code>, qui remplace les flux par des tubes pour masquer les secrets, l\'éteindrait sur toutes les commandes qui ont besoin d\'une clé. Jamais dans un fichier. stdout reste la seule ligne analysable, avant comme après.',
       cost: 'Gratuit, et c\'est le seul endroit où l\'on voit la facture monter en direct : le montant affiché sort du même modèle de coût que <code>actual_cost_usd</code>. La barre est repeinte au maximum toutes les 100 ms, donc un livre entièrement servi par la TM ne coûte pas plus d\'affichage qu\'un livre traduit.' },
     { f: '--resume',
       proc: 'Journalisé, mais ne modifie pas le déroulé aujourd\'hui : la reprise vient de la mémoire de traduction.',

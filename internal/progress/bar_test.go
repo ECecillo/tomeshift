@@ -199,6 +199,42 @@ func TestIsTerminal(t *testing.T) {
 	require.True(t, IsTerminal(devnull))
 }
 
+func TestIsTerminal_APipeFollowsTheControllingTerminal(t *testing.T) {
+	// Not parallel: it swaps a package-level probe.
+	r, w, err := os.Pipe()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = r.Close(); _ = w.Close() })
+
+	original := hasControllingTerminal
+	t.Cleanup(func() { hasControllingTerminal = original })
+
+	// This is `op run`: it masks secrets in the streams it forwards, so the
+	// child's stderr is a pipe even though a human is watching op's own
+	// terminal. Keying the bar on "character device" turned it off on every
+	// command that needs a credential.
+	hasControllingTerminal = func() bool { return true }
+	require.True(t, IsTerminal(w))
+
+	// Same pipe with nobody attached — CI, a cron, a background task.
+	hasControllingTerminal = func() bool { return false }
+	require.False(t, IsTerminal(w))
+}
+
+func TestIsTerminal_ARegularFileNeverDrawsEvenAtATerminal(t *testing.T) {
+	// Not parallel: it swaps a package-level probe.
+	f, err := os.CreateTemp(t.TempDir(), "run.log")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+
+	original := hasControllingTerminal
+	t.Cleanup(func() { hasControllingTerminal = original })
+	hasControllingTerminal = func() bool { return true }
+
+	// `2> run.log` is the redirection the distinction exists to protect: a
+	// readable log matters more than a bar nobody asked to store.
+	require.False(t, IsTerminal(f))
+}
+
 func TestHumanDuration(t *testing.T) {
 	t.Parallel()
 
