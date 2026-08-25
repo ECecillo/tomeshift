@@ -65,6 +65,12 @@ type cliResult struct {
 	IsError    bool   `json:"is_error"`
 	Result     string `json:"result"`
 	StopReason string `json:"stop_reason"`
+	// APIErrorStatus is the upstream HTTP status when the CLI's own request
+	// failed, and null otherwise. It is the only field that separates "the model
+	// declined this batch" from "the seat is out of quota" — a distinction the
+	// literary pass needs, because it degrades the first and must stop the book
+	// on the second.
+	APIErrorStatus *int `json:"api_error_status"`
 	// TotalCostUSD is what the same work would have cost at API rates. It is
 	// deliberately NOT used as the run's cost: on a subscription seat nothing
 	// was billed, and reporting it would make report.json claim spend that
@@ -136,8 +142,12 @@ func (c *CLIChatClient) Chat(ctx context.Context, req ChatRequest) (ChatResponse
 			c.bin(), truncate(stdout.String(), 200), err)
 	}
 	if out.IsError || (out.Subtype != "" && out.Subtype != "success") {
-		return ChatResponse{}, fmt.Errorf("unable to complete via %s (subtype=%q): %s, err: %w",
-			c.bin(), out.Subtype, truncate(out.Result, 200), ErrProviderStatus)
+		status := 0
+		if out.APIErrorStatus != nil {
+			status = *out.APIErrorStatus
+		}
+		return ChatResponse{}, statusError(status, "unable to complete via %s (subtype=%q, status=%d): %s",
+			c.bin(), out.Subtype, status, truncate(out.Result, 200))
 	}
 	usage := ChatResponse{
 		InputTokens:              out.Usage.InputTokens,

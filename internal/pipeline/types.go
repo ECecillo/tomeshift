@@ -54,20 +54,25 @@ type RunResult struct {
 	// denominator that pairs with the token counters below, and the one the
 	// ledger keeps: dividing a degraded batch's tokens by the segments it did
 	// not deliver would report a model as more verbose the worse it behaved.
-	LLMPassSegments        int       `json:"llm_pass_segments,omitempty"`
-	LLMProvider            string    `json:"llm_provider,omitempty"`
-	LLMModel               string    `json:"llm_model,omitempty"`
-	LLMEscalationRatio     float64   `json:"llm_escalation_ratio"`
-	LLMInputTokens         int       `json:"llm_input_tokens"`
-	LLMOutputTokens        int       `json:"llm_output_tokens"`
-	LLMCacheReadTokens     int       `json:"llm_cache_read_tokens"`
-	LLMCacheCreationTokens int       `json:"llm_cache_creation_tokens"`
-	GlossaryViolations     int       `json:"glossary_violations"`
-	AvgQualityScore        float64   `json:"avg_quality_score"` // mean COMET-QE over scored segments (0 if disabled)
-	QualityScoredSegments  int       `json:"quality_scored_segments"`
-	EstimatedCostUSD       float64   `json:"estimated_cost_usd"`
-	ActualCostUSD          float64   `json:"actual_cost_usd"`
-	CostSavingsUSD         float64   `json:"cost_savings_usd"` // estimated (no-reuse) minus actual = TM savings
-	OutputEPUB             string    `json:"output_epub"`
-	QA                     qa.Report `json:"qa"`
+	LLMPassSegments        int     `json:"llm_pass_segments,omitempty"`
+	LLMProvider            string  `json:"llm_provider,omitempty"`
+	LLMModel               string  `json:"llm_model,omitempty"`
+	LLMEscalationRatio     float64 `json:"llm_escalation_ratio"`
+	LLMInputTokens         int     `json:"llm_input_tokens"`
+	LLMOutputTokens        int     `json:"llm_output_tokens"`
+	LLMCacheReadTokens     int     `json:"llm_cache_read_tokens"`
+	LLMCacheCreationTokens int     `json:"llm_cache_creation_tokens"`
+	GlossaryViolations     int     `json:"glossary_violations"`
+	AvgQualityScore        float64 `json:"avg_quality_score"` // mean COMET-QE over scored segments (0 if disabled)
+	QualityScoredSegments  int     `json:"quality_scored_segments"`
+	// EstimatedCostUSD is the whole book priced with NO translation-memory
+	// reuse. It is deliberately not the figure the per-book cap is enforced on —
+	// that one covers only the segments this run still has to translate — because
+	// this is the baseline CostSavingsUSD subtracts from. The two coincide on a
+	// fresh book and diverge on a resumed one.
+	EstimatedCostUSD float64   `json:"estimated_cost_usd"`
+	ActualCostUSD    float64   `json:"actual_cost_usd"`
+	CostSavingsUSD   float64   `json:"cost_savings_usd"` // estimated (no-reuse) minus actual = TM savings
+	OutputEPUB       string    `json:"output_epub"`
+	QA               qa.Report `json:"qa"`
 }

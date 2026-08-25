@@ -73,6 +73,10 @@ func runEstimate(stdout, stderr io.Writer, cmd cli.EstimateCommand, cfg config.C
 
 	writef(stdout, "estimate for %s: %d segments over %d chapters, %d source chars, batch=%d, escalation=%.0f%%\n",
 		plan.BookID, plan.TotalSegments, plan.Chapters, plan.TotalSourceChars, plan.BatchSize, cmd.EscalationRate*100)
+	if plan.ReusableSegments > 0 {
+		writef(stdout, "translation memory: %d segments already translated, %d left to pay for (%d source chars)\n",
+			plan.ReusableSegments, plan.PendingSegments, plan.PendingSourceChar)
+	}
 	if cfg.NMTFreeCharsPerMonth > 0 {
 		writef(stdout, "free tier: %d chars/month, %d billable this run\n",
 			cfg.NMTFreeCharsPerMonth, plan.Scenarios[0].BillableChars)

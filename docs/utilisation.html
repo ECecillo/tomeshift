@@ -677,14 +677,18 @@ en secondes là où un vrai fournisseur en mettrait des minutes.</figcaption>
 
 <figure>
 <pre><code>estimate for vol33: 4774 segments over 45 chapters, 585180 source chars, batch=50, escalation=15%
-free tier: 500000 chars/month, 85180 billable this run
+translation memory: 391 segments already translated, 4383 left to pay for (551969 source chars)
+free tier: 500000 chars/month, 85799 billable this run
 calibration: 207 output tokens/segment measured on claude-cli/claude-sonnet-5 over 258 segments in 1 past attempt(s)
 strategy     llm_segs  llm_calls    in_tokens      nmt_usd      llm_usd    total_usd
 nmt-only            0          0            0       1.7036       0.0000       1.7036
 hybrid            716        716     18713658       1.7036      58.3643      60.0679
 full-llm         4774        112      4586530       1.7036      31.6095      33.3131</code></pre>
-<figcaption>La troisième ligne est nouvelle : sans mesure au ledger, elle dit
-<code>calibration: none yet — output tokens come from the character heuristic</code>.</figcaption>
+<figcaption>Les scénarios chiffrent le <em>travail restant</em>, pas le livre : la ligne
+<code>translation memory</code> dit ce que la mémoire sert déjà (391 occurrences servies par 277
+entrées distinctes — une réplique qui revient a le même hash). Sans mesure au ledger, la ligne
+<code>calibration</code> dit <code>none yet — output tokens come from the character
+heuristic</code>.</figcaption>
 </figure>
 
 <div class="card key">
@@ -743,6 +747,35 @@ full-llm         4774        112      4586530       1.7036      31.6095      33.
       porte est celle que le projet répète : <em>l'escalade est chère au mot</em>.</li>
   </ul>
 </div>
+
+<h4>La projection chiffre ce qu'il reste à faire</h4>
+
+<p>
+  Elle consulte la mémoire de traduction avant de chiffrer, et laisse tomber ce qu'elle peut déjà
+  servir. C'est ce qui rend une <strong>reprise</strong> possible : un run coupé à 80 % — par un
+  quota épuisé, par <kbd>Ctrl-C</kbd> — projetait encore le livre entier et pouvait être refusé par un
+  plafond dimensionné pour ce qui restait. Le coût de cette lecture est nul à l'échelle d'une
+  projection : des lookups ponctuels sur une colonne indexée, aucun appel fournisseur, donc
+  <code>estimate</code> le fait aussi.
+</p>
+
+<p>
+  Deux conséquences à connaître :
+</p>
+
+<ul>
+  <li><strong>Un brouillon n'est réutilisable que pour le mode dont c'est la sortie.</strong> En mode
+    NMT un brouillon en cache est le résultat final, donc gratuit ; en littéraire c'est un
+    intermédiaire à refaire, et le compter comme acquis ferait passer un run qui paie ensuite chaque
+    segment. La projection applique donc la même règle que la traduction.</li>
+  <li><strong><code>estimated_cost_usd</code> dans <code>report.json</code> reste le livre entier
+    sans réutilisation</strong>, et n'est <em>pas</em> le chiffre sur lequel le plafond est appliqué.
+    C'est voulu : c'est la seule base dont <code>cost_savings_usd</code> peut se soustraire pour
+    vouloir dire « ce que la mémoire a économisé ». Les deux coïncident sur un livre neuf et
+    divergent sur une reprise.</li>
+  <li>Le prix : la projection cesse d'être une propriété du livre seul. Le même tome se projette
+    différemment selon la mémoire de la machine. C'est assumé — elle parle de <em>ce run</em>.</li>
+</ul>
 
 <h4>Ce que deux runs du même chapitre ont mesuré</h4>
 
@@ -1557,10 +1590,10 @@ just down</code></pre>
     { c: 0, n: 'Succès', d: 'Le livre est produit et la porte QA est passée.', fix: '—' },
     { c: 2, n: 'Entrée ou configuration invalide', d: 'Flags manquants ou refusés (langue non supportée, mode inconnu, <code>--series</code> absent en littéraire), configuration illisible, bible introuvable, glossaire illisible, endpoint NMT requis mais vide.', fix: 'Lire le message : il nomme le réglage fautif. <code>just print-config-vars</code> montre ce qui est réellement chargé.' },
     { c: 3, n: 'Parsing ou segmentation en échec', d: 'ZIP illisible, OPF absent ou mal formé, XHTML non parsable.', fix: 'Vérifier que le fichier est un EPUB sans DRM. Les EPUB nécessitant de l\'OCR ne sont pas supportés.' },
-    { c: 4, n: 'Fournisseur en échec', d: 'Le NMT ou le LLM a échoué après les réessais : service éteint, clé invalide, quota dépassé, modèle inconnu.', fix: 'Tester l\'endpoint à la main. En littéraire, un <b>chapitre entier</b> sans le moindre lot réussi remonte en erreur ; un lot isolé, non.' },
+    { c: 4, n: 'Fournisseur en échec', d: 'Le NMT ou le LLM a échoué après les réessais : service éteint, clé invalide, modèle inconnu — ou <b>quota épuisé</b>, qui est traité à part : un HTTP 429 arrête le chapitre immédiatement au lieu de dégrader ses lots sur leur brouillon.', fix: 'Tester l\'endpoint à la main. En littéraire, un <b>chapitre entier</b> sans le moindre lot réussi remonte en erreur ; un lot isolé, non — sauf un 429. Sur quota épuisé : relancer plus tard, la mémoire resert tout ce qui était déjà raffiné et la projection ne facture plus que le reste.' },
     { c: 5, n: 'Porte QA en échec', d: 'Restauration des placeholders &lt; 99,5 %, segments non traduits &gt; 0,5 %, documents de spine manquants, violations de glossaire, ou <code>epubcheck</code> en échec.', fix: '<b>Les artefacts existent</b> : ouvrir le bloc <code>qa</code> de <code>report.json</code>, puis chercher les <code>placeholder restore failed</code> dans <code>logs.ndjson</code>.' },
     { c: 6, n: 'Recomposition en échec', d: 'Impossible de réécrire l\'archive EPUB de sortie.', fix: 'Vérifier les droits et l\'espace disque du répertoire de sortie.' },
-    { c: 7, n: 'Budget dépassé', d: 'La projection pire-cas dépasse le plafond par livre, ou la dépense du jour/du mois plus la projection dépasse le plafond correspondant. <b>Aucun appel payant n\'a été passé.</b>', fix: 'Lancer <code>estimate</code>, puis : relever le plafond en connaissance de cause, changer de modèle, ou vérifier <code>LLM_TOKEN_MULTIPLIER</code>.' },
+    { c: 7, n: 'Budget dépassé', d: 'La projection pire-cas <b>du travail restant</b> dépasse le plafond par livre, ou la dépense du jour/du mois plus cette projection dépasse le plafond correspondant. <b>Aucun appel payant n\'a été passé.</b> Ce qui est déjà en mémoire de traduction n\'est pas compté : une reprise n\'est plus refusée pour une facture qu\'elle ne paiera pas.', fix: 'Lancer <code>estimate</code>, puis : relever le plafond en connaissance de cause, changer de modèle, ou vérifier <code>LLM_TOKEN_MULTIPLIER</code>.' },
     { c: 8, n: 'Interrompu', d: '<kbd>Ctrl-C</kbd>, SIGTERM, ou dépassement de <code>RUN_TIMEOUT_SECONDS</code>.', fix: 'Relancer : la mémoire de traduction resert ce qui était déjà traduit. La dépense engagée a bien été enregistrée dans le ledger.' }
   ];
   var eg = document.getElementById('exitgrid'), eb = document.getElementById('exitbox');

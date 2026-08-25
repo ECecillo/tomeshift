@@ -702,3 +702,125 @@ func TestOrchestrator_Run_TMHitsCostNothing(t *testing.T) {
 	require.Empty(t, rep.costs)
 	require.Zero(t, result.ActualCostUSD)
 }
+
+func TestOrchestrator_Run_GuardrailPricesOnlyTheRemainingWork(t *testing.T) {
+	t.Parallel()
+
+	srv := nmttest.NewServer(nil)
+	t.Cleanup(srv.Close)
+
+	store, err := tm.NewSQLiteStore(filepath.Join(t.TempDir(), "tm.sqlite"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	mk := func(budget float64) *pipeline.Orchestrator {
+		return &pipeline.Orchestrator{
+			Extractor:  epub.ZipExtractor{},
+			Parser:     epub.OPFParser{},
+			Segmenter:  segment.NewParagraphSegmenter(),
+			TM:         store,
+			Translator: translate.NewHTTPTranslator(srv.URL, ""),
+			Recomposer: epub.EPUBRecomposer{},
+			EPUBCheck:  qa.EPUBChecker{Binary: "epubcheck-not-installed-xyz"},
+			CostModel:  cost.Model{PerSegmentUSD: 1},
+			BudgetUSD:  budget,
+		}
+	}
+	input := writeFixtureEPUB(t)
+	cfg := func(id string) pipeline.RunConfig {
+		return pipeline.RunConfig{
+			InputPath: input, OutputDir: filepath.Join(t.TempDir(), id),
+			SourceLang: "en", TargetLang: "fr", RunID: id, BookID: "b",
+		}
+	}
+
+	// The book is 3 segments at $1 each. A $2 cap refuses it outright.
+	_, err = mk(2).Run(t.Context(), cfg("refused"))
+	require.ErrorIs(t, err, cost.ErrBudgetExceeded)
+
+	// Translate it under a cap that allows it, filling the memory.
+	first, err := mk(10).Run(t.Context(), cfg("first"))
+	require.NoError(t, err)
+	require.Equal(t, 3, first.NMTSegments)
+
+	// Now the same $2 cap passes: nothing is left to pay for. Before the
+	// projection consulted the memory, this run was refused for a bill of $3 it
+	// would never have been sent — which is what a resume after a rate limit
+	// looks like.
+	second, err := mk(2).Run(t.Context(), cfg("second"))
+	require.NoError(t, err)
+	require.Equal(t, 3, second.TMHits)
+	require.Zero(t, second.NMTSegments)
+	require.InDelta(t, 0.0, second.ActualCostUSD, 1e-9)
+
+	// And the report still knows what the book would have cost without the
+	// memory, which is the only way the savings figure means anything.
+	require.InDelta(t, 3.0, second.EstimatedCostUSD, 1e-9)
+	require.InDelta(t, 3.0, second.CostSavingsUSD, 1e-9)
+}
+
+func TestOrchestrator_Run_ADraftIsReusableOnlyForTheModeThatOutputsIt(t *testing.T) {
+	t.Parallel()
+
+	srv := nmttest.NewServer(nil)
+	t.Cleanup(srv.Close)
+
+	store, err := tm.NewSQLiteStore(filepath.Join(t.TempDir(), "tm.sqlite"))
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = store.Close() })
+
+	orch := &pipeline.Orchestrator{
+		Extractor:  epub.ZipExtractor{},
+		Parser:     epub.OPFParser{},
+		Segmenter:  segment.NewParagraphSegmenter(),
+		TM:         store,
+		Translator: translate.NewHTTPTranslator(srv.URL, ""),
+		Recomposer: epub.EPUBRecomposer{},
+		EPUBCheck:  qa.EPUBChecker{Binary: "epubcheck-not-installed-xyz"},
+		CostModel:  cost.Model{PerSegmentUSD: 1},
+		BudgetUSD:  2, // the whole book is $3, so only reuse can let it start
+	}
+	input := writeFixtureEPUB(t)
+
+	// An NMT run fills the memory with drafts.
+	_, err = orch.Run(t.Context(), pipeline.RunConfig{
+		InputPath: input, OutputDir: filepath.Join(t.TempDir(), "nmt"),
+		SourceLang: "en", TargetLang: "fr", RunID: "nmt", BookID: "b",
+		Mode: pipeline.ModeNMT,
+	})
+	require.ErrorIs(t, err, cost.ErrBudgetExceeded, "nothing cached yet: refused")
+
+	orch.BudgetUSD = 10
+	_, err = orch.Run(t.Context(), pipeline.RunConfig{
+		InputPath: input, OutputDir: filepath.Join(t.TempDir(), "nmt2"),
+		SourceLang: "en", TargetLang: "fr", RunID: "nmt2", BookID: "b",
+	})
+	require.NoError(t, err)
+
+	// NMT mode reuses those drafts, so the tight cap now passes.
+	orch.BudgetUSD = 2
+	reused, err := orch.Run(t.Context(), pipeline.RunConfig{
+		InputPath: input, OutputDir: filepath.Join(t.TempDir(), "nmt3"),
+		SourceLang: "en", TargetLang: "fr", RunID: "nmt3", BookID: "b",
+	})
+	require.NoError(t, err)
+	require.Equal(t, 3, reused.TMHits)
+
+	// Literary mode does not: a draft is an intermediate it has to redo, so the
+	// same cached book is projected at full price and the cap refuses it. The
+	// projection agreeing with lookupTranslation on this is the whole point —
+	// a projection that counted drafts would wave through a run that then pays
+	// for every segment.
+	orch.NarrativeStore = newNarrativeStore(t)
+	require.NoError(t, orch.NarrativeStore.Save(t.Context(), narrative.Bible{
+		SeriesID:   "series-a",
+		StyleGuide: "Français littéraire souple.",
+		Summaries:  []narrative.Summary{{VolumeID: "volume-01", Summary: "Synopsis."}},
+	}))
+	_, err = orch.Run(t.Context(), pipeline.RunConfig{
+		InputPath: input, OutputDir: filepath.Join(t.TempDir(), "lit"),
+		SourceLang: "en", TargetLang: "fr", RunID: "lit", BookID: "b",
+		Mode: pipeline.ModeLiterary, SeriesID: "series-a",
+	})
+	require.ErrorIs(t, err, cost.ErrBudgetExceeded)
+}

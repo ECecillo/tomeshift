@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -249,4 +251,74 @@ func TestNewChatClient_SelectsTheCLIAdapter(t *testing.T) {
 	cli, ok := client.(*llm.CLIChatClient)
 	require.True(t, ok)
 	require.Equal(t, "/usr/local/bin/claude", cli.Bin)
+}
+
+func TestCLIChatClient_RateLimitIsNamed(t *testing.T) {
+	t.Parallel()
+
+	// What the CLI prints when its own upstream request was refused for rate:
+	// a successful process, an error subtype, and the upstream status in
+	// api_error_status — the only field that tells the two apart.
+	body := `{"type":"result","subtype":"error_during_execution","is_error":true,` +
+		`"api_error_status":429,"result":"rate limit reached"}`
+	bin, _, _ := fakeCLI(t, body, 0)
+
+	_, err := llm.NewCLIChatClient(bin).Chat(context.Background(), llm.ChatRequest{
+		Messages: []llm.ChatMessage{{Role: "user", Content: "hi"}},
+	})
+
+	require.ErrorIs(t, err, llm.ErrRateLimited)
+	// Still a provider status, so a caller that only cares that the provider
+	// said no keeps matching.
+	require.ErrorIs(t, err, llm.ErrProviderStatus)
+	require.Contains(t, err.Error(), "429")
+}
+
+func TestCLIChatClient_OtherFailuresAreNotRateLimits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "a server error carries its own status",
+			body: `{"type":"result","subtype":"error_during_execution","is_error":true,` +
+				`"api_error_status":500,"result":"boom"}`,
+		},
+		{
+			name: "a failure with no upstream status at all",
+			body: `{"type":"result","subtype":"error_during_execution","is_error":true,"result":"boom"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			bin, _, _ := fakeCLI(t, tt.body, 0)
+			_, err := llm.NewCLIChatClient(bin).Chat(context.Background(), llm.ChatRequest{
+				Messages: []llm.ChatMessage{{Role: "user", Content: "hi"}},
+			})
+
+			require.ErrorIs(t, err, llm.ErrProviderStatus)
+			require.NotErrorIs(t, err, llm.ErrRateLimited,
+				"only a 429 may be treated as the end of the road")
+		})
+	}
+}
+
+func TestOpenAICompatibleClient_RateLimitIsNamed(t *testing.T) {
+	t.Parallel()
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "slow down", http.StatusTooManyRequests)
+	}))
+	t.Cleanup(srv.Close)
+
+	_, err := llm.NewOpenAICompatibleClient(srv.URL+"/v1", "k").Chat(context.Background(), llm.ChatRequest{
+		Messages: []llm.ChatMessage{{Role: "user", Content: "hi"}},
+	})
+
+	require.ErrorIs(t, err, llm.ErrRateLimited)
+	require.ErrorIs(t, err, llm.ErrProviderStatus)
 }

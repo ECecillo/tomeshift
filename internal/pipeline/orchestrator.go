@@ -130,23 +130,46 @@ func (o *Orchestrator) Run(ctx context.Context, cfg RunConfig) (*RunResult, erro
 	}
 	mode.Init(result)
 
-	// Pre-run budget guardrail: project worst-case (no-reuse) spend and abort
-	// before any provider call if it exceeds the per-book cap.
+	// Pre-run budget guardrail: project the worst case for the work still to do
+	// — every pending segment translated, none of them reused — and abort before
+	// any provider call if it exceeds the per-book cap.
 	usedFreeChars, err := o.freeCharsUsed(ctx, started)
 	if err != nil {
 		return nil, &StageError{Stage: StageTranslate, Err: err}
 	}
 
-	projection := mode.Project(chapters, usedFreeChars)
-	result.EstimatedCostUSD = projection.EstimatedUSD
+	// Priced on what the TM cannot serve, so a resumed book is projected for
+	// what is left of it rather than for all of it.
+	pending, reusable, err := o.pendingChapters(ctx, chapters, mode.ReusesDrafts())
+	if err != nil {
+		return nil, &StageError{Stage: StageTranslate, Err: err}
+	}
+	if reusable > 0 {
+		log.Info("projecting the remaining work",
+			zap.Int("reusable_segments", reusable),
+			zap.Int("pending_segments", countSegments(pending)),
+			zap.Int("pending_chapters", len(pending)))
+	}
+
+	// Two projections, because the two readers want different things.
+	//
+	// The guardrail prices the work in front of it: pending only, so a resumed
+	// book is not refused for a bill it will never pay. The report keeps the
+	// no-reuse figure for the WHOLE book, because that is the only baseline
+	// CostSavingsUSD can subtract from to mean "what the memory saved" — priced
+	// on pending, savings would collapse to zero on exactly the runs where the
+	// memory did the most work.
+	projection := mode.Project(pending, usedFreeChars)
+	result.EstimatedCostUSD = mode.Project(chapters, usedFreeChars).EstimatedUSD
 	log.Info("projected run cost",
+		zap.Float64("enforced_usd", projection.EstimatedUSD),
+		zap.Float64("no_reuse_usd", result.EstimatedCostUSD),
 		zap.Int("llm_calls", projection.LLMCalls),
 		zap.Int("billable_nmt_chars", projection.BillableChars),
 		zap.Int("llm_input_tokens", projection.InputTokens),
 		zap.Int("llm_output_tokens", projection.OutputTokens),
 		zap.Float64("nmt_usd", projection.NMTCostUSD),
-		zap.Float64("llm_usd", projection.LLMCostUSD),
-		zap.Float64("estimated_usd", projection.EstimatedUSD))
+		zap.Float64("llm_usd", projection.LLMCostUSD))
 	if o.BudgetUSD > 0 && projection.EstimatedUSD > o.BudgetUSD {
 		log.Warn("projected spend exceeds per-book budget cap",
 			zap.Float64("estimated_usd", projection.EstimatedUSD),
@@ -468,13 +491,20 @@ func qaGatePassed(report qa.Report) bool {
 // PlanResult is a dry-run projection: the book is parsed and segmented but not
 // translated, and per-strategy cost estimates are returned.
 type PlanResult struct {
-	BookID           string                  `json:"book_id"`
-	TotalSegments    int                     `json:"total_segments"`
-	TotalSourceChars int                     `json:"total_source_chars"`
-	Chapters         int                     `json:"chapters"`
-	BatchSize        int                     `json:"batch_size"`
-	EscalationRate   float64                 `json:"escalation_rate"`
-	Scenarios        []cost.ScenarioEstimate `json:"scenarios"`
+	BookID           string `json:"book_id"`
+	TotalSegments    int    `json:"total_segments"`
+	TotalSourceChars int    `json:"total_source_chars"`
+	Chapters         int    `json:"chapters"`
+	// ReusableSegments is how many of them the translation memory can already
+	// serve, and PendingSegments what is left to pay for. The scenarios below
+	// price the pending part only — the projection is about this run, not about
+	// the book in the abstract.
+	ReusableSegments  int                     `json:"reusable_segments"`
+	PendingSegments   int                     `json:"pending_segments"`
+	PendingSourceChar int                     `json:"pending_source_chars"`
+	BatchSize         int                     `json:"batch_size"`
+	EscalationRate    float64                 `json:"escalation_rate"`
+	Scenarios         []cost.ScenarioEstimate `json:"scenarios"`
 }
 
 // Plan runs extract → parse → segment WITHOUT translating, then projects cost
@@ -506,20 +536,35 @@ func (o *Orchestrator) Plan(
 		return nil, &StageError{Stage: StageSegment, Err: err}
 	}
 
-	grouped := make([][]segment.Segment, len(chapters))
-	for i := range chapters {
-		grouped[i] = chapters[i].Segments
+	// Only finished translations count as reuse here, which is the literary
+	// rule rather than the NMT one. `estimate` prices three strategies at once
+	// and cannot hold two definitions of "already done": counting cached drafts
+	// as reuse would under-price the two rows that have to re-translate them, and
+	// a projection that reads low is the one failure mode this command cannot
+	// afford. It over-projects the nmt-only row instead.
+	pending, reusable, err := o.pendingChapters(ctx, chapters, false)
+	if err != nil {
+		return nil, &StageError{Stage: StageSegment, Err: err}
 	}
-	segments := flattenChapters(chapters)
+
+	grouped := make([][]segment.Segment, len(pending))
+	for i := range pending {
+		grouped[i] = pending[i].Segments
+	}
+	all := flattenChapters(chapters)
+	segments := flattenChapters(pending)
 
 	return &PlanResult{
-		BookID:           cfg.BookID,
-		TotalSegments:    len(segments),
-		TotalSourceChars: segment.SourceChars(segments),
-		Chapters:         len(chapters),
-		BatchSize:        batchSize,
-		EscalationRate:   escalationRate,
-		Scenarios:        o.CostModel.EstimateScenarios(grouped, batchSize, escalationRate, usedFreeChars),
+		BookID:            cfg.BookID,
+		TotalSegments:     len(all),
+		TotalSourceChars:  segment.SourceChars(all),
+		Chapters:          len(chapters),
+		ReusableSegments:  reusable,
+		PendingSegments:   len(segments),
+		PendingSourceChar: segment.SourceChars(segments),
+		BatchSize:         batchSize,
+		EscalationRate:    escalationRate,
+		Scenarios:         o.CostModel.EstimateScenarios(grouped, batchSize, escalationRate, usedFreeChars),
 	}, nil
 }
 
@@ -772,6 +817,56 @@ func (o *Orchestrator) logger() *zap.Logger {
 		return o.Logger
 	}
 	return zap.NewNop()
+}
+
+// pendingChapters returns the chapters holding only the segments this run will
+// actually pay for: the ones the TM cannot serve. It also reports how many it
+// dropped.
+//
+// It exists so a projection describes the work in front of it. Assuming no reuse
+// is the right worst case for a fresh book and the wrong one for a resumed one:
+// a run interrupted at 80% would project the whole volume again and be refused
+// by a cap sized for what remains. Resuming is the normal way to finish a book
+// after a rate limit, so the guardrail has to be able to tell the difference.
+//
+// The read is cheap enough to belong in a projection: point lookups on an
+// indexed SQLite column, no provider call, so `estimate` can do it too.
+//
+// The tradeoff is stated rather than hidden: the projection stops being a
+// property of the book alone. The same volume projects differently against two
+// machines' memories, which is the price of it being about this run.
+func (o *Orchestrator) pendingChapters(
+	ctx context.Context, chapters []chapterSegments, reusesDrafts bool,
+) ([]chapterSegments, int, error) {
+	if o.TM == nil {
+		return chapters, 0, nil
+	}
+
+	pending := make([]chapterSegments, 0, len(chapters))
+	reusable := 0
+	for _, chapter := range chapters {
+		kept := make([]segment.Segment, 0, len(chapter.Segments))
+		for _, seg := range chapter.Segments {
+			entry, found, err := o.TM.Lookup(ctx, seg.Hash)
+			if err != nil {
+				return nil, 0, fmt.Errorf("unable to look up TM for %s, err: %w", seg.ID, err)
+			}
+			// A draft is a hit only for the mode that treats a draft as output.
+			if found && (reusesDrafts || !tm.IsDraftEngine(entry.Engine)) {
+				reusable++
+				continue
+			}
+			kept = append(kept, seg)
+		}
+		if len(kept) == 0 {
+			// A chapter with nothing left to do makes no call, so it must not
+			// contribute a call's worth of prefix to the projection.
+			continue
+		}
+		chapter.Segments = kept
+		pending = append(pending, chapter)
+	}
+	return pending, reusable, nil
 }
 
 // countSegments totals a book's segments without materialising the flat slice.

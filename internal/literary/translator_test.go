@@ -55,6 +55,9 @@ type echoChat struct {
 	// errOnCall makes the nth call (1-based) fail like a transport error would;
 	// 0 disables.
 	errOnCall int
+	// rateLimitOnCall makes the nth call (1-based) fail the way an exhausted
+	// quota does, after reporting the tokens it consumed getting there.
+	rateLimitOnCall int
 	// batches records the segment IDs requested by each call, in order.
 	batches [][]string
 	reqs    []llm.ChatRequest
@@ -70,6 +73,10 @@ func (e *echoChat) Chat(_ context.Context, req llm.ChatRequest) (llm.ChatRespons
 
 	if e.errOnCall == len(e.reqs) {
 		return llm.ChatResponse{}, errors.New("provider unavailable")
+	}
+	if e.rateLimitOnCall == len(e.reqs) {
+		return llm.ChatResponse{InputTokens: 100, OutputTokens: 10},
+			fmt.Errorf("unable to chat: status 429, err: %w", llm.ErrRateLimited)
 	}
 	if e.truncateOver > 0 && len(ids) > e.truncateOver {
 		// Cut mid-object: the JSON cannot be parsed at all.
@@ -674,4 +681,59 @@ func TestTranslator_OnBatchIsOptional(t *testing.T) {
 
 	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
+}
+
+func TestTranslator_RateLimitStopsTheChapterInsteadOfDegradingIt(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(30)
+	// The first batch succeeds, the second hits the wall.
+	chat := &echoChat{rateLimitOnCall: 2}
+	var reported []int
+	tr := literary.Translator{
+		Chat:      chat,
+		BatchSize: 10,
+		OnBatch:   func(segments int, _ literary.Usage) { reported = append(reported, segments) },
+	}
+
+	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "src")
+
+	// Fatal, not degraded: every remaining batch would fail the same way, and a
+	// chapter that carried on would emit raw drafts the pipeline does not even
+	// persist — so there would be nothing to resume from.
+	require.ErrorIs(t, err, llm.ErrRateLimited)
+	require.Len(t, chat.batches, 2, "the third batch must never be attempted")
+
+	// The batch that hit the wall is still accounted for: it consumed tokens.
+	require.Equal(t, []int{10, 10}, reported)
+	require.Equal(t, 200, outcome.Usage.InputTokens)
+	require.Equal(t, 20, outcome.Usage.OutputTokens)
+
+	// The chapter is abandoned rather than written back: the segments keep what
+	// they arrived with, none reaches StatusPostEdited, and the caller fails the
+	// run. So the resume boundary is the CHAPTER, not the batch — up to one
+	// chapter's completed batches are redone on the next attempt.
+	//
+	// That is deliberate. Writing them back would not save them anyway: the
+	// pipeline persists a refined segment only after Restore accepts it, and on
+	// this path it never gets there. Buying that back would mean reordering the
+	// persist step around a failure, which is the one ordering the TM's
+	// correctness rests on.
+	for _, seg := range segs {
+		require.NotEqual(t, segment.StatusPostEdited, seg.Status)
+	}
+}
+
+func TestTranslator_RateLimitOnTheFirstBatchStillReportsItsUsage(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(10)
+	chat := &echoChat{rateLimitOnCall: 1}
+	tr := literary.Translator{Chat: chat, BatchSize: 10}
+
+	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "src")
+
+	require.ErrorIs(t, err, llm.ErrRateLimited)
+	// A refused call is a billable call: the ledger has to carry it.
+	require.Equal(t, 100, outcome.Usage.InputTokens)
 }

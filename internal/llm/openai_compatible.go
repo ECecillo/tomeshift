@@ -198,7 +198,7 @@ func (c *OpenAICompatibleClient) Chat(ctx context.Context, req ChatRequest) (Cha
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return ChatResponse{}, fmt.Errorf("unable to chat: status %d body %q, err: %w", resp.StatusCode, string(body), ErrProviderStatus)
+		return ChatResponse{}, statusError(resp.StatusCode, "unable to chat: status %d body %q", resp.StatusCode, string(body))
 	}
 
 	var decoded openAIChatResponse

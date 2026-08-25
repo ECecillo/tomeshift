@@ -190,6 +190,11 @@ func (run *chapterRun) precedingContext(idx int, batches [][]requestSegment) str
 // systematic failure (bad credentials, wrong model) stays loud while a single
 // bad batch does not discard the batches that already succeeded. Nothing is
 // written in that case: the segments keep the drafts they came in with.
+//
+// One failure is not degradable: llm.ErrRateLimited returns immediately, with
+// the usage consumed so far. Every remaining batch would fail the same way, and
+// degrading them would produce a chapter of raw drafts that this mode does not
+// persist — a book that reads as finished with nothing to resume from.
 func (t *Translator) TranslateChapter(
 	ctx context.Context,
 	bible narrative.Bible,
@@ -223,14 +228,25 @@ func (t *Translator) TranslateChapter(
 			items: batchItems,
 			prev:  run.precedingContext(idx, batches),
 		})
-		if err != nil {
-			batchErrs = append(batchErrs, err)
-		}
 		// Reported before the error is dealt with, for the same reason the
 		// caller used to add Outcome.Usage before its own error check: a refusal
-		// and a truncation are billable responses.
+		// and a truncation are billable responses. It also has to happen before
+		// the rate-limit return below, or the batch that hit the wall would go
+		// unaccounted.
 		if t.OnBatch != nil {
 			t.OnBatch(len(batchItems), run.usage.since(before))
+		}
+
+		if err != nil {
+			// A rate limit is not a bad reply, it is the end of the road: every
+			// remaining batch would fail the same way, and degrading them would
+			// emit a book that looks finished while half of it is raw draft —
+			// unpersisted, so not even resumable. Stop here and let the caller
+			// fail the run; what previous chapters refined is already in the TM.
+			if errors.Is(err, llm.ErrRateLimited) {
+				return Outcome{Usage: run.usage, Degraded: batchErrs}, err
+			}
+			batchErrs = append(batchErrs, err)
 		}
 	}
 	if len(missingItems(items, run.targets)) == len(items) {

@@ -277,6 +277,13 @@ Pros:
     `translation_llm_cache_creation_tokens` — only when the run consumed LLM
     tokens. A run served entirely from the completion cache consumed none, so
     it reports none rather than replaying the counts of the run that paid.
+- Two projections, not one. The per-book and rolling caps are enforced on the
+  cost of the segments the run still has to translate — the translation memory is
+  consulted first, so a resumed book is not refused for a bill it will never pay.
+  `estimated_cost_usd` in the run report is the other one: the whole book priced
+  with no reuse at all, which is the baseline `cost_savings_usd` subtracts from.
+  A draft counts as reusable only for the mode that treats a draft as output
+  (NMT, not literary), matching the routing rule in §6.4.
 - The spend ledger (§16.4) keeps the same LLM counters per attempt, which is
   what lets a projection be calibrated on measurement rather than on character
   heuristics. The counters in a run's own `report.json` describe that run; the
@@ -300,6 +307,13 @@ Pros:
   - Mitigation: placeholder tokenization + strict structural QA + epubcheck gate.
 - Risk: Cost spikes from over-escalation to LLM.
   - Mitigation: hard caps, routing thresholds, and pre-run cost projection.
+- Risk: An exhausted provider quota part-way through a book, emitting a volume
+  that reads as finished while half of it is unrefined NMT draft.
+  - Mitigation: an HTTP 429 is named (`llm.ErrRateLimited`) and is the one batch
+    failure that is not degradable — it stops the chapter and fails the run, so
+    the rest of the book is not silently drafted. Literary mode persists no
+    drafts, so nothing unusable enters the TM, and the chapters already refined
+    are there to resume from.
 - Risk: Inconsistent term translations.
   - Mitigation: locked glossary and consistency checks.
 - Risk: Low literary quality in nuanced passages.

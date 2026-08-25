@@ -751,6 +751,40 @@ semaines d'écart ont mesuré 207 puis 160 tokens de sortie par segment — la m
 est meilleure que l'heuristique, pas définitive.</figcaption>
 </figure>
 
+<h3>Et elle chiffre ce qu'il reste, pas le livre</h3>
+
+<p>
+  Avant de chiffrer, la projection demande à la mémoire de traduction ce qu'elle peut déjà servir et
+  laisse tomber ces segments — un chapitre entièrement en mémoire ne contribue même pas le préfixe
+  d'un appel, puisqu'aucun appel ne sera fait pour lui. C'est ce qui rend une reprise viable : un run
+  coupé à 80 % projetait le livre entier et pouvait être refusé par un plafond taillé pour les 20 %
+  restants.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Question</th><th>Réponse</th></tr>
+  <tr>
+    <td>Un brouillon <code>nmt-*</code> en cache compte-t-il comme acquis ?</td>
+    <td>Selon le mode, et c'est <code>translationMode.ReusesDrafts</code> qui tranche : oui en NMT
+      (le brouillon <em>est</em> la sortie), non en littéraire (c'est un intermédiaire à refaire).
+      La projection applique exactement la règle de <code>lookupTranslation</code> — sinon elle
+      laisserait passer un run qui paie ensuite chaque segment.</td>
+  </tr>
+  <tr>
+    <td>Alors <code>estimated_cost_usd</code> baisse sur une reprise ?</td>
+    <td>Non. Ce champ reste le <strong>livre entier sans réutilisation</strong>, parce que c'est la
+      base dont <code>cost_savings_usd</code> se soustrait. Le plafond, lui, est appliqué sur la
+      projection du travail restant. Deux nombres, deux métiers.</td>
+  </tr>
+  <tr>
+    <td>Qu'est-ce qu'on perd ?</td>
+    <td>La projection n'est plus une propriété du livre seul : le même tome se projette différemment
+      selon la mémoire de la machine. Assumé — elle parle de <em>ce run</em>.</td>
+  </tr>
+</table>
+</div>
+
 <h3>Le transport fait partie du prix</h3>
 
 <p>
@@ -1070,6 +1104,8 @@ flowchart TB
   <tr><td>11</td><td>La progression affichée n'est <strong>jamais</strong> une source de données : elle se déduit des mêmes compteurs que <code>report.json</code>, et un segment est signalé <strong>une fois</strong> — frais dans la boucle NMT ou via <code>literary.Translator.OnBatch</code>, réutilisé au hit TM. Le montant affiché sort de <code>mode.Cost</code>, celui qui écrit <code>actual_cost_usd</code> : le dernier chiffre vu est celui du rapport.</td><td>Une barre qui dépasse 100 %, ou qui gèle un chapitre entier, et une CLI dont stdout n'est plus analysable.</td></tr>
   <tr><td>12</td><td><code>estimate</code> et le garde-fou du run appliquent la <strong>même</strong> calibration, lue au même ledger. Et une calibration qui ne peut pas être lue laisse l'heuristique en place au lieu d'arrêter le run — contrairement à la lecture du palier gratuit, qui échoue fermé.</td><td>Une projection qui change de base entre deux invocations, ou un run refusé parce qu'un raffinement d'estimation n'a pas pu être lu.</td></tr>
   <tr><td>13</td><td>Les tokens LLM sont accumulés en <strong>un seul endroit</strong> : le hook <code>OnBatch</code>. <code>Outcome.Usage</code> porte les mêmes tokens vus par chapitre — les additionner tous les deux facture deux fois.</td><td>Un coût exactement doublé, invisible sans une mesure de référence.</td></tr>
+  <tr><td>14</td><td>Un rate limit (<code>llm.ErrRateLimited</code>, un HTTP 429) <strong>arrête</strong> le chapitre, il ne le dégrade pas — c'est la seule erreur de lot qui ne dégrade pas.</td><td>Le reste du livre échoue lot par lot en silence et sort en brouillon NMT — que le mode littéraire ne persiste pas, donc sans rien à reprendre.</td></tr>
+  <tr><td>15</td><td>La projection appliquée au plafond chiffre le travail <strong>restant</strong> ; <code>estimated_cost_usd</code> reste le livre entier sans réutilisation. Ce sont deux nombres différents et ils ont deux métiers.</td><td>Soit une reprise refusée pour une facture qu'elle ne paiera pas, soit <code>cost_savings_usd</code> qui tombe à zéro exactement sur les runs où la mémoire a le plus travaillé.</td></tr>
 </table>
 </div>
 

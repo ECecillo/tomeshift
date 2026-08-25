@@ -77,7 +77,7 @@ func (p *HTTPPostEditor) PostEdit(ctx context.Context, req PostEditRequest) (Pos
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
-		return PostEditResponse{}, fmt.Errorf("unable to post-edit: status %d body %q, err: %w", resp.StatusCode, string(body), ErrProviderStatus)
+		return PostEditResponse{}, statusError(resp.StatusCode, "unable to post-edit: status %d body %q", resp.StatusCode, string(body))
 	}
 
 	var decoded PostEditResponse

@@ -27,8 +27,11 @@ type costFn func() float64
 type translationMode interface {
 	// Init stamps the mode's own fields onto a fresh result.
 	Init(result *RunResult)
-	// Project estimates the worst-case spend of the whole run, assuming no TM
-	// reuse. It runs before any provider call.
+	// Project estimates the worst-case spend of the chapters handed to it,
+	// assuming none of their segments turns out to be reusable. The caller has
+	// already dropped what the TM can serve, so "worst case" is about this run's
+	// remaining work rather than about the whole book. It runs before any
+	// provider call.
 	Project(chapters []chapterSegments, usedFreeChars int) cost.Projection
 	// Translate fills in the chapters' target text, restores placeholders into
 	// the node tree and accumulates the consumption counters on result as it
@@ -41,6 +44,11 @@ type translationMode interface {
 	// callable at any point, including after a failure, because a run that died
 	// halfway still has to answer for what it already spent.
 	Cost(result *RunResult, usedFreeChars int) float64
+	// ReusesDrafts reports whether a raw NMT draft already in the TM is a
+	// usable hit for this mode. It is the one thing the two modes disagree on,
+	// and the projection has to know: a book whose drafts are all cached is free
+	// to finish in NMT mode and a full bill in literary mode.
+	ReusesDrafts() bool
 }
 
 // newTranslationMode selects the pipeline for cfg. Literary mode loads the
@@ -67,6 +75,10 @@ type nmtMode struct {
 }
 
 func (m *nmtMode) Init(result *RunResult) { result.Mode = ModeNMT }
+
+// ReusesDrafts is true here: an unescalated draft IS this mode's output, which
+// is why it is also persisted.
+func (m *nmtMode) ReusesDrafts() bool { return true }
 
 // postEditPass describes an escalation pass over segments totalling chars. The
 // HTTP post-editor sends one segment per call and carries neither the bible nor
@@ -124,6 +136,10 @@ type literaryMode struct {
 	cfg   RunConfig
 	bible narrative.Bible
 }
+
+// ReusesDrafts is false here: serving a draft would skip refinement for that
+// segment permanently, which is the defect this mode exists to prevent.
+func (m *literaryMode) ReusesDrafts() bool { return false }
 
 func (m *literaryMode) Init(result *RunResult) {
 	result.Mode = ModeLiterary
