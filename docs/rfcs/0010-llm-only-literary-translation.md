@@ -3,43 +3,51 @@
 - Status: `draft`
 - Authors: TBD
 - Created: 2026-09-10
-- Updated: 2026-09-10
+- Updated: 2026-09-11
 - Related:
   - Architecture: `docs/ARCHITECTURE.md`
   - Milestones: `docs/milestones/`
+  - Builds on: `0006-faithful-multivolume-translation.md`, `0007-google-translate-draft-and-token-cost-model.md`
+  - Depends on: `0009-temporal-execution-engine.md` (phase 1 ports/stages — the symbols this plan targets)
   - Supersedes: n/a
   - Superseded by: n/a
-  - Builds on: `0006-faithful-multivolume-translation.md`, `0007-google-translate-draft-and-token-cost-model.md`
 
 ## Context
 
-On veut pouvoir traduire un livre **uniquement avec un modèle d'IA** et, si possible,
-faire la passe littéraire **en même temps** (un seul temps LLM au lieu de
-brouillon NMT puis réécriture).
+On veut pouvoir traduire un livre **uniquement avec un modèle d'IA** et faire la
+passe littéraire **en même temps** (un seul temps LLM au lieu de brouillon NMT
+puis réécriture).
 
-Le mode `literary` est déjà un deux-temps : brouillon NMT (`draftSegments`, un
-appel `TranslateBatch`) → réécriture LLM (`TranslateChapter`). Point vérifié
-dans le code : **le LLM traduit à partir de la source, pas du brouillon**.
+Le mode `literary` est un deux-temps : brouillon NMT puis réécriture LLM. Depuis
+le refactor RFC 0009 (phase 1), ces deux temps sont des **étapes** (`Stages`)
+enchaînées par la recette `literaryMode.Chapter`
+(`internal/pipeline/modes.go`) : `Resolve -> Draft -> Refine x n -> Commit`.
+Point vérifié dans le code : **le LLM traduit à partir de la source, pas du
+brouillon**.
 
-- `buildPayload` (`internal/literary/translator.go:393`) envoie `source_text` par
-  segment + la source intégrale du chapitre dans le préfixe cacheable
-  (`stablePrefix`, `internal/literary/prompt.go:96`).
+- `Stages.RefineBatch` (`internal/pipeline/stages.go`) appelle
+  `literary.TranslateBatch`, dont `buildPayload`
+  (`internal/literary/translator.go`) envoie `source_text` par segment, la source
+  intégrale du chapitre étant dans le préfixe cacheable (`stablePrefix`,
+  `internal/literary/prompt.go`).
 - `draft_text` (`requestSegment.DraftText`) n'est qu'un **indice** dans le prompt.
-- Le brouillon NMT sert surtout de **filet** : `TranslateChapter:266-268` — si un
-  lot échoue ou renvoie du vide, le segment retombe sur `state.draft` en
-  `StatusTranslated` et **n'est pas persisté** (donc reprenable).
+- Le brouillon NMT (`Stages.DraftChapter`) sert surtout de **filet** :
+  `literary.applyTargets` retombe sur le brouillon quand un lot échoue ou casse
+  les placeholders ; le segment reste `StatusTranslated` et **n'est pas
+  persisté** (donc reprenable).
 
-Autrement dit : « LLM seul + littéraire en même temps » = **mode littéraire sans
-l'étape brouillon NMT**. L'architecture y est déjà à ~90 %.
+Autrement dit : « LLM seul + littéraire en même temps » = **recette littéraire
+sans l'étape `DraftChapter`**. L'architecture à ports y est déjà à ~95 % : la
+recette compose des étapes, il suffit d'en sauter une.
 
 ```mermaid
 flowchart LR
-  subgraph Aujourdhui["literary (NMT draft + LLM)"]
-    S1[source] --> D1[draftSegments NMT] --> R1[TranslateChapter LLM depuis source] --> O1[cible]
-    D1 -. filet en cas d echec de lot .-> O1
+  subgraph Aujourdhui["literary (draft NMT + LLM)"]
+    S1[source] --> D1[DraftChapter NMT] --> R1[RefineBatch LLM depuis source] --> C1[CommitChapter]
+    D1 -. filet si un lot echoue .-> C1
   end
   subgraph Cible["draft=none (LLM seul)"]
-    S2[source] --> R2[TranslateChapter LLM depuis source] --> O2[cible]
+    S2[source] --> R2[RefineBatch LLM depuis source] --> C2[CommitChapter]
   end
 ```
 
@@ -63,11 +71,11 @@ flowchart LR
 
 ### Option A: flag `--no-draft` (axe `draft = nmt | none` sur le mode `literary`)
 - Pros:
-  - Réutilise toute la boucle littéraire (bible, tokens glossaire, batching,
+  - Réutilise toute la recette littéraire (bible, tokens glossaire, batching,
     budget, ledger, QA gate) telle quelle ; delta minimal.
-  - Persistance inchangée en `EngineLiterary` → **même espace TM** que le
+  - Persistance inchangée en `EngineLiterary` -> **même espace TM** que le
     littéraire classique, réutilisable dans les deux sens, cohérent avec le
-    prédicat de réutilisation par mode.
+    prédicat de réutilisation par mode (`Mode.ReusesDrafts`).
 - Cons:
   - Un seul mode porte deux comportements ; la surface CLI est un flag, pas un
     mode visible.
@@ -76,70 +84,89 @@ flowchart LR
 - Pros:
   - Surface CLI explicite.
 - Cons:
-  - Duplique `literaryMode` (Project/Cost/pass/Translate) pour un delta d'une
+  - Duplique `literaryMode` (recette + projection + pricing) pour un delta d'une
     ligne.
-  - Fragmente l'espace TM (`EngineLLM` ≠ `EngineLiterary`).
+  - Fragmente l'espace TM (`EngineLLM` != `EngineLiterary`).
   - Contredit le principe « deux boucles ».
 
 ## Proposed Decision
 
 **Option A.** Un flag `--no-draft` (et l'env `EPUB_TRANSLATOR_LITERARY_DRAFT`)
-qui, en `none`, saute `draftSegments` : le LLM traduit directement depuis
+qui, en `none`, saute l'étape `DraftChapter` : le LLM traduit directement depuis
 `source_text`. Politique de dégradation retenue : **dégrader vers la source**
-(segment non traduit, compté par la QA, non persisté, repris par `--resume`).
+(segment non traduit, compté par la QA, non persisté, repris par `--resume`) —
+affinée par le garde-fou chapitre du refactor (voir §Impact).
 
 ## Implementation Plan
 
+Les ancres ci-dessous visent l'architecture à ports de la RFC 0009 (phase 1).
+
 ### Config — `internal/config/config.go`
 1. Ajouter `LiteraryDraft string` (env `EPUB_TRANSLATOR_LITERARY_DRAFT`, défaut
-   `nmt`), validé ∈ `{nmt, none}` avec sentinelle dans `internal/config/errors.go`.
+   `nmt`), validé dans `{nmt, none}` avec une sentinelle dans
+   `internal/config/errors.go`.
 2. Exposer `--no-draft` sur `run` et `literary` (`internal/cli`) ; le flag force
    `none` et l'emporte sur l'env, comme les autres flags.
 
-### Wiring — `internal/commandexec/translate.go`
-3. `newOrchestrator:63-72` : ne plus exiger endpoint/clé NMT quand
-   `mode == literary && draft == none`. Même invariant que
-   `RequiresAPIKey`/`estimate` : pas de secret réclamé pour un appel qui n'aura
-   pas lieu.
-4. En `none`, ne pas construire le provider NMT (`Translator` peut rester nil,
-   `draftSegments` n'étant pas appelé). Vérifier qu'aucun autre chemin
-   littéraire ne le déréférence.
-5. Propager le choix jusqu'à `RunConfig` (nouveau champ `LiteraryDraft` dans
-   `internal/pipeline/types.go`).
+### Contrat de flux — `internal/pipeline/types.go`
+3. Ajouter `LiteraryDraft string` à **`BookInput`** (et non à un ancien
+   `RunConfig`, supprimé par le refactor). `commandexec` le renseigne depuis la
+   config.
 
-### Boucle — `internal/pipeline/mode.go`
-6. `literaryMode` porte le choix `draft`. Dans `Translate:256`, garder
-   `draftSegments` seulement si `draft == nmt`.
-7. `Translate:259-262` : en `none`, ne pas incrémenter `NMTSegments` ; compter
-   ces segments côté LLM, `NMTEngine` vide, `NMTChars = 0`.
-8. `fallbackText` renverra vide → la dégradation vers source est déjà gérée par
-   `TranslateChapter:266-268` (segment `StatusTranslated` non persisté, QA le
-   compte, `--resume` retente). Rien à changer dans `internal/literary`.
+### Recette — `internal/pipeline/modes.go`
+4. `literaryMode.Chapter` : n'appeler `f.draft(ch, plan.Fresh, false)` que si
+   `draft == nmt`. En `none`, la recette devient `Resolve -> Refine x n ->
+   Commit`. Le choix `draft` est lu depuis `f.in.LiteraryDraft`.
 
-### Coût — `internal/pipeline/mode.go` + `internal/cost`
-9. `literaryMode.Project`/`Cost`/`pass` (`mode.go:150-198`) : en `none`, retirer
-   la composante brouillon NMT (coût = tokens LLM seuls).
-10. Miroir dans `cost.EstimateScenarios` pour que
-    `estimate --mode literary --no-draft` == facturation runtime.
-11. `internal/commandexec/estimate.go:30` construit un `Translator` NMT
-    inconditionnellement : le rendre conditionnel en `none`, sinon l'estimation
-    LLM-only réclame la clé Google qu'on vient d'éliminer.
+### Accumulation — `internal/pipeline/book.go`
+5. En `none`, `f.draft` n'est pas appelé : `NMTSegments` et `NMTChars` restent 0
+   (aucun `DraftChapter`, donc aucun delta de compteur NMT). Les segments frais
+   sont déjà comptés côté LLM par `f.refine` via `LLMPassSegments`. Rien d'autre
+   à changer dans l'accumulation.
+
+### Étapes — `internal/pipeline/stages.go`
+6. `DraftChapter` n'est tout simplement pas invoqué en `none` ; `Stages.Translator`
+   peut rester nil. Vérifier les chemins littéraires qui touchent le translator :
+   `nmtEngine()` et `charsSent()` gèrent déjà un translator nil (retour `""` / 0) ;
+   `RefineBatch`/`CommitChapter`/`ProjectCost` ne le déréférencent pas.
+7. Coût : `projectMode`/`costLiterary`/`literaryPass` (`stages.go`) retirent la
+   composante brouillon NMT en `none` (coût = tokens LLM seuls, `NMTChars = 0`).
+
+### Wiring — `internal/commandexec/translate.go` + `estimate.go`
+8. `newStages` : ne plus exiger endpoint/clé NMT quand
+   `mode == literary && draft == none`, et ne pas construire le provider NMT
+   (laisser `Stages.Translator` nil). Même invariant que `RequiresAPIKey`/`estimate` :
+   pas de secret réclamé pour un appel qui n'aura pas lieu.
+9. `estimate` (`Stages.Plan`) : ne construit le `Translator` NMT que si un
+   brouillon NMT aura lieu, sinon l'estimation LLM-only réclame la clé Google
+   qu'on vient d'éliminer.
+
+### Coût global — `internal/cost/estimate.go`
+10. `EstimateScenarios` : la projection `none` s'aligne sur le scénario full-LLM
+    (aucune composante NMT), pour que `estimate --mode literary --no-draft` égale
+    la facturation runtime.
 
 ## Rollout Plan
 
 - Local d'abord : `estimate --mode literary --no-draft` (zéro appel), puis un run
-  sur un tome court avec un LLM local (`cmd/nmt-devserver` n'est pas concerné ;
-  utiliser un endpoint OpenAI-compatible ou le CLI Claude).
+  sur un tome court avec un LLM (endpoint OpenAI-compatible ou le CLI Claude).
 - Safety : `nmt` reste le défaut ; `none` est opt-in.
 - Rollback : retirer le flag/env laisse le mode littéraire intact.
 
 ## Impact
 
 ### Technical
-- Un lot LLM en échec sans brouillon laisse le segment sur sa source (non
-  traduit) au lieu d'un NMT lisible. Comportement voulu, compté par la QA,
-  reprenable.
-- Boucle littéraire réutilisée sans duplication.
+- Sans brouillon, un lot LLM en échec laisse ses segments **sur la source** (non
+  traduits) au lieu d'un NMT lisible. Deux régimes, hérités du refactor :
+  - **Dégradation partielle** : certains lots réussissent, d'autres non -> les
+    segments ratés restent source, `StatusTranslated`, non persistés, comptés par
+    la QA (`UntranslatedSegments`), repris par `--resume`.
+  - **Chapitre entièrement raté** : si **aucun** segment d'un chapitre n'est
+    raffiné, `flow.refine` renvoie `ErrChapterUnrefined`
+    (`internal/pipeline/errors.go`) et **le run échoue franchement** — on ne livre
+    pas un chapitre de source déguisé en fini. C'est un durcissement par rapport
+    au « dégrader en silence » d'origine, et il tombe pile pour le LLM-only.
+- Recette littéraire réutilisée sans duplication ; une étape sautée.
 
 ### Cost
 - `NMTChars = 0` sur ce chemin ; coût piloté par les tokens LLM. Le palier
@@ -150,24 +177,31 @@ qui, en `none`, saute `draftSegments` : le LLM traduit directement depuis
 
 ## Acceptance Criteria
 
-- `none` : aucun `TranslateBatch` NMT émis (provider nil/mort), le LLM traduit
-  depuis la source, sortie complète.
-- Un lot LLM en échec sans brouillon → segment reste source, `StatusTranslated`,
-  non persisté, compté QA ; `--resume` le reprend.
+- `none` : aucun appel NMT émis (`Stages.Translator` nil, `DraftChapter` non
+  invoqué), le LLM traduit depuis la source, sortie complète.
+- Dégradation partielle : un lot LLM en échec laisse ses segments en source,
+  `StatusTranslated`, non persistés, comptés QA ; `--resume` les reprend.
+- Chapitre entièrement raté en `none` -> `ErrChapterUnrefined`, run en échec (pas
+  de livraison silencieuse).
 - Démarrage sans credential NMT réussit en `none` (miroir du test `estimate`
   existant) ; échoue toujours en `nmt`.
 - Projection/`estimate` en `none` : `NMTChars = 0`, coût = tokens LLM ;
   estimation == runtime.
-- Glossaire `<g id>` préservé sans le brouillon.
+- Glossaire `<g id>` préservé sans le brouillon (contrat `Protect`/`Apply`
+  inchangé).
 
 ## Risks and Mitigations
 
-- Risk: un déréférencement `Translator` nil sur un chemin littéraire non prévu.
-  - Mitigation: audit des usages de `o.Translator` en mode littéraire + test avec
-    provider nil.
-- Risk: divergence estimation/runtime si un seul des deux chemins de coût est
-  mis à jour.
+- Risk: un déréférencement `Stages.Translator` nil sur un chemin littéraire non
+  prévu.
+  - Mitigation: audit des usages du translator en mode littéraire + un test
+    `RunBook` littéraire avec `Stages.Translator == nil` et `draft == none`.
+- Risk: divergence estimation/runtime si un seul des deux chemins de coût
+  (`stages.go` vs `cost.EstimateScenarios`) est mis à jour.
   - Mitigation: test croisé `estimate` vs run sur le même livre en `none`.
+- Risk: interaction inattendue avec le garde-fou `ErrChapterUnrefined`.
+  - Mitigation: test de recette où tous les lots d'un chapitre dégradent en
+    `none` -> run en échec, dépense enregistrée.
 
 ## Open Questions
 
@@ -180,7 +214,9 @@ qui, en `none`, saute `draftSegments` : le LLM traduit directement depuis
   `FLAGS` (catégorie processing) ; `EPUB_TRANSLATOR_LITERARY_DRAFT` en §8 ;
   valeurs `--mode`/pipeline en §5-6.
 - `docs/comprendre-le-projet.html` : widget pipeline §1 (les deux chemins) ;
-  invariant §13 (« brouillon = filet, pas source de traduction »).
+  invariant §13 (« brouillon = filet, pas source de traduction » ; et « un
+  chapitre LLM-only sans aucun raffinement échoue, il ne se dégrade pas en
+  silence »).
 - `docs/ARCHITECTURE.md` si le contrat de dégradation évolue.
 - `just docs-audit` doit passer ; nouvelle session dans `docs/journal.html`.
 
@@ -189,3 +225,7 @@ qui, en `none`, saute `draftSegments` : le LLM traduit directement depuis
 - 2026-09-10: création en `draft`. Choix validés en session : Option A
   (`--no-draft`), dégradation vers la source, périmètre = analyse (implémentation
   à suivre).
+- 2026-09-11: renuméroté 0009 -> 0010 (collision avec la RFC du moteur Temporal)
+  et plan d'implémentation recâblé sur l'architecture à ports de la RFC 0009
+  phase 1 (`BookInput`, `modes.go`, `stages.go`, `DraftChapter`/`RefineBatch`,
+  `ErrChapterUnrefined`). Décisions inchangées.
