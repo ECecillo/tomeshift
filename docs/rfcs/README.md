@@ -24,3 +24,4 @@ RFCs are proposal documents used to discuss options and implementation details b
 - [0006 - Faithful Multi-Volume Literary Translation via Persistent Narrative Memory](./0006-faithful-multivolume-translation.md)
 - [0007 - Google Cloud Translation as the Draft Engine, and a Token-Based Budget Guardrail](./0007-google-translate-draft-and-token-cost-model.md)
 - [0008 - Pre-Generated Series Bible as a Job Separate from Translation](./0008-pre-generated-series-bible.md)
+- [0009 - Temporal as the Execution Engine of the Translation Pipeline](./0009-temporal-execution-engine.md) — illustrated companion: [`docs/architecture-temporal.html`](../architecture-temporal.html)

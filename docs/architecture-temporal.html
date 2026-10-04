@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>epub-translator sur Temporal — la nouvelle architecture, illustrée</title>
+<style>
+  :root {
+    --bg: #0f1117; --surface: #1a1d27; --surface2: #151824; --border: #2a2d3e;
+    --text: #e2e4f0; --muted: #8b8fa8; --green: #4ade80; --yellow: #facc15;
+    --red: #f87171; --blue: #60a5fa; --purple: #c084fc; --orange: #fb923c; --tag-bg: #252840;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'SF Mono','Fira Code',ui-monospace,monospace; font-size: 13px; line-height: 1.65; padding: 2rem 1.25rem 5rem; max-width: 1000px; margin: 0 auto; }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+  header h1 { font-size: 1.45rem; color: var(--blue); letter-spacing: 0.02em; line-height: 1.35; }
+  header .meta { color: var(--muted); margin-top: 0.6rem; font-size: 0.82rem; }
+  header .meta a { color: var(--muted); }
+  h2 { font-size: 1.05rem; color: var(--yellow); margin: 3rem 0 0.9rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 0.95rem; color: var(--purple); margin: 1.9rem 0 0.6rem; }
+  p { margin: 0.7rem 0; }
+  ul, ol { padding-left: 1.3rem; margin: 0.6rem 0; }
+  li { margin: 0.3rem 0; }
+  a { color: var(--blue); text-decoration: none; border-bottom: 1px dotted var(--border); }
+  strong { color: #fff; }
+  code { background: var(--tag-bg); border-radius: 3px; padding: 0.08rem 0.32rem; font-size: 0.92em; color: var(--green); }
+  pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.9rem 1rem; overflow-x: auto; margin: 0.9rem 0; font-size: 0.85rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; color: var(--text); }
+  pre.mermaid { text-align: center; }
+  .badge { display: inline-block; background: var(--tag-bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.5rem; font-size: 0.72rem; color: var(--yellow); margin-right: 0.4rem; }
+  .badge.ok { color: var(--green); } .badge.bad { color: var(--red); } .badge.info { color: var(--blue); }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.1rem 0; }
+  .card.note { border-left: 3px solid var(--blue); } .card.warn { border-left: 3px solid var(--red); }
+  .card.key { border-left: 3px solid var(--green); } .card.extend { border-left: 3px solid var(--purple); }
+  .card > .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; min-width: 520px; }
+  th, td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+  th { background: var(--tag-bg); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.06em; }
+  figure { margin: 1.5rem 0; } figure figcaption { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; text-align: center; }
+  footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.78rem; }
+  .toc { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; }
+  .toc .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+  .toc ol { margin: 0; columns: 2; column-gap: 2rem; }
+  @media (max-width: 640px) { .toc ol { columns: 1; } }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
+
+  /* widgets */
+  .widget { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.1rem 1.25rem; margin: 1.4rem 0; }
+  .widget .wlabel { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.8rem; }
+  .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.9rem; }
+  button { font-family: inherit; font-size: 0.78rem; color: var(--text); background: var(--tag-bg); border: 1px solid var(--border); border-radius: 5px; padding: 0.35rem 0.8rem; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  button:hover { background: #2f3350; border-color: var(--blue); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { border-color: var(--green); color: var(--green); }
+  button.danger { border-color: var(--red); color: var(--red); }
+  button.active { border-color: var(--blue); color: var(--blue); background: #1e2438; }
+
+  .flowline { display: flex; align-items: stretch; gap: 0.35rem; flex-wrap: wrap; }
+  .stage { flex: 1 1 88px; min-width: 88px; text-align: center; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); padding: 0.5rem 0.3rem; font-size: 0.7rem; color: var(--muted); transition: all 0.25s; position: relative; }
+  .stage .sname { display: block; color: var(--text); font-size: 0.74rem; }
+  .stage.lit { color: var(--text); border-color: var(--blue); background: #1b2740; transform: translateY(-3px); }
+  .stage.done { border-color: #2f4a35; } .stage.done .sname { color: var(--green); }
+  .stage.replay { border-color: var(--purple); background: rgba(192,132,252,0.08); } .stage.replay .sname { color: var(--purple); }
+  .stage.paused { border-color: var(--orange); background: rgba(251,146,60,0.1); } .stage.paused .sname { color: var(--orange); }
+  .stage.failed { border-color: var(--red); } .stage.failed .sname { color: var(--red); }
+  .stage.group { flex-basis: 100%; min-width: 100%; text-align: left; padding: 0.3rem 0.5rem; background: transparent; border-style: dashed; }
+
+  .history { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.8rem; height: 11.5rem; overflow-y: auto; font-size: 0.74rem; line-height: 1.55; margin-top: 0.8rem; }
+  .history div { white-space: nowrap; }
+  .history .ev { color: var(--muted); } .history .ok { color: var(--green); } .history .warn { color: var(--orange); }
+  .history .bad { color: var(--red); } .history .sys { color: var(--purple); } .history .sig { color: var(--yellow); }
+  .statusline { display: flex; gap: 1.4rem; flex-wrap: wrap; margin-top: 0.8rem; font-size: 0.8rem; color: var(--muted); }
+  .statusline b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .state { display: inline-block; padding: 0.05rem 0.5rem; border-radius: 4px; border: 1px solid var(--border); font-size: 0.72rem; }
+  .state.running { color: var(--blue); border-color: var(--blue); }
+  .state.paused { color: var(--orange); border-color: var(--orange); }
+  .state.completed { color: var(--green); border-color: var(--green); }
+  .state.failed { color: var(--red); border-color: var(--red); }
+  .state.dead { color: var(--red); border-color: var(--red); }
+  .bar { height: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-top: 0.5rem; }
+  .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--orange), var(--yellow)); width: 0; transition: width 0.3s linear; }
+
+  .batches { display: flex; gap: 0.5rem; flex-wrap: wrap; margin: 0.6rem 0; }
+  .batch { flex: 1 1 120px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface2); padding: 0.5rem 0.6rem; font-size: 0.74rem; color: var(--muted); transition: all 0.25s; }
+  .batch b { display: block; color: var(--text); }
+  .batch.lit { border-color: var(--blue); background: #1b2740; }
+  .batch.done { border-color: var(--green); } .batch.done b { color: var(--green); }
+  .batch.paused { border-color: var(--orange); background: rgba(251,146,60,0.1); } .batch.paused b { color: var(--orange); }
+  .batch.lost { border-color: var(--red); opacity: 0.55; text-decoration: line-through; }
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0.8rem; margin-top: 0.8rem; }
+  @media (max-width: 700px) { .compare { grid-template-columns: 1fr; } }
+  .compare .col { border: 1px solid var(--border); border-radius: 6px; padding: 0.6rem 0.8rem; font-size: 0.78rem; }
+  .compare .col h4 { font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.4rem; }
+  .compare .num { font-size: 1.3rem; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  .phases { display: flex; gap: 0.3rem; flex-wrap: wrap; }
+  .phases button { flex: 1 1 110px; }
+  .phasebox { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.9rem 1rem; margin-top: 0.8rem; font-size: 0.82rem; min-height: 12rem; }
+  .phasebox .lbl { color: var(--muted); font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin: 0.6rem 0 0.15rem; }
+  .phasebox .lbl:first-child { margin-top: 0; }
+  .phasebox .add { color: var(--green); } .phasebox .del { color: var(--red); } .phasebox .crit { color: var(--yellow); }
+
+  .payload { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: flex-end; margin: 0.8rem 0; }
+  .pl { border: 1px solid var(--border); border-radius: 5px; padding: 0.4rem 0.6rem; font-size: 0.72rem; color: var(--muted); background: var(--surface2); }
+  .pl b { display: block; color: var(--text); }
+  .pl.ok { border-color: var(--green); } .pl.bad { border-color: var(--red); background: rgba(248,113,113,0.08); }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>epub-translator sur Temporal<br/><span style="color:var(--muted);font-size:0.75em">la nouvelle architecture et la gestion de la pipeline, illustrées</span></h1>
+  <div class="meta">
+    Compagnon illustré du <a href="rfcs/0009-temporal-execution-engine.md">RFC 0009</a> · 10 septembre 2026 · statut <span class="badge info">proposed</span><br/>
+    Code référencé figé sur <a href="https://github.com/ECecillo/ebooks-translator/tree/8805606"><code>8805606</code></a> (branche <code>refactor/to-temporal</code>)
+    · Pour l'architecture actuelle : <a href="comprendre-le-projet.html">comprendre-le-projet.html</a>
+  </div>
+</header>
+
+<div class="toc">
+  <span class="label">Sommaire</span>
+  <ol>
+    <li><a href="#avis">L'avis en une minute</a></li>
+    <li><a href="#topologie">La topologie cible</a></li>
+    <li><a href="#run">Le cycle de vie d'un run <span class="badge info">animé</span></a></li>
+    <li><a href="#lot">Un chapitre littéraire, lot par lot, avec un 429 <span class="badge info">animé</span></a></li>
+    <li><a href="#payloads">Ce qui traverse Temporal — et ce qui ne le fait jamais</a></li>
+    <li><a href="#etats">Les états d'un run</a></li>
+    <li><a href="#politiques">Timeouts, retries, idempotence</a></li>
+    <li><a href="#code">Découpage du code et couplage à Temporal</a></li>
+    <li><a href="#plan">Le plan en six phases <span class="badge info">interactif</span></a></li>
+    <li><a href="#tests">Les tests, lot par lot</a></li>
+    <li><a href="#invariants">Les invariants qui ne bougent pas</a></li>
+    <li><a href="#decisions">Les décisions, tranchées</a></li>
+  </ol>
+</div>
+
+<h2 id="avis">1. L'avis en une minute</h2>
+
+<p>
+  <strong>Oui, Temporal se prête bien à ce projet — pour la forme du problème, pas pour son échelle.</strong>
+  Un run est long (des heures), multi-étapes, dépendant de fournisseurs externes à quota, et il ne
+  doit <em>jamais payer deux fois</em>. C'est la définition d'un workflow durable. L'échelle, elle, est
+  minuscule : un utilisateur, un livre à la fois. Temporal est donc surdimensionné en capacité, mais
+  pas en <em>fonctions</em> : chacune de celles qu'il apporte correspond à un mécanisme aujourd'hui
+  écrit à la main, ou planifié dans M4.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Besoin</th><th>Aujourd'hui</th><th>Avec Temporal</th></tr></thead>
+  <tbody>
+    <tr><td>Réessayer un appel NMT transitoire</td><td><code>RetryingTranslator</code>, 3 tentatives linéaires (<code>translate/retry.go</code>)</td><td><code>RetryPolicy</code> déclarée par activité</td></tr>
+    <tr><td>Survivre à un quota épuisé (429)</td><td>Le run échoue, l'humain relance, la TM évite de repayer — <strong>par chapitre</strong> (session 18)</td><td>Le workflow se met en <code>paused</code>, attend un timer ou un signal <code>resume</code>, reprend <strong>au lot</strong></td></tr>
+    <tr><td>Survivre à la mort du process</td><td>Rien : re-extraction, re-segmentation, re-projection, puis TM</td><td>Le worker redémarre, l'historique est rejoué, l'activité en cours est reprise</td></tr>
+    <tr><td>Enregistrer la dépense même en échec</td><td><code>defer recordSpend</code> avec contexte détaché (<code>orchestrator.go:217-220</code>)</td><td>Chemin de nettoyage sous <code>NewDisconnectedContext</code></td></tr>
+    <tr><td>Voir où en est le run</td><td>Barre dans le process, cassée par <code>op run</code> (session 19)</td><td>Query <code>progress</code> + Temporal UI ; la barre vit dans un CLI sans secret</td></tr>
+    <tr><td>Enchaîner 30 tomes</td><td>Boucle <code>batch</code> en mémoire, un process</td><td>Workflow parent, enfants séquentiels, un historique par tome</td></tr>
+    <tr><td>M4 « queue + worker + retry + idempotence »</td><td>À écrire</td><td>C'est le produit</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="card warn">
+  <span class="label">Le prix, énoncé</span>
+  <ul>
+    <li>Un service toujours allumé pour <code>run</code> — un conteneur SQLite, zéro coût externe. <code>estimate</code> reste hors-ligne.</li>
+    <li>Une dépendance lourde (<code>go.temporal.io/sdk</code> → gRPC, protobuf), à inscrire dans <code>DEPENDENCIES.md</code>.</li>
+    <li>Le code de workflow doit être déterministe : pas d'I/O, pas de <code>time.Now</code>, pas de goroutine, pas d'itération de map qui décide.</li>
+    <li><strong>Le vrai chantier</strong> : les segments tiennent aujourd'hui un pointeur vers l'arbre HTML vivant (<code>segment.Segment.Node</code>), que <code>Restore</code> mute et que <code>Recompose</code> rend. Rien de cela ne peut traverser une frontière d'activité (limite 2 Mo par payload). Il faut découpler — et c'est un refactor qui a de la valeur même sans Temporal.</li>
+  </ul>
+</div>
+
+<div class="card key">
+  <span class="label">La recommandation</span>
+  <p>Adopter Temporal sous cinq conditions : les activités <em>sont</em> les fonctions d'étape existantes ; un seul moteur à la fin (le chemin in-process est supprimé) ; ce sont des références qui traversent Temporal, pas du contenu ; serveur de dev local en SQLite, pas de Postgres ; un worker, un slot d'activité, tant que la TM est en SQLite.</p>
+</div>
+
+<h2 id="topologie">2. La topologie cible</h2>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    CLI["epub-translator run / batch<br/>aucun secret · pilote la barre"]
+    T["Temporal dev server<br/>:7233 gRPC · :8233 UI<br/>historique en SQLite"]
+    W["epub-translator worker<br/>op run — porte les clés API"]
+    subgraph deps["Ce que le worker touche"]
+        NMT["Fournisseur NMT"]
+        LLM["Fournisseur LLM"]
+        TM[("tm.sqlite<br/>segments · run_attempts")]
+        WS[("runs/run/work/<br/>units.jsonl par chapitre")]
+        B[("bible de série")]
+    end
+    CLI -- "start · signal · query · cancel" --> T
+    T -- "tâches workflow et activité" --> W
+    W --> NMT
+    W --> LLM
+    W --> TM
+    W --> WS
+    W --> B
+</pre>
+<figcaption>Trois processus. Le CLI ne fait que parler à Temporal ; le worker seul appelle les fournisseurs et écrit sur disque.</figcaption>
+</figure>
+
+<p>
+  Ce qui change pour l'opérateur : <code>just up</code> démarre <code>temporal</code> et le <code>worker</code> ;
+  <code>just run</code> démarre un workflow et suit sa progression ; l'UI est sur <code>localhost:8233</code>.
+  Les recettes qui appellent un fournisseur enveloppent désormais <em>le worker</em> dans <code>op run</code>,
+  plus le CLI — ce qui règle au passage le problème de la barre éteinte par le tube de 1Password.
+</p>
+
+<h2 id="run">3. Le cycle de vie d'un run</h2>
+
+<p>
+  Un livre = un workflow <code>TranslateBook</code>. Chaque étape de l'orchestrateur actuel devient une
+  activité avec son timeout et sa politique de retry ; le workflow ne fait que les enchaîner et
+  additionner ce qu'elles ont consommé. Lancez l'animation, puis <strong>tuez le worker</strong> en cours de
+  route : l'historique survit, le worker redémarre, les activités terminées sont <em>rejouées</em> (aucun
+  appel), et l'exécution reprend là où elle s'était arrêtée.
+</p>
+
+<div class="widget" id="w-run">
+  <span class="wlabel">Animation — TranslateBook, trois chapitres, mode littéraire</span>
+  <div class="flowline" id="run-stages"></div>
+  <div class="history" id="run-history"></div>
+  <div class="statusline">
+    <span>état <span class="state running" id="run-state">idle</span></span>
+    <span>appels fournisseur payés <b id="run-paid">0</b></span>
+    <span>activités rejouées gratuitement <b id="run-replayed">0</b></span>
+    <span>événements d'historique <b id="run-events">0</b></span>
+  </div>
+  <div class="controls">
+    <button class="primary" id="run-play">▶ Lancer</button>
+    <button class="danger" id="run-kill" disabled>💥 Tuer le worker</button>
+    <button id="run-reset">↺ Réinitialiser</button>
+  </div>
+</div>
+
+<figure>
+<pre class="mermaid">
+sequenceDiagram
+    participant C as CLI
+    participant T as Temporal
+    participant W as Worker
+    C->>T: StartWorkflow TranslateBook
+    T->>W: PrepareBook
+    T->>W: ProjectCost
+    Note over T: plafond dépassé → échec ErrBudgetExceeded,<br/>aucun appel fournisseur
+    loop chaque chapitre, dans l'ordre
+        T->>W: ResolveChapter
+        T->>W: DraftChapter
+        alt littéraire
+            loop chaque lot
+                T->>W: RefineBatch
+                Note over T,W: RateLimited → timer ou signal resume,<br/>puis le même lot
+            end
+        else nmt
+            T->>W: EscalateChapter
+        end
+        T->>W: CommitChapter
+        opt update-bible
+            T->>W: UpdateBible
+        end
+        C-->>T: query progress
+    end
+    T->>W: RecomposeBook · CheckEPUB · FinishBook
+    T->>W: RecordSpend
+    T-->>C: RunResult → code de sortie
+</pre>
+<figcaption>La séquence nominale. En échec ou en annulation, <code>FinishBook</code> et <code>RecordSpend</code> tournent quand même, sous un contexte déconnecté — l'équivalent du <code>defer</code> actuel.</figcaption>
+</figure>
+
+<div class="card note">
+  <span class="label">Où va l'état</span>
+  <p>
+    Aujourd'hui les compteurs vivent dans <code>RunResult</code>, alimentés par le delta du compteur de
+    caractères et par le hook <code>OnBatch</code> (<code>mode.go:218-226</code>). Demain chaque activité <em>retourne</em>
+    ce qu'elle a consommé (caractères, tokens, tentatives, hits TM) et le workflow additionne. L'historique
+    Temporal devient la piste d'audit dont le ledger était la seule copie — et le prix se calcule par une
+    activité locale <code>PriceRun</code>, arithmétique pure sur le modèle de coût.
+  </p>
+</div>
+
+<h2 id="lot">4. Un chapitre littéraire, lot par lot, avec un 429</h2>
+
+<p>
+  C'est la scène qui justifie le chantier. Un chapitre de 100 segments part en 2 à 4 lots LLM.
+  Aujourd'hui, si le troisième lot reçoit un 429, <code>llm.ErrRateLimited</code> stoppe le chapitre et
+  fait échouer le run (<code>literary/translator.go:194-197</code>) : les lots 1 et 2, réussis mais non
+  persistés, sont perdus et seront repayés à la relance. Avec Temporal, <code>RefineBatch</code> est
+  <em>l'unité</em> de retry : le workflow passe en <code>paused</code>, attend, et relance <strong>le même lot</strong>.
+</p>
+
+<div class="widget" id="w-batch">
+  <span class="wlabel">Animation — un chapitre, quatre lots, un quota qui lâche</span>
+  <div class="batches" id="batch-boxes"></div>
+  <div class="statusline">
+    <span>état <span class="state running" id="batch-state">idle</span></span>
+    <span id="batch-wait" style="display:none">cooldown <b id="batch-cd">30:00</b> ou signal <code>resume</code></span>
+  </div>
+  <div class="bar" id="batch-bar" style="display:none"><span></span></div>
+  <div class="compare">
+    <div class="col">
+      <h4>Aujourd'hui — run en échec, chapitre refait</h4>
+      <div>lots payés au total <span class="num" id="cmp-today">0</span></div>
+      <div style="color:var(--muted)">les lots réussis avant le 429 ne sont pas persistés (<code>persist</code> n'a lieu qu'après <code>Restore</code>, en fin de chapitre)</div>
+    </div>
+    <div class="col">
+      <h4>Temporal — pause puis reprise au lot</h4>
+      <div>lots payés au total <span class="num" id="cmp-temporal">0</span></div>
+      <div style="color:var(--muted)">le lot 3 est rejoué ; les lots 1-2 sont dans l'historique et dans le cache de complétions</div>
+    </div>
+  </div>
+  <div class="controls">
+    <button class="primary" id="batch-play">▶ Lancer le chapitre</button>
+    <button class="danger" id="batch-429" disabled>⚠ Injecter un 429 au lot 3</button>
+    <button id="batch-resume" disabled>⚡ Signal resume</button>
+    <button id="batch-reset">↺ Réinitialiser</button>
+  </div>
+</div>
+
+<div class="card note">
+  <span class="label">Pourquoi le lot et pas le chapitre</span>
+  <p>
+    La reprise se fait à la granularité de l'activité qui a échoué. Une activité <code>RefineChapter</code>
+    garderait la frontière actuelle ; <code>RefineBatch</code> la descend au lot. La division récursive d'un lot
+    tronqué (<code>TranslateChapter</code>) reste <em>dans</em> l'activité : ce sont les mêmes tokens, pour le même
+    lot logique. Le tail de ~1 200 runes de français précédent voyage dans le payload — 3 Ko, rien.
+  </p>
+</div>
+
+<h2 id="payloads">5. Ce qui traverse Temporal — et ce qui ne le fait jamais</h2>
+
+<p>
+  Temporal persiste chaque entrée et chaque sortie d'activité dans l'historique. La limite est de
+  <strong>2 Mo par payload</strong> (avertissement à 256 Ko) et de 51 200 événements par run. Le livre
+  en octets, les arbres <code>*html.Node</code>, les placeholders avec leur nœud : rien de cela ne passe.
+  C'est le motif <em>claim-check</em> : le contenu reste dans un espace de travail sur disque, les
+  activités s'échangent des références et des compteurs.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    subgraph hist["Traverse Temporal — petit, sérialisable"]
+        M["Manifest<br/>45 chapitres × id, href, n, chars"]
+        P["Plan de chapitre<br/>ids réutilisés / frais"]
+        R["RefineBatch in<br/>ids + tail 1 200 runes"]
+        U["Résultats<br/>tokens, chars, hits, violations"]
+    end
+    subgraph disk["Reste sur disque — lu par les activités"]
+        E["source.epub"]
+        J["work/ch_0001.jsonl … units schéma 16.1"]
+        D["tm.sqlite · bible · llm_cache"]
+    end
+    M -. référence .-> J
+    P -. référence .-> J
+    R -. référence .-> J
+    J --> E
+</pre>
+<figcaption>Les flèches pointillées sont des références (<code>RunRef</code>, <code>ChapterID</code>, ids de segments). Aucune flèche ne porte du texte de livre, hormis le tail de contexte.</figcaption>
+</figure>
+
+<div class="widget">
+  <span class="wlabel">Budget de payload sur vol33 (45 chapitres, 4 774 segments, 101 appels LLM)</span>
+  <div class="payload">
+    <div class="pl ok"><b>~4,5 Ko</b>Manifest</div>
+    <div class="pl ok"><b>~2 Ko</b>Plan de chapitre</div>
+    <div class="pl ok"><b>~3 Ko</b>RefineBatch in</div>
+    <div class="pl ok"><b>&lt; 1 Ko</b>chaque résultat</div>
+    <div class="pl ok"><b>≈ 1 400</b>événements / livre (≈ 7 % du seuil doux)</div>
+    <div class="pl bad"><b>~1,5 Mo</b>units du livre entier — ne passe PAS</div>
+    <div class="pl bad"><b>plusieurs Mo</b>RawEPUB.Files — ne passe PAS</div>
+  </div>
+  <p style="color:var(--muted);font-size:0.8rem">Un test sur le livre fixture affirmera ces tailles contre le seuil de 256 Ko, pour attraper la dérive.</p>
+</div>
+
+<div class="card extend">
+  <span class="label">Le refactor préalable, sans Temporal (phase 1)</span>
+  <p>
+    La segmentation est déterministe : ids par position, hash du texte normalisé. Un process qui ne
+    détient que <code>{segment_id, target_text}</code> peut donc re-parser le document d'origine, re-dériver
+    les placeholders, <code>Restore</code> pour valider, et rendre. C'est <code>epub.ApplyTranslations(book, units)</code>.
+    <code>CommitChapter</code> l'utilise pour valider et persister par chapitre ; <code>RecomposeBook</code> pour
+    produire le livre. Le critère d'acceptation est l'identité octet à octet de <code>translated.epub</code>
+    avant et après, sur la fixture et sur un chapitre réel entièrement en TM.
+  </p>
+</div>
+
+<h2 id="etats">6. Les états d'un run</h2>
+
+<figure>
+<pre class="mermaid">
+stateDiagram-v2
+    [*] --> Preparing
+    Preparing --> Projecting
+    Projecting --> Failed : cap dépassé
+    Projecting --> Translating
+    Translating --> Paused : RateLimited ou signal pause
+    Paused --> Translating : timer écoulé ou signal resume
+    Paused --> Failed : attentes max atteintes
+    Translating --> Finishing : dernier chapitre commité
+    Finishing --> Completed : QA gate passée
+    Finishing --> Failed : QA gate échouée
+    Translating --> Cancelled : SIGINT → CancelWorkflow
+    Paused --> Cancelled : SIGINT → CancelWorkflow
+    Failed --> [*]
+    Cancelled --> [*]
+    Completed --> [*]
+</pre>
+<figcaption>Tous les chemins vers <code>Failed</code> et <code>Cancelled</code> passent par <code>FinishBook</code> + <code>RecordSpend</code> : la dépense est enregistrée quoi qu'il arrive.</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Interaction</th><th>Nom</th><th>Effet</th></tr></thead>
+  <tbody>
+    <tr><td>Signal</td><td><code>pause</code> / <code>resume</code></td><td>S'arrêter avant la prochaine activité / continuer. <code>resume</code> écourte aussi une attente de rate limit.</td></tr>
+    <tr><td>Query</td><td><code>progress</code></td><td><code>{State, Stage, Chapter, Chapters, SegmentsDone, TMHits, CostUSD}</code> — sondée par le CLI toutes les ~500 ms pour la barre.</td></tr>
+    <tr><td>Cancel</td><td><code>CancelWorkflow</code></td><td>Lié à SIGINT dans le CLI ; déclenche le chemin de nettoyage.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="politiques">7. Timeouts, retries, idempotence</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Activité</th><th>StartToClose</th><th>Heartbeat</th><th>Tentatives, backoff</th><th>Non réessayable</th></tr></thead>
+  <tbody>
+    <tr><td><code>PrepareBook</code></td><td>5 min</td><td>—</td><td>3</td><td><code>epub.Err*</code> — une archive invalide ne s'arrange pas</td></tr>
+    <tr><td><code>ProjectCost</code>, <code>ResolveChapter</code>, <code>CommitChapter</code>, <code>PriceRun</code></td><td>2 min</td><td>—</td><td>3</td><td>—</td></tr>
+    <tr><td><code>DraftChapter</code></td><td>10 min</td><td>30 s</td><td>3, 1 s → 30 s ×2</td><td><code>RateLimited</code> (→ pause), 4xx hors 429</td></tr>
+    <tr><td><code>RefineBatch</code></td><td>15 min</td><td>60 s</td><td>3, 5 s → 2 min ×2</td><td><code>RateLimited</code> (→ pause) ; un refus est <em>retourné</em> (dégradation), pas levé</td></tr>
+    <tr><td><code>EscalateChapter</code></td><td>30 min</td><td>60 s</td><td>3</td><td>—</td></tr>
+    <tr><td><code>UpdateBible</code></td><td>10 min</td><td>60 s</td><td>3</td><td><code>narrative.ErrInvalidBible</code></td></tr>
+    <tr><td><code>RecomposeBook</code>, <code>CheckEPUB</code></td><td>10 min</td><td>—</td><td>2</td><td>—</td></tr>
+    <tr><td><code>FinishBook</code>, <code>RecordSpend</code></td><td>1 min</td><td>—</td><td>5</td><td>—</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="two">
+  <div class="card note">
+    <span class="label">Idempotence — une activité peut tourner deux fois</span>
+    <ul>
+      <li><code>TM.Save</code> : upsert sur <code>source_hash</code>, déjà idempotent.</li>
+      <li><code>RecordRun</code> : une ligne par tentative <em>voulue</em> ; une activité réessayée n'en est pas une → colonne <code>attempt_key</code> = <code>WorkflowID/RunID</code>, index unique, <code>INSERT OR IGNORE</code>.</li>
+      <li><code>WriteArtifacts</code> : écrase, idempotent.</li>
+      <li><code>DraftChapter</code> réessayé repaie les caractères NMT — contrat actuel de <code>RetryingTranslator</code>.</li>
+      <li><code>RefineBatch</code> réessayé est servi par <code>llm_cache.sqlite</code> si la tentative précédente avait obtenu une réponse.</li>
+    </ul>
+  </div>
+  <div class="card note">
+    <span class="label">Déterminisme — les règles du package <code>workflow</code></span>
+    <ul>
+      <li><code>workflow.Now</code>, jamais <code>time.Now</code> ; <code>workflow.SideEffect</code> pour tout aléa.</li>
+      <li>Aucune I/O, aucun appel réseau, aucune goroutine.</li>
+      <li>Aucune itération de map qui influence une décision.</li>
+      <li>Pas de mise à jour du worker en cours de tome ; sinon <code>workflow.GetVersion</code>.</li>
+      <li>Un test de <em>replay</em> sur un historique enregistré du livre fixture tourne en CI.</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="code">7 bis. Découpage du code et couplage à Temporal</h2>
+
+<p>
+  Exigence posée : pouvoir demain changer de moteur — ou revenir à aucun — en réécrivant <strong>un seul
+  package</strong>. Réponse : ports et adaptateurs, avec <em>tout</em> le métier du côté sans Temporal,
+  <strong>y compris le flux de contrôle</strong>. Le workflow Temporal n'est qu'une ligne :
+  <code>return pipeline.RunBook(steps, runtime, in)</code>.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    subgraph adapter["internal/temporal — seul importeur du SDK"]
+        direction TB
+        WF["TranslateBook(workflow.Context)<br/>= RunBook(steps, runtime, in)"]
+        ST["Steps → ExecuteActivity"]
+        RT["Runtime → NewTimer, signaux,<br/>DisconnectedContext, ChildWorkflow"]
+        A["activités = méthodes de Stages"]
+    end
+    subgraph core["pipeline — sans Temporal"]
+        direction TB
+        F["RunBook / RunSeries<br/>le flux, écrit une fois"]
+        P["ports : Steps · Runtime"]
+        S["Stages<br/>les corps d'activité"]
+        D["epub · segment · tm · translate<br/>literary · qa · cost · narrative"]
+        F --> P
+        S --> D
+    end
+    subgraph inproc["pipeline/inprocess.go — tests, portabilité"]
+        direction TB
+        IS["Steps → appel direct de Stages"]
+        IR["Runtime → time.Timer, channels"]
+    end
+    WF --> F
+    ST -. implémente .-> P
+    RT -. implémente .-> P
+    A --> S
+    IS -. implémente .-> P
+    IR -. implémente .-> P
+    IS --> S
+</pre>
+<figcaption>Deux implémentations des mêmes ports. Le CLI livre la première ; les tests et la portabilité reposent sur la seconde.</figcaption>
+</figure>
+
+<div class="two">
+  <div class="card note">
+    <span class="label">Les deux ports — c'est tout ce que le flux connaît du moteur</span>
+<pre><code>// Steps : une méthode par activité, sans contexte —
+// l'adaptateur le possède (workflow.Context n'est
+// pas un context.Context).
+type Steps interface {
+    PrepareBook(BookInput) (Manifest, error)
+    ProjectCost(ProjectInput) (Projection, error)
+    ResolveChapter(ResolveInput) (ChapterPlan, error)
+    DraftChapter(DraftInput) (DraftResult, error)
+    EscalateChapter(EscalateInput) (EscalateResult, error)
+    RefineBatch(RefineInput) (RefineResult, error)
+    CommitChapter(CommitInput) (CommitResult, error)
+    UpdateBible(BibleInput) (BibleResult, error)
+    RecomposeBook(RunRef) (RecomposeResult, error)
+    CheckEPUB(CheckInput) (CheckResult, error)
+    FinishBook(FinishInput) (qa.Report, error)
+    RecordSpend(SpendInput) error
+    PriceRun(PriceInput) (float64, error)
+}
+
+// Runtime : ce dont le flux a besoin d'un moteur,
+// et rien de plus.
+type Runtime interface {
+    Now() time.Time
+    WaitResume(d time.Duration) (resumed bool, err error)
+    Paused() bool
+    Cancelled() bool
+    Detached() Runtime
+    Report(Progress) // le flux publie ; in-process → barre, Temporal → query
+    RunBook(BookInput) (RunResult, error) // série : un enfant par tome
+}</code></pre>
+  </div>
+  <div class="card note">
+    <span class="label">La nouvelle arborescence</span>
+<pre><code>internal/
+  pipeline/                sans Temporal
+    types.go     BookInput · Manifest · ChapterPlan
+                 Projection · RunResult · Progress
+    stages.go    Stages : les corps d'activité
+    ports.go     Steps · Runtime
+    book.go      RunBook — remplace Orchestrator.Run
+                 et les boucles de mode.go
+    series.go    RunSeries
+    modes.go     nmtMode · literaryMode (recettes)
+    inprocess.go Steps + Runtime in-process
+    workspace.go units.jsonl par chapitre
+    plan.go      Plan, pour estimate (inchangé)
+  epub/          ApplyTranslations — nouveau
+  temporal/                l'adaptateur
+    client.go · worker.go · workflow.go
+    steps.go · runtime.go · policy.go · errors.go
+  commandexec/   worker.go · run/batch → client
+                 estimate → pipeline.Plan
+  config/        TEMPORAL_ADDRESS · _NAMESPACE
+                 · _TASK_QUEUE</code></pre>
+    <p style="color:var(--muted);font-size:0.8rem;margin-top:0.6rem">
+      La règle d'import est <strong>vérifiée, pas espérée</strong> : une règle <code>depguard</code> dans
+      <code>.golangci.yml</code> interdit <code>go.temporal.io/**</code> partout sauf dans <code>internal/temporal</code>
+      et <code>internal/commandexec</code>. <code>golangci-lint</code> garde déjà chaque commit.
+    </p>
+  </div>
+</div>
+
+<div class="card warn">
+  <span class="label">Le compromis, énoncé</span>
+  <p>
+    Les ports sont un vocabulaire fixe. Une fonctionnalité Temporal que le flux voudrait (un Update, un
+    appel Nexus) passe d'abord par une méthode de port. Pour une pipeline séquentielle de 13 étapes c'est
+    le bon prix ; l'alternative — écrire le flux en appels <code>workflow.*</code> — c'est ~300 lignes à
+    réécrire à chaque changement de moteur, <em>avec</em> tous les tests qui les exercent. Ce que l'adaptateur
+    n'abstrait <strong>pas</strong> : les préoccupations propres à Temporal (codecs de payload, files, options du
+    worker, <code>GetVersion</code>, replay). Elles vivent dans <code>internal/temporal</code> et partent avec lui.
+  </p>
+</div>
+
+<h3>Étendre : ajouter un mode de traduction (ex. LLM seul)</h3>
+
+<p>
+  Un mode est une <strong>recette sur les <code>Steps</code> existants</strong>, jamais un nouveau workflow.
+  <code>RunBook</code> choisit un <code>Mode</code> d'après <code>BookInput.Mode</code>, que le workflow transmet sans le lire.
+  <code>nmt</code> = Resolve → Draft → Escalate → Commit ; <code>literary</code> = Resolve → Draft → RefineBatch × n → Commit ;
+  <code>llm</code> = Resolve → RefineBatch × n <em>sans brouillon</em> → Commit.
+</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Couche</th><th>Changement</th><th>Taille</th><th>Touche l'adaptateur ?</th></tr></thead>
+  <tbody>
+    <tr><td><code>literary</code></td><td>Variante de prompt sans brouillon (<code>DraftText</code> optionnel, <code>RefineInput.HasDraft</code>)</td><td>~40 lignes + tests de décodage</td><td>non</td></tr>
+    <tr><td><code>pipeline</code></td><td>Struct <code>llmMode</code> ; <code>Project</code> réutilise le scénario <code>full-llm</code> déjà présent (<code>cost/estimate.go:296</code>)</td><td>~100 lignes + scénarios <code>RunBook</code></td><td>non</td></tr>
+    <tr><td><code>internal/temporal</code></td><td>Rien — aucune nouvelle activité, <code>RefineBatch</code> accepte un brouillon vide</td><td>0</td><td>—</td></tr>
+    <tr><td><code>cli</code></td><td>Valeur <code>--mode llm</code></td><td>~10 lignes</td><td>non</td></tr>
+    <tr><td>docs</td><td><code>utilisation.html</code> §6, <code>comprendre-le-projet.html</code> §1 et recette 3</td><td>—</td><td>—</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>
+  Un mode qui exigerait une <em>nouvelle</em> étape coûte, côté adaptateur, une méthode de <code>Steps</code>, une
+  méthode de <code>Stages</code>, un enregistrement d'activité et une ligne de <code>policy.go</code> — ~30 lignes
+  mécaniques. <strong>Le vrai coût du mode LLM seul n'est pas le code</strong> : le filet de sécurité des
+  placeholders retombe aujourd'hui sur le brouillon NMT ; sans brouillon il retomberait sur la source
+  anglaise. Soit on re-tente le segment dégradé seul, soit on demande un brouillon à la demande pour les
+  seuls ids dégradés (<code>DraftChapter</code> sur un sous-ensemble — l'étape existe). À trancher quand ce
+  mode se fera ; <code>untranslated_segments</code> en QA attrape le cas dans les deux options.
+</p>
+
+<h2 id="plan">8. Le plan en six phases</h2>
+
+<p>Chaque phase est une PR, verte sur <code>just check</code>, et laisse l'outil utilisable. Les phases 1 et 2 ne changent rien pour l'utilisateur ; les phases 3 à 5 ajoutent le chemin Temporal derrière <code>EPUB_TRANSLATOR_ENGINE=temporal</code> ; la phase 6 le rend seul.</p>
+
+<div class="widget">
+  <span class="wlabel">Explorateur des phases — cliquez</span>
+  <div class="phases" id="phase-btns"></div>
+  <div class="phasebox" id="phase-box"></div>
+</div>
+
+<h2 id="tests">8 bis. Les tests, lot par lot</h2>
+
+<p>
+  Cinq niveaux, du plus rapide au plus lourd. Les quatre premiers tournent sans serveur Temporal et
+  entrent dans <code>just check</code> ; le cinquième démarre le dev server comme <em>service</em> de la CI
+  (le conteneur boote en ~2 s) et se <code>skip</code> en local si <code>:7233</code> est injoignable — le
+  motif déjà en place pour <code>ollamaHost</code>. <strong>L'API de test du SDK n'est utilisée qu'au niveau 3</strong>,
+  sur le seul package qui importe le SDK.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    L5["5 · Intégration — dev server + nmt-devserver + llmtest : fixture de bout en bout, kill du worker, 429 injecté"]
+    L4["4 · Replay — WorkflowReplayer sur un historique enregistré : attrape le non-déterminisme, y compris dans RunBook"]
+    L3["3 · Adaptateur — testsuite du SDK sur internal/temporal : câblage seulement, options, timer, signal, erreurs, query"]
+    L2["2 · Flux — pipeline.RunBook sur le Runtime in-process avec un Steps factice : Go pur, sommes, pause, cancel, erreurs"]
+    L1["1 · Étapes — tests existants de epub, segment, tm, literary, qa : inchangés, la logique ne bouge pas de package"]
+    L5 --> L4 --> L3 --> L2 --> L1
+</pre>
+<figcaption>Les scénarios métier vivent au niveau 2, sans SDK. Le niveau 3 ne vérifie que la traduction des ports vers Temporal.</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Lot</th><th>Ce qu'on prouve</th><th>Comment</th><th>Tests existants touchés</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>1 · Découpler</td>
+      <td>Re-dériver les placeholders depuis <code>{id, target}</code> rend le <em>même</em> livre ; le flux se comporte comme <code>Run</code>.</td>
+      <td><code>epub.ApplyTranslations</code> en table-driven : aller-retour identité (source appliquée comme cible → octets identiques), id inconnu → sentinelle, placeholder manquant → segment laissé en source. <code>workspace</code> : aller-retour <code>units.jsonl</code>, ligne corrompue → erreur. <strong>Niveau 2</strong> : les scénarios d'<code>orchestrator_test.go</code> portés sur <code>RunBook</code> + runtime in-process (sommes, plafond refusé sans <code>DraftChapter</code>, cancel → <code>FinishBook</code> + <code>RecordSpend</code>, erreur d'étape → code de sortie). <strong>Golden</strong> : sha256 de <code>translated.epub</code> et <code>report.json</code> de la fixture, figé <em>avant</em> le refactor.</td>
+      <td><code>orchestrator_test.go</code> (826 lignes) : ses scénarios déménagent dans <code>book_test.go</code> ; le fichier part avec <code>Run</code>.</td>
+    </tr>
+    <tr>
+      <td>2 · Infra</td>
+      <td>Le service démarre, le CLI le voit, rien d'autre ne change.</td>
+      <td><code>preflight</code> : sonde <code>:7233</code> joignable / injoignable. Smoke manuel <code>just up</code> → UI <code>:8233</code>. <code>just docs-audit</code> pour les trois variables.</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>3 · Worker + NMT</td>
+      <td>L'adaptateur dispatche, traduit et sert ce que le flux attend.</td>
+      <td><strong>Niveau 3</strong> (<code>testsuite</code>) : chaque méthode de <code>Steps</code> atteint l'activité du même nom avec ses options ; <code>WaitResume</code> revient sur timer et sur signal ; mapping des erreurs dans les deux sens ; la query renvoie <code>Progress()</code>. <strong>Niveau 4</strong> : premier historique enregistré. <strong>Niveau 5</strong> : fixture de bout en bout ; <em>kill du worker</em> = annuler le contexte du premier worker au milieu, démarrer un second, vérifier que le run finit et que le compteur de requêtes du <code>nmt-devserver</code> égale un run propre. Taille de payload : chaque entrée/sortie sérialisée &lt; 256 Ko. <code>depguard</code> interdit le SDK hors de l'adaptateur.</td>
+      <td>Aucun supprimé. <code>RetryingTranslator</code> reste testé jusqu'au lot 6.</td>
+    </tr>
+    <tr>
+      <td>4 · Littéraire + 429</td>
+      <td>Un 429 met en pause, reprend <em>le même lot</em>, et ne fait pas payer les lots réussis.</td>
+      <td><strong>Niveau 2</strong>, Go pur : <code>RefineBatch</code> factice renvoie <code>RateLimited</code> au 3<sup>e</sup> appel puis réussit ; le <code>WaitResume</code> in-process est nourri par un channel de test ; assertions : <code>paused</code> dans <code>Progress()</code>, appels = run propre + 1, tokens = run propre. Attentes max → échec. <code>pause</code>/<code>resume</code> hors 429. <strong>Niveau 5</strong> : <code>llmtest</code> renvoie 429 au N<sup>e</sup> appel — le test d'intégration manquant de la session 18.</td>
+      <td><code>literary/translator_test.go</code> (739 lignes) inchangé : le découpage des lots reste dans le package.</td>
+    </tr>
+    <tr>
+      <td>5 · Série</td>
+      <td>Les tomes s'enchaînent dans l'ordre, un échec n'arrête pas la série.</td>
+      <td><strong>Niveau 2</strong> : <code>RunSeries</code> avec un <code>Runtime.RunBook</code> factice ; ordre ; un enfant échoue → le parent continue et le résumé le compte. <strong>Niveau 3</strong> : le port <code>RunBook</code> → <code>ExecuteChildWorkflow</code>.</td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>6 · Coupure</td>
+      <td>Rien de ce que le code supprimé prouvait ne reste sans preuve.</td>
+      <td><code>retry_test.go</code> part avec <code>RetryingTranslator</code> ; <code>Plan</code> et ses tests restent pour <code>estimate</code> ; <code>inprocess.go</code> reste comme runtime du niveau 2.</td>
+      <td>Supprimés avec le code qu'ils couvraient — jamais ré-épinglés sur le nouveau texte.</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<div class="card key">
+  <span class="label">Ce que le niveau 2 permet, et qui manquait</span>
+  <p>
+    Le flux tourne sur un <code>Runtime</code> in-process dont le timer est un channel : un cooldown de
+    30 min se « saute » en fermant le channel, un <code>resume</code> s'envoie depuis le test. Le scénario
+    « 429 au milieu d'un tome → pause → reprise → même facture » — que la session 18 a laissé sans test
+    parce qu'il exigeait un vrai serveur et de vraies minutes — devient un test Go ordinaire de quelques
+    millisecondes, sans SDK. Et parce qu'il tourne aussi <em>dans</em> le workflow, le test de replay
+    (niveau 4) garantit qu'il reste déterministe.
+  </p>
+</div>
+
+<h2 id="invariants">9. Les invariants qui ne bougent pas</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Invariant</th><th>Où il vit aujourd'hui</th><th>Où il vivra</th></tr></thead>
+  <tbody>
+    <tr><td>Persister en TM <strong>seulement après</strong> un <code>Restore</code> accepté</td><td><code>mode.go:344-368</code></td><td>Dans <code>CommitChapter</code>, une seule activité — jamais séparés</td></tr>
+    <tr><td>Un brouillon n'est un hit que pour le mode dont c'est la sortie</td><td><code>translationMode.ReusesDrafts</code></td><td>Paramètre <code>ReusesDrafts</code> de <code>ResolveChapter</code> et <code>PersistDrafts</code> de <code>DraftChapter</code></td></tr>
+    <tr><td>Le mode littéraire ne persiste jamais un brouillon</td><td><code>draftSegments</code></td><td>Idem, <code>PersistDrafts=false</code></td></tr>
+    <tr><td>La dépense est enregistrée même en échec</td><td><code>defer recordSpend</code></td><td>Nettoyage sous contexte déconnecté</td></tr>
+    <tr><td>Deux projections : plafond sur le restant, économie sur le livre entier</td><td><code>orchestrator.go:154-163</code></td><td><code>ProjectCost</code> retourne les deux</td></tr>
+    <tr><td>La bible est une entrée figée ; le store assigne sa version</td><td><code>updateBible</code></td><td><code>UpdateBible</code>, boucle <code>SaveIfVersion</code> incluse</td></tr>
+    <tr><td>Un 429 n'est pas dégradable</td><td><code>translator.go:194-197</code></td><td>Erreur non réessayable <code>RateLimited</code> → pause du workflow</td></tr>
+    <tr><td><code>estimate</code> ne requiert ni clé ni service</td><td><code>Orchestrator.Plan</code></td><td>Inchangé — <code>Plan</code> survit à la coupure</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="decisions">10. Les décisions — toutes tranchées le 10 septembre 2026</h2>
+
+<ol>
+  <li><strong>Plafond dépassé</strong> → <span class="badge ok">décidé</span> échouer comme aujourd'hui (<code>ErrBudgetExceeded</code> avant tout appel). Pas de signal <code>approve-budget</code>.</li>
+  <li><strong>Cooldown du rate limit</strong> → <span class="badge ok">décidé</span> 30 min, doublant à chaque attente consécutive, plafond 5 h (fenêtre du CLI Claude).</li>
+  <li><strong><code>run</code> bloquant ou <code>--detach</code></strong> → <span class="badge ok">décidé</span> bloquant : une commande, la barre de progression nourrie par la query <code>progress</code>, un code de sortie. Le run survit quand même au CLI puisqu'il vit dans le worker. Pas de <code>--detach</code> dans ce RFC.</li>
+  <li><strong>Files de tâches</strong> → <span class="badge ok">décidé</span> une seule, <code>epub-translator</code>.</li>
+  <li><strong>Temporal Schedules</strong> → <span class="badge ok">décidé</span> après la phase 5, seulement si le besoin apparaît.</li>
+</ol>
+
+<footer>Compagnon du RFC 0009 · généré le 10 septembre 2026 · les numéros de ligne renvoient au commit <code>8805606</code>.</footer>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true, theme: 'dark',
+    themeVariables: { background: '#151824', primaryColor: '#252840', primaryTextColor: '#e2e4f0', primaryBorderColor: '#2a2d3e', lineColor: '#8b8fa8', secondaryColor: '#1a1d27', tertiaryColor: '#1f2f3a', fontFamily: "'SF Mono','Fira Code',ui-monospace,monospace", fontSize: '12px' },
+    flowchart: { curve: 'basis', padding: 14, wrappingWidth: 420 }, sequence: { actorMargin: 40, width: 150 }
+  });
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function $(id) { return document.getElementById(id); }
+
+  /* ── 3. Cycle de vie d'un run ───────────────────────────────────── */
+  // paid: true when the activity calls a provider. group: visual separator row.
+  var RUN = [
+    { n: 'PrepareBook', d: 'extract · parse · segment' },
+    { n: 'ProjectCost', d: 'TM + ledger → plafonds' },
+    { g: 'chapitre 1' },
+    { n: 'ResolveChapter', d: 'TM lookups' }, { n: 'DraftChapter', d: 'NMT, 1 appel', paid: true },
+    { n: 'RefineBatch 1/2', d: 'LLM', paid: true }, { n: 'RefineBatch 2/2', d: 'LLM', paid: true },
+    { n: 'CommitChapter', d: 'restore → persist' },
+    { g: 'chapitre 2' },
+    { n: 'ResolveChapter', d: 'TM lookups' }, { n: 'DraftChapter', d: 'NMT, 1 appel', paid: true },
+    { n: 'RefineBatch 1/2', d: 'LLM', paid: true }, { n: 'RefineBatch 2/2', d: 'LLM', paid: true },
+    { n: 'CommitChapter', d: 'restore → persist' },
+    { g: 'chapitre 3' },
+    { n: 'ResolveChapter', d: 'TM lookups' }, { n: 'DraftChapter', d: 'NMT, 1 appel', paid: true },
+    { n: 'RefineBatch 1/1', d: 'LLM', paid: true },
+    { n: 'CommitChapter', d: 'restore → persist' },
+    { g: 'fin de run' },
+    { n: 'RecomposeBook', d: 'ApplyTranslations' }, { n: 'CheckEPUB', d: 'epubcheck' },
+    { n: 'FinishBook', d: 'QA + artefacts' }, { n: 'RecordSpend', d: 'ledger, idempotent' }
+  ];
+  var runEls = [], runTimer = null, runIdx = 0, runPaid = 0, runReplayed = 0, runEvents = 0, runDead = false, runCompleted = [];
+  var stagesBox = $('run-stages'), hist = $('run-history');
+
+  function buildRun() {
+    stagesBox.innerHTML = ''; runEls = [];
+    RUN.forEach(function (s) {
+      var el = document.createElement('div');
+      if (s.g) { el.className = 'stage group'; el.textContent = s.g; }
+      else { el.className = 'stage'; el.innerHTML = '<span class="sname">' + s.n + '</span>' + s.d; }
+      stagesBox.appendChild(el); runEls.push(el);
+    });
+  }
+  function log(cls, text) {
+    var d = document.createElement('div'); d.className = cls; d.textContent = text;
+    hist.appendChild(d); hist.scrollTop = hist.scrollHeight;
+  }
+  function ev(n) { runEvents += n; $('run-events').textContent = runEvents; }
+  function setState(s) { var el = $('run-state'); el.textContent = s; el.className = 'state ' + s; }
+  function runReset() {
+    clearInterval(runTimer); runTimer = null; runIdx = 0; runPaid = 0; runReplayed = 0; runEvents = 0; runDead = false; runCompleted = [];
+    buildRun(); hist.innerHTML = ''; setState('idle');
+    $('run-paid').textContent = '0'; $('run-replayed').textContent = '0'; $('run-events').textContent = '0';
+    $('run-play').disabled = false; $('run-kill').disabled = true;
+  }
+  function runTick() {
+    if (runIdx >= RUN.length) {
+      clearInterval(runTimer); runTimer = null; setState('completed');
+      log('ok', 'WorkflowExecutionCompleted → RunResult, exit 0'); ev(1); $('run-kill').disabled = true; return;
+    }
+    var s = RUN[runIdx], el = runEls[runIdx];
+    if (s.g) { runIdx++; return runTick(); }
+    if (runCompleted[runIdx]) {
+      el.className = 'stage replay'; runReplayed++; $('run-replayed').textContent = runReplayed;
+      log('sys', 'replay  ' + s.n + ' — résultat lu dans l\'historique, 0 appel');
+      runIdx++; return;
+    }
+    for (var i = 0; i < runIdx; i++) if (runEls[i].className === 'stage lit') runEls[i].className = 'stage done';
+    el.className = 'stage lit';
+    log('ev', 'ActivityTaskScheduled  ' + s.n); ev(2);
+    if (s.paid) { runPaid++; $('run-paid').textContent = runPaid; }
+    runCompleted[runIdx] = true;
+    setTimeout(function () { if (!runDead) { el.className = 'stage done'; log('ok', 'ActivityTaskCompleted  ' + s.n); } }, reduce ? 0 : 420);
+    runIdx++;
+  }
+  $('run-play').addEventListener('click', function () {
+    if (runTimer) return;
+    if (runIdx === 0) { log('ev', 'WorkflowExecutionStarted  TranslateBook lumen@vol33'); ev(1); }
+    setState('running'); $('run-play').disabled = true; $('run-kill').disabled = false;
+    if (reduce) { while (runIdx < RUN.length) runTick(); runTick(); return; }
+    runTimer = setInterval(runTick, 650);
+  });
+  $('run-kill').addEventListener('click', function () {
+    if (!runTimer) return;
+    clearInterval(runTimer); runTimer = null; runDead = true; setState('dead');
+    // The in-flight activity is lost: un-complete it so it is re-executed, not replayed.
+    var inflight = runIdx - 1;
+    if (inflight >= 0 && !RUN[inflight].g) { runCompleted[inflight] = false; runEls[inflight].className = 'stage failed'; if (RUN[inflight].paid) { /* the provider may have answered: the completion cache absorbs the retry */ } }
+    log('bad', 'worker mort — SIGKILL. L\'historique, lui, est dans Temporal.');
+    log('warn', 'ActivityTaskTimedOut  ' + RUN[inflight].n + ' (heartbeat) → sera relancée');
+    $('run-kill').disabled = true;
+    setTimeout(function () {
+      log('sys', 'worker redémarré — WorkflowTaskScheduled → replay de l\'historique…');
+      runDead = false; runIdx = 0; setState('running'); $('run-kill').disabled = false;
+      runEls.forEach(function (e, i) { if (!RUN[i].g) e.className = 'stage'; });
+      runTimer = setInterval(runTick, 260);
+      var fast = setInterval(function () {
+        // once the replay catches up with the first non-completed step, slow down to normal pace
+        if (runIdx >= RUN.length || (!RUN[runIdx].g && !runCompleted[runIdx])) {
+          clearInterval(fast); clearInterval(runTimer); runTimer = setInterval(runTick, 650);
+          log('sys', 'replay terminé — reprise à ' + RUN[runIdx].n);
+        }
+      }, 50);
+    }, reduce ? 0 : 1400);
+  });
+  $('run-reset').addEventListener('click', runReset);
+  runReset();
+
+  /* ── 4. Un chapitre, lot par lot, avec un 429 ────────────────────── */
+  var BATCHES = 4, bEls = [], bIdx = 0, bTimer = null, bPaused = false, inject429 = false, paidToday = 0, paidTemporal = 0, cdTimer = null, cdLeft = 0;
+  var bb = $('batch-boxes');
+  function bState(s) { var el = $('batch-state'); el.textContent = s; el.className = 'state ' + s; }
+  function buildBatches() {
+    bb.innerHTML = ''; bEls = [];
+    for (var i = 1; i <= BATCHES; i++) {
+      var el = document.createElement('div'); el.className = 'batch';
+      el.innerHTML = '<b>RefineBatch ' + i + '/' + BATCHES + '</b>25 segments · prev tail 1 200 runes';
+      bb.appendChild(el); bEls.push(el);
+    }
+  }
+  function cmp() { $('cmp-today').textContent = paidToday; $('cmp-temporal').textContent = paidTemporal; }
+  function batchReset() {
+    clearInterval(bTimer); bTimer = null; clearInterval(cdTimer); cdTimer = null;
+    bIdx = 0; bPaused = false; inject429 = false; paidToday = 0; paidTemporal = 0; cmp();
+    buildBatches(); bState('idle'); $('batch-wait').style.display = 'none'; $('batch-bar').style.display = 'none';
+    $('batch-play').disabled = false; $('batch-429').disabled = true; $('batch-resume').disabled = true;
+  }
+  function finishBatch(i) { bEls[i].className = 'batch done'; }
+  function batchTick() {
+    if (bPaused) return;
+    if (bIdx >= BATCHES) {
+      clearInterval(bTimer); bTimer = null; bState('completed'); $('batch-429').disabled = true;
+      bEls.forEach(function (e) { if (e.className === 'batch lost') e.className = 'batch done'; });
+      return;
+    }
+    var el = bEls[bIdx];
+    if (inject429 && bIdx === 2) {
+      inject429 = false; // a 429 answer carries no tokens: it is not billed in either column
+      el.className = 'batch paused'; bPaused = true; bState('paused');
+      // Today: the run fails; batches 1-2 are lost and will be paid again on relaunch.
+      bEls[0].className = 'batch lost'; bEls[1].className = 'batch lost';
+      paidToday += 2; cmp();
+      $('batch-wait').style.display = ''; $('batch-bar').style.display = ''; $('batch-resume').disabled = false; $('batch-429').disabled = true;
+      cdLeft = 30 * 60;
+      cdTimer = setInterval(function () {
+        cdLeft -= reduce ? 30 * 60 : 45; if (cdLeft < 0) cdLeft = 0;
+        var m = Math.floor(cdLeft / 60), s = cdLeft % 60;
+        $('batch-cd').textContent = (m < 10 ? '0' : '') + m + ':' + (s < 10 ? '0' : '') + s;
+        $('batch-bar').firstChild.style.width = (100 * (1 - cdLeft / (30 * 60))) + '%';
+        if (cdLeft === 0) resumeBatch('timer écoulé');
+      }, 90);
+      return;
+    }
+    el.className = 'batch lit'; paidToday++; paidTemporal++; cmp();
+    (function (i) { setTimeout(function () { if (!bPaused || i !== bIdx - 1) finishBatch(i); }, reduce ? 0 : 500); })(bIdx);
+    bIdx++;
+  }
+  function resumeBatch(why) {
+    if (!bPaused) return;
+    clearInterval(cdTimer); cdTimer = null; bPaused = false; bState('running');
+    $('batch-wait').style.display = 'none'; $('batch-bar').style.display = 'none'; $('batch-resume').disabled = true;
+    // Temporal re-executes the SAME batch; the lost ones stay lost only in the "today" column.
+    bEls[2].className = 'batch'; bEls[0].className = 'batch done'; bEls[1].className = 'batch done';
+    if (reduce) { while (bIdx < BATCHES) batchTick(); batchTick(); }
+  }
+  $('batch-play').addEventListener('click', function () {
+    if (bTimer) return; bState('running'); $('batch-play').disabled = true; $('batch-429').disabled = false;
+    if (reduce) { while (bIdx < BATCHES) batchTick(); batchTick(); return; }
+    bTimer = setInterval(batchTick, 900);
+  });
+  $('batch-429').addEventListener('click', function () { inject429 = true; $('batch-429').classList.add('active'); });
+  $('batch-resume').addEventListener('click', function () { resumeBatch('signal resume'); });
+  $('batch-reset').addEventListener('click', batchReset);
+  batchReset();
+
+  /* ── 8. Explorateur des phases ──────────────────────────────────── */
+  var PHASES = [
+    { t: '1 · Découpler', add: ['epub.ApplyTranslations(book, units)', 'pipeline/workspace.go — units.jsonl par chapitre', 'pipeline.Stages : Orchestrator.Run / mode.go découpés en méthodes à entrées-sorties sérialisables', 'ports Steps + Runtime, RunBook comme flux, modes nmt/literary en recettes', 'inprocess.go : le CLI tourne dessus jusqu\'au lot 6'], del: ['Orchestrator.Run et les boucles de mode.go, remplacés par RunBook'], test: 'niveau 1 : ApplyTranslations table-driven (identité aller-retour, id inconnu, placeholder manquant), workspace aller-retour · niveau 2 : scénarios d\'orchestrator_test.go portés sur RunBook + runtime in-process · golden sha256 de la fixture figé avant refactor', crit: 'translated.epub et report.json identiques à l\'octet sur la fixture ; chapitre 97 de vol33 (100 % TM) identique. Aucune dépendance ajoutée, aucun import Temporal.' },
+    { t: '2 · Infra', add: ['service temporal dans docker-compose (start-dev, --db-filename, :7233/:8233, tag épinglé)', 'just temporal-up/down repliés dans up/down', 'preflight sonde 7233', 'EPUB_TRANSLATOR_TEMPORAL_ADDRESS / _NAMESPACE / _TASK_QUEUE', 'DEPENDENCIES.md : go.temporal.io/sdk'], del: [], test: 'sonde preflight joignable / injoignable · smoke just up → UI :8233 · docs-audit', crit: 'just up laisse l\'UI joignable ; estimate ne dépend de rien de neuf.' },
+    { t: '3 · Worker + NMT', add: ['internal/temporal : client, worker, adaptateurs Steps/Runtime, policy, mapping d\'erreurs', 'règle depguard : SDK interdit hors de l\'adaptateur', 'sous-commande worker', 'run --mode nmt via Temporal derrière EPUB_TRANSLATOR_ENGINE=temporal', 'query progress → barre ; SIGINT → cancel → nettoyage', 'ledger : attempt_key idempotent'], del: [], test: 'niveau 3 (testsuite) : chaque Steps atteint son activité avec ses options, WaitResume sur timer et sur signal, mapping d\'erreurs, query = Progress() · niveau 4 : premier historique enregistré · niveau 5 : fixture de bout en bout, kill du worker sans double paiement · payloads < 256 Ko', crit: 'kill -9 du worker → le run finit, compteur de requêtes NMT égal à un run propre.' },
+    { t: '4 · Littéraire + 429', add: ['RefineBatch par lot', 'signaux pause/resume', 'timer de cooldown', 'UpdateBible'], del: [], test: 'niveau 2, Go pur : RefineBatch factice renvoie RateLimited au 3e appel → paused → resume par channel → terminé, appels = run propre + 1, tokens = run propre · attentes max → échec · pause/resume · niveau 5 : llmtest 429 au Ne appel', crit: 'le test manquant de la session 18 existe et passe — sans SDK.' },
+    { t: '5 · Série', add: ['RunSeries dans pipeline ; port Runtime.RunBook → ExecuteChildWorkflow dans l\'adaptateur', 'batch via Temporal', 'batch-report.json assemblé depuis les résultats enfants'], del: [], test: 'niveau 2 : RunSeries avec Runtime.RunBook factice — ordre, un enfant échoue → parent continue, résumé exact · niveau 3 : le port → ExecuteChildWorkflow', crit: 'un historique par tome ; le parent tient dans son propre historique sans ContinueAsNew.' },
+    { t: '6 · Coupure + docs', add: ['ARCHITECTURE §5 §7 §9 §10 §13 réécrits', 'M4 réécrit autour de ce que Temporal fournit', 'utilisation.html §4 §6 §8 §11 · comprendre-le-projet.html §1 §11 §13 · README'], del: ['le runtime in-process comme moteur du CLI (inprocess.go reste, tests seulement)', 'RetryingTranslator, OnBatch, costFn', 'hooks de progression dans pipeline, sonde tty', 'EPUB_TRANSLATOR_ENGINE'], test: 'retry_test.go part avec RetryingTranslator · tests de Plan conservés · inprocess.go reste le runtime du niveau 2', crit: 'un seul moteur livré ; le flux reste exécutable et testé sans lui ; just docs-audit vert.' }
+  ];
+  var pb = $('phase-btns'), pbox = $('phase-box'), cur = 0;
+  function renderPhase() {
+    var p = PHASES[cur], h = '';
+    Array.prototype.forEach.call(pb.children, function (b, i) { b.className = i === cur ? 'active' : ''; });
+    h += '<span class="lbl">Ajouté</span>' + (p.add.length ? '<ul>' + p.add.map(function (x) { return '<li class="add">+ ' + x + '</li>'; }).join('') + '</ul>' : '<div style="color:var(--muted)">—</div>');
+    h += '<span class="lbl">Supprimé</span>' + (p.del.length ? '<ul>' + p.del.map(function (x) { return '<li class="del">− ' + x + '</li>'; }).join('') + '</ul>' : '<div style="color:var(--muted)">— (le chemin in-process reste le défaut)</div>');
+    h += '<span class="lbl">Tests</span><div>' + p.test + '</div>';
+    h += '<span class="lbl">Critère d\'acceptation</span><div class="crit">' + p.crit + '</div>';
+    pbox.innerHTML = h;
+  }
+  PHASES.forEach(function (p, i) {
+    var b = document.createElement('button'); b.textContent = p.t;
+    b.addEventListener('click', function () { cur = i; renderPhase(); }); pb.appendChild(b);
+  });
+  renderPhase();
+})();
+</script>
+</body>
+</html>
