@@ -41,6 +41,7 @@ ALLOW = {
     "recipe:fmt": "covered by just check",
     "recipe:lint": "covered by just check",
     "recipe:test": "covered by just check",
+    "recipe:test-update-golden": "test-maintenance only; discoverable via just --list, not a user-facing step",
     "recipe:comet-down": "symmetric with comet-up, no distinct consequence",
     "recipe:seed-bible": "documented under its command name, style-profile",
     "recipe:batch": "documented under its command name",

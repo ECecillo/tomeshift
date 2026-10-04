@@ -103,6 +103,20 @@ preflight:
       echo "nmt endpoint health: skipped (curl or endpoint missing)"
     fi
 
+    # Temporal gRPC frontend, same non-blocking spirit as the NMT probe. Prefer
+    # nc; fall back to bash's /dev/tcp when nc is absent (Linux minimal images).
+    temporal_addr="${EPUB_TRANSLATOR_TEMPORAL_ADDRESS:-localhost:7233}"
+    temporal_host="${temporal_addr%:*}"; temporal_port="${temporal_addr##*:}"
+    if command -v nc >/dev/null; then
+      nc -z -w2 "$temporal_host" "$temporal_port" >/dev/null 2>&1 && \
+        echo "temporal frontend ($temporal_addr): ok" || \
+        echo "temporal frontend ($temporal_addr): unavailable (non-blocking, 'just temporal-up')"
+    elif (exec 3<>"/dev/tcp/$temporal_host/$temporal_port") >/dev/null 2>&1; then
+      echo "temporal frontend ($temporal_addr): ok"
+    else
+      echo "temporal frontend ($temporal_addr): unavailable (non-blocking, 'just temporal-up')"
+    fi
+
     exit $fail
 
 # Build the CLI binary to ./bin/epub-translator.
@@ -145,6 +159,19 @@ comet-up:
 # Stop the dockerized COMET-QE service (keeps the model-cache volume).
 comet-down:
     docker compose --profile eval stop comet
+
+# Start the local Temporal dev server via Docker (gRPC :7233, Web UI :8233,
+# SQLite history in the temporal-data volume). `just up` starts it too.
+temporal-up:
+    docker compose up -d temporal
+
+# Stop the Temporal dev server (keeps the temporal-data history volume).
+temporal-down:
+    docker compose stop temporal
+
+# Open the Temporal Web UI in the default browser (server must be up).
+temporal-ui:
+    open http://localhost:8233
 
 # ── Translate a book ──────────────────────────────────────────────────────────
 
@@ -308,12 +335,14 @@ compare segments out:
 docker-build:
     docker build -t epub-translator:local .
 
-# Run the containerized NMT workflow (app + nmt).
+# Run the containerized NMT workflow (Temporal dev server + app + nmt).
+# `temporal-up` runs first so the durable execution engine (RFC 0009) is up
+# before the app; the app itself does not yet depend on it (worker is phase 3).
 # Wrapped in `op run` when a secret is needed, so Compose can interpolate the
 # API keys into the app service; without it the container starts with empty
 # credentials, which is correct for the default dev-NMT workflow and wrong for
 # anything paid.
-up:
+up: temporal-up
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
@@ -341,6 +370,15 @@ test:
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
     go test ./...
+
+# Re-freeze the phase-1 golden acceptance file after a deliberate output change.
+# The golden pins translated.epub + report.json of the fixture books; a diff is
+# a real output change and must be explained in the PR, never rubber-stamped.
+test-update-golden:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    set -a; source "{{env_file}}"; set +a
+    UPDATE_GOLDEN=1 go test ./tests/integration/ -run TestRun_GoldenOutputs -count=1
 
 # Run all local fuzz tests across packages (not part of CI).
 fuzz fuzz_time="10s":

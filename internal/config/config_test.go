@@ -112,3 +112,28 @@ func TestCostModel_ReadsThePrefixTransportFromTheChatProvider(t *testing.T) {
 		})
 	}
 }
+
+func TestLoad_TemporalDefaults(t *testing.T) {
+	// Not parallel: it reads the process environment, so asserting the built-in
+	// defaults means no EPUB_TRANSLATOR_TEMPORAL_* is set for this case.
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	require.Equal(t, "localhost:7233", cfg.TemporalAddress)
+	require.Equal(t, "default", cfg.TemporalNamespace)
+	require.Equal(t, "epub-translator", cfg.TemporalTaskQueue)
+}
+
+func TestLoad_TemporalOverrides(t *testing.T) {
+	// t.Setenv forbids t.Parallel; the override must win over the default.
+	t.Setenv("EPUB_TRANSLATOR_TEMPORAL_ADDRESS", "temporal.internal:7233")
+	t.Setenv("EPUB_TRANSLATOR_TEMPORAL_NAMESPACE", "epub")
+	t.Setenv("EPUB_TRANSLATOR_TEMPORAL_TASK_QUEUE", "epub-translator-heavy")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+
+	require.Equal(t, "temporal.internal:7233", cfg.TemporalAddress)
+	require.Equal(t, "epub", cfg.TemporalNamespace)
+	require.Equal(t, "epub-translator-heavy", cfg.TemporalTaskQueue)
+}

@@ -567,6 +567,10 @@ arrière est trivial.</figcaption>
     <td>COMET-QE</td><td><code>just comet-dev</code> ou <code>just comet-up</code></td><td class="num">8000</td>
     <td>Notation sans référence. 1<sup>er</sup> lancement : ~2,3 Go de modèle. Sert à l'éval <em>et</em> à l'escalade sélective pendant un run.</td>
   </tr>
+  <tr>
+    <td>Temporal (serveur de dev)</td><td><code>just temporal-up</code> · <code>just up</code></td><td class="num">7233 · 8233</td>
+    <td>Moteur d'exécution durable des runs (RFC 0009). Stocke l'historique des workflows en SQLite (volume <code>temporal-data</code>). gRPC sur 7233 ; UI web sur <a href="http://localhost:8233">localhost:8233</a> (<code>just temporal-ui</code>). Le worker qui enregistre les workflows arrive en phase 3 — le serveur seul ne traduit rien.</td>
+  </tr>
 </table>
 </div>
 
@@ -1067,6 +1071,14 @@ EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
     <td><code>LOG_LEVEL</code></td><td><code>info</code></td>
     <td><code>debug</code> détaille le routage segment par segment dans <code>logs.ndjson</code>. Les payloads ne sont jamais journalisés.</td>
   </tr>
+  <tr>
+    <td><code>TEMPORAL_ADDRESS</code></td><td><code>localhost:7233</code></td>
+    <td>Le frontend gRPC du serveur Temporal que le CLI et le worker composent (moteur d'exécution durable, RFC 0009). <code>just up</code> démarre le serveur local ; aucun credential pour l'atteindre, et <code>estimate</code> ne le touche jamais.</td>
+  </tr>
+  <tr>
+    <td><code>TEMPORAL_NAMESPACE</code> / <code>TEMPORAL_TASK_QUEUE</code></td><td><code>default</code> / <code>epub-translator</code></td>
+    <td>Le namespace qui isole les workflows (le serveur de dev enregistre <code>default</code>) et la file de tâches que le worker écoute et sur laquelle le CLI lance les runs.</td>
+  </tr>
 </table>
 </div>
 
@@ -1218,7 +1230,7 @@ flowchart TB
 
 <h2 id="docker">11. Docker et aide-mémoire <code>just</code></h2>
 
-<h3>Compose : quatre services, trois profils</h3>
+<h3>Compose : cinq services, trois profils</h3>
 
 <div class="table-wrap">
 <table>
@@ -1227,13 +1239,14 @@ flowchart TB
   <tr><td><code>nmt</code></td><td>défaut</td><td>Le NMT de dev intégré, démarré avec l'app.</td></tr>
   <tr><td><code>libretranslate</code></td><td><code>real-nmt</code></td><td>Vrai NMT local EN→FR.</td></tr>
   <tr><td><code>comet</code></td><td><code>eval</code></td><td>Service COMET-QE. Image lourde : volontairement hors du profil par défaut.</td></tr>
+  <tr><td><code>temporal</code></td><td>défaut</td><td>Serveur Temporal de dev (RFC 0009) : gRPC <code>:7233</code>, UI web <code>:8233</code>, historique SQLite dans le volume <code>temporal-data</code>. <code>just up</code> le démarre ; l'<code>app</code> n'en dépend pas encore (worker en phase 3).</td></tr>
 </table>
 </div>
 
 <pre><code>mkdir -p books runs data
 cp &lt;votre-livre&gt;.epub books/source.epub
 just docker-build
-just up                                        <span class="cmt"># build + run app (+ nmt), sortie dans ./runs</span>
+just up                                        <span class="cmt"># build + run temporal + app (+ nmt), sortie dans ./runs</span>
 docker compose logs -f app
 just down</code></pre>
 
@@ -1254,9 +1267,10 @@ just down</code></pre>
 <div class="table-wrap">
 <table>
   <tr><th>Recette</th><th>Fait quoi</th></tr>
-  <tr><td><code>just preflight</code></td><td>Vérifie les outils et pingue l'endpoint NMT (non bloquant).</td></tr>
+  <tr><td><code>just preflight</code></td><td>Vérifie les outils et pingue les endpoints NMT et Temporal (non bloquant).</td></tr>
   <tr><td><code>just print-config-vars</code></td><td>Affiche les <code>EPUB_TRANSLATOR_*</code> réellement résolus — le premier réflexe quand « ça ne prend pas ma config ».</td></tr>
   <tr><td><code>just nmt-dev</code> · <code>just libretranslate-up</code> · <code>just comet-up</code></td><td>Démarrer les services.</td></tr>
+  <tr><td><code>just temporal-up</code> · <code>just temporal-down</code> · <code>just temporal-ui</code></td><td>Démarrer / arrêter le serveur Temporal de dev (RFC 0009) ; ouvrir son UI web sur <code>:8233</code>. <code>just up</code> le démarre déjà avec l'app.</td></tr>
   <tr><td><code>just run &lt;in.epub&gt; [outdir]</code></td><td>Traduction NMT.</td></tr>
   <tr><td><code>just literary &lt;in&gt; &lt;série&gt; [glossaire] [run-id]</code></td><td>Traduction littéraire.</td></tr>
   <tr><td><code>just estimate &lt;in.epub&gt;</code></td><td>Projection de coût.</td></tr>
@@ -1365,6 +1379,8 @@ just down</code></pre>
       o += line('NARRATIVE_PATH', './data/series.sqlite');
       o += line('LLM_CACHE_PATH', './data/llm-cache.sqlite', 'ne pas supprimer: re-runs gratuits');
     }
+    o += '\n' + head('moteur durable (Temporal, RFC 0009)');
+    o += line('TEMPORAL_ADDRESS', 'localhost:7233', 'serveur local: just up');
     if (cfg.mode === 'literary') {
       var L = LLM[cfg.llm];
       o += '\n' + head('LLM (mode littéraire)');

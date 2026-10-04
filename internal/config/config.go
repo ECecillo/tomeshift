@@ -106,6 +106,19 @@ type Config struct {
 	DailyBudgetUSD   float64 `split_words:"true" default:"5.00"`
 	MonthlyBudgetUSD float64 `split_words:"true" default:"50.00"`
 	PerBookBudgetUSD float64 `split_words:"true" default:"2.00"`
+
+	// Temporal wiring for the durable execution engine (RFC 0009). The three
+	// settings address the local dev server started by `just up`; a run needs
+	// no credential to reach it and `estimate` never does.
+	//
+	// TemporalAddress is the gRPC frontend the CLI and worker dial.
+	TemporalAddress string `split_words:"true" default:"localhost:7233"`
+	// TemporalNamespace scopes every workflow; the dev server auto-registers
+	// "default".
+	TemporalNamespace string `split_words:"true" default:"default"`
+	// TemporalTaskQueue is the queue the worker polls and the CLI starts
+	// workflows on. One queue, one activity slot, until RFC 0005 lands.
+	TemporalTaskQueue string `split_words:"true" default:"epub-translator"`
 }
 
 // Load reads the configuration from the environment.

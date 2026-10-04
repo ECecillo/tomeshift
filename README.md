@@ -274,7 +274,10 @@ just up
 ```
 
 What happens:
-- `docker compose` starts the `app` service from `docker-compose.yml`.
+- `docker compose` starts the local **Temporal dev server** (`temporal`, gRPC
+  `:7233`, Web UI `:8233`) and the `app` service from `docker-compose.yml`.
+  Temporal is the durable execution engine for `run`/`batch` (RFC 0009); its UI
+  is at http://localhost:8233 (`just temporal-ui` opens it).
 - `.env.local` is loaded into the container runtime.
 - Local folders are mounted:
   - `./books` -> `/app/books`
