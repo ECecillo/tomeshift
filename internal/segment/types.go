@@ -78,3 +78,53 @@ func SourceChars(segs []Segment) int {
 	}
 	return chars
 }
+
+// Unit is the serialisable projection of a Segment: the schema §16.1 content
+// fields minus schema_version, the run/book ids and translation_engine (the
+// engine is recorded on the TM entry, not the unit). It is what crosses process
+// boundaries; a Segment (which references a live *html.Node) never does.
+// Placeholders are reduced to their opaque tokens because the *html.Node subtree
+// they carry cannot be serialised — re-application re-segments the source
+// document to recover it.
+type Unit struct {
+	ID             string        `json:"segment_id"`
+	ChapterID      string        `json:"chapter_id"`
+	NodePath       string        `json:"node_path"`
+	SourceText     string        `json:"source_text"`
+	NormalizedText string        `json:"normalized_source_text"`
+	Hash           string        `json:"segment_hash"`
+	Placeholders   []string      `json:"placeholders"` // tokens, e.g. `<x id="1"/>`
+	TargetText     string        `json:"target_text"`
+	Status         SegmentStatus `json:"status"`
+}
+
+// Unit projects the segment onto its serialisable form, dropping the live
+// *html.Node and flattening each placeholder to its token.
+func (s Segment) Unit() Unit {
+	tokens := make([]string, len(s.Placeholders))
+	for i := range s.Placeholders {
+		tokens[i] = s.Placeholders[i].Token
+	}
+	return Unit{
+		ID:             s.ID,
+		ChapterID:      s.ChapterID,
+		NodePath:       s.NodePath,
+		SourceText:     s.SourceText,
+		NormalizedText: s.NormalizedText,
+		Hash:           s.Hash,
+		Placeholders:   tokens,
+		TargetText:     s.TargetText,
+		Status:         s.Status,
+	}
+}
+
+// SourceCharsOfUnits totals the source characters of units, counting runes
+// rather than bytes — the same billing rule as SourceChars, applied to the
+// serialisable projection that crosses process boundaries.
+func SourceCharsOfUnits(units []Unit) int {
+	chars := 0
+	for i := range units {
+		chars += utf8.RuneCountInString(units[i].SourceText)
+	}
+	return chars
+}

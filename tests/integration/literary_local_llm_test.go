@@ -80,7 +80,7 @@ func TestLiterary_LocalMistral_CompletesEverySegment(t *testing.T) {
 			defer cancel()
 
 			segs := syntheticChapter(tt.segments)
-			outcome, err := tr.TranslateChapter(ctx,
+			outcome, err := tr.TranslateBatch(ctx,
 				narrative.Bible{StyleGuide: "Prose littéraire sobre, phrases courtes."},
 				"ch_0001", segs, "", "")
 			require.NoError(t, err)

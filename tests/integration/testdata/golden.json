@@ -1,0 +1,14 @@
+{
+  "inline-markup": {
+    "translated_epub_sha256": "87d11a5ef3621de5452508b33b3b8cd7db70f128323240125058b09f0f57f6fc",
+    "report_sha256": "348019c596e5ab724920630479d48232534033d46b0e11b9244be0b9335742be"
+  },
+  "multi-chapter": {
+    "translated_epub_sha256": "e51142456b2780dd3dbd879376390a81e08f242f6ed6e650fc9cf3ee28005d98",
+    "report_sha256": "06c7daa587ef2182fe33f4e5f6a6ae9ddb1d34b26fc2aab1e23bdcfae82bfbc8"
+  },
+  "single-chapter": {
+    "translated_epub_sha256": "9d7ffde885227835498f58308562821be968336feeeba6e1f28fd3722ec5f169",
+    "report_sha256": "31b94048deabd1e61b3116b87c3fd8d777142b606fbb5e9277f2caefe27cfff7"
+  }
+}

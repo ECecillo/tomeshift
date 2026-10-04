@@ -33,18 +33,19 @@ type segmentRecord struct {
 	Status         string   `json:"status"`
 }
 
-// WriteArtifacts writes report.json and segments.jsonl into the run output dir.
-func WriteArtifacts(cfg RunConfig, result *RunResult, segments []segment.Segment) error {
-	if err := os.MkdirAll(cfg.OutputDir, 0o755); err != nil {
-		return fmt.Errorf("unable to create run output dir %q, err: %w", cfg.OutputDir, err)
+// WriteArtifacts writes report.json, metrics.json and segments.jsonl into the
+// run output dir.
+func WriteArtifacts(ref RunRef, result *RunResult, segments []segment.Segment) error {
+	if err := os.MkdirAll(ref.OutputDir, 0o755); err != nil {
+		return fmt.Errorf("unable to create run output dir %q, err: %w", ref.OutputDir, err)
 	}
-	if err := writeReport(filepath.Join(cfg.OutputDir, reportFileName), result); err != nil {
+	if err := writeReport(filepath.Join(ref.OutputDir, reportFileName), result); err != nil {
 		return err
 	}
-	if err := writeMetrics(filepath.Join(cfg.OutputDir, metricsFileName), result); err != nil {
+	if err := writeMetrics(filepath.Join(ref.OutputDir, metricsFileName), result); err != nil {
 		return err
 	}
-	return writeSegments(filepath.Join(cfg.OutputDir, segmentsFileName), cfg, segments)
+	return writeSegments(filepath.Join(ref.OutputDir, segmentsFileName), ref, segments)
 }
 
 // writeMetrics emits a flat metrics snapshot using the canonical metric names
@@ -99,7 +100,7 @@ func writeReport(path string, result *RunResult) error {
 	return nil
 }
 
-func writeSegments(path string, cfg RunConfig, segments []segment.Segment) error {
+func writeSegments(path string, ref RunRef, segments []segment.Segment) error {
 	f, err := os.Create(path)
 	if err != nil {
 		return fmt.Errorf("unable to create segments artifact %q, err: %w", path, err)
@@ -119,8 +120,8 @@ func writeSegments(path string, cfg RunConfig, segments []segment.Segment) error
 
 		rec := segmentRecord{
 			SchemaVersion:  1,
-			RunID:          cfg.RunID,
-			BookID:         cfg.BookID,
+			RunID:          ref.RunID,
+			BookID:         ref.BookID,
 			ChapterID:      seg.ChapterID,
 			SegmentID:      seg.ID,
 			NodePath:       seg.NodePath,

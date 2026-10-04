@@ -63,6 +63,52 @@ func TestBatch_SharedTMAcrossBooks(t *testing.T) {
 	require.GreaterOrEqual(t, summary.TMHits, 1, "the shared sentence must be reused cross-book")
 }
 
+// TestBatch_RunTimeoutDoesNotSkipLaterBooks pins the fix for the per-book
+// timeout context leaking into RunSeries' cancellation check: with
+// RunTimeoutSeconds set, book 1's context is cancelled in the Done hook, and
+// before the fix that cancelled context was still the shared runtime's when the
+// loop tested Cancelled() for book 2 — silently dropping every book after the
+// first while still exiting Success.
+func TestBatch_RunTimeoutDoesNotSkipLaterBooks(t *testing.T) {
+	t.Parallel()
+
+	srv := nmttest.NewServer(nil)
+	t.Cleanup(srv.Close)
+
+	inputDir := filepath.Join(t.TempDir(), "books")
+	require.NoError(t, os.MkdirAll(inputDir, 0o755))
+	writeEPUBAt(t, filepath.Join(inputDir, "a.epub"), []string{`<h1>A</h1><p>First book body.</p>`})
+	writeEPUBAt(t, filepath.Join(inputDir, "b.epub"), []string{`<h1>B</h1><p>Second book body.</p>`})
+	writeEPUBAt(t, filepath.Join(inputDir, "c.epub"), []string{`<h1>C</h1><p>Third book body.</p>`})
+
+	outputDir := filepath.Join(t.TempDir(), "runs")
+	loader := func() (config.Config, error) {
+		return config.Config{
+			NMTProvider: "http", NMTEndpoint: srv.URL,
+			LogLevel: "info", TMPath: filepath.Join(t.TempDir(), "tm.sqlite"),
+			RunTimeoutSeconds: 120, // generous; the point is that it is non-zero
+		}, nil
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := commandexec.Execute([]string{
+		"batch", "--input-dir", inputDir, "--output-dir", outputDir,
+		"--source-lang", "en", "--target-lang", "fr",
+	}, &stdout, &stderr, loader)
+
+	require.Equal(t, exitcode.Success, code, "stderr: %s", stderr.String())
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "batch-report.json"))
+	require.NoError(t, err)
+	var summary pipeline.BatchSummary
+	require.NoError(t, json.Unmarshal(data, &summary))
+	require.Equal(t, 3, summary.Books, "every book must run even with a per-book timeout set")
+	require.Equal(t, 3, summary.Succeeded)
+	for _, id := range []string{"a", "b", "c"} {
+		require.FileExists(t, filepath.Join(outputDir, id, "translated.epub"))
+	}
+}
+
 func TestBatch_WithReferenceScoring(t *testing.T) {
 	t.Parallel()
 

@@ -51,18 +51,6 @@ type Translator struct {
 	// this value. 0 uses defaultBatchSize.
 	BatchSize int
 	Glossary  *glossary.Glossary
-	// OnBatch, when set, is called once a batch's call has returned —
-	// successfully or not, since a degraded batch is as finished as a good one —
-	// with the segments it covered and the tokens it consumed. It exists so a
-	// chapter, which is a single TranslateChapter call and the longest thing a
-	// run does, can still report its advancement and its spend as it goes.
-	//
-	// The usage is that batch's own, retries included. A caller that
-	// accumulates it must NOT also add Outcome.Usage: the two are the same
-	// tokens, reported per batch and per chapter.
-	//
-	// It must not block: the batch walk is what waits on it.
-	OnBatch func(segments int, usage Usage)
 }
 
 type requestSegment struct {
@@ -96,6 +84,11 @@ type Outcome struct {
 	// why part of it went unrefined, and the named refusal and truncation
 	// errors are worth nothing if they are dropped here.
 	Degraded []error
+	// Tail is the French this batch produced, from the raw model answers in
+	// request order (unanswered segments skipped), trimmed to contextRunes. The
+	// pipeline threads it into the next batch as its preceding context, exactly
+	// as the in-chapter batch walk used to read the previous batch's targets.
+	Tail string
 }
 
 // Usage aggregates token accounting for a chapter's LLM call. CacheRead and
@@ -108,34 +101,21 @@ type Usage struct {
 	CacheCreationTokens int
 }
 
-// since returns what happened between a snapshot and u. chapterRun.usage is
-// cumulative over the chapter, so this is how one batch's own consumption is
-// recovered — a batch that retried on halved ones having paid for every
-// attempt.
-func (u Usage) since(before Usage) Usage {
-	return Usage{
-		InputTokens:         u.InputTokens - before.InputTokens,
-		OutputTokens:        u.OutputTokens - before.OutputTokens,
-		CacheReadTokens:     u.CacheReadTokens - before.CacheReadTokens,
-		CacheCreationTokens: u.CacheCreationTokens - before.CacheCreationTokens,
-	}
-}
-
 // contextRunes bounds the French already produced that is re-sent ahead of a
 // batch. The model needs enough to carry register, tense and pronouns across
 // the seam, not the whole chapter — the chapter's source is in the cached
 // prefix, so only the translation of the batch before it has to be repeated.
 const contextRunes = 1200
 
-// chapterRun carries the state shared by every LLM call made for one chapter,
-// so the recursive batch walk does not have to thread it through parameters.
+// chapterRun carries the state shared by every LLM call made for one batch (and
+// its halved retries), so the recursion does not have to thread it through
+// parameters.
 type chapterRun struct {
 	bible     narrative.Bible
 	chapterID string
 	// source is the chapter's full source text, sent once in the cacheable
 	// prefix rather than as windows around each batch.
-	source  string
-	prevCtx string
+	source string
 	// targets holds the translations returned so far, keyed by segment ID.
 	targets map[string]string
 	usage   Usage
@@ -156,46 +136,34 @@ func (b batch) withItems(items []requestSegment) batch {
 	return b
 }
 
-// precedingContext returns the prose immediately before batch idx: the
-// translation just produced for the previous batch, or — for the first batch —
-// the chapter-level context supplied by the caller. Batches are translated in
-// order precisely so this is available.
-func (run *chapterRun) precedingContext(idx int, batches [][]requestSegment) string {
-	if idx == 0 {
-		return tailRunes(run.prevCtx, contextRunes)
-	}
+// applyTargets writes the LLM's answers back onto segs, falling back to the NMT
+// draft for any segment the model left unanswered or whose placeholder set it
+// changed. It is the shared finalisation of a chapter and of a single batch.
+func (t *Translator) applyTargets(segs []*segment.Segment, states []segmentState, targets map[string]string) {
+	for i, seg := range segs {
+		state := states[i]
 
-	var sb strings.Builder
-	for _, item := range batches[idx-1] {
-		if target := run.targets[item.ID]; strings.TrimSpace(target) != "" {
-			sb.WriteString(target)
-			sb.WriteByte('\n')
+		// An unanswered segment reads as the empty string here, which is the
+		// same predicate missingItems retries on: "retried" and "fell back to
+		// the draft" stay one condition.
+		target := t.Glossary.Apply(targets[seg.ID], state.subs)
+		if strings.TrimSpace(target) == "" || !inlinePlaceholdersPreserved(state.source, target) {
+			seg.TargetText = state.draft
+			seg.Status = segment.StatusTranslated
+			continue
 		}
+
+		seg.TargetText = target
+		seg.Status = segment.StatusPostEdited
 	}
-	return tailRunes(strings.TrimSpace(sb.String()), contextRunes)
 }
 
-// TranslateChapter rewrites segs in place and reports the LLM token usage. The
-// TargetText each segment arrives with is treated as the safe NMT draft
-// fallback. The chapter is split into batches of BatchSize segments so that
-// small models (≤8B) do not stop generating before all segments are done.
-//
-// It takes pointers because the caller owns the segments — they live in the
-// chapter the pipeline is going to recompose. Returning translated copies would
-// only oblige every caller to write them back by index.
-//
-// A batch that fails degrades rather than aborting the chapter: its segments
-// keep their draft and stay StatusTranslated, which the caller can count. Only
-// a chapter where no batch produced anything is returned as an error, so a
-// systematic failure (bad credentials, wrong model) stays loud while a single
-// bad batch does not discard the batches that already succeeded. Nothing is
-// written in that case: the segments keep the drafts they came in with.
-//
-// One failure is not degradable: llm.ErrRateLimited returns immediately, with
-// the usage consumed so far. Every remaining batch would fail the same way, and
-// degrading them would produce a chapter of raw drafts that this mode does not
-// persist — a book that reads as finished with nothing to resume from.
-func (t *Translator) TranslateChapter(
+// TranslateBatch rewrites one batch of segments in a single LLM call — the unit
+// the flow retries and resumes on — with the recursive halving on truncation
+// kept inside. It reports the tokens the call consumed (retries included) and,
+// through Outcome.Degraded, whether a refusal or truncation left the batch on
+// its draft. It does not chunk: the caller decides the batch boundaries.
+func (t *Translator) TranslateBatch(
 	ctx context.Context,
 	bible narrative.Bible,
 	chapterID string,
@@ -211,69 +179,51 @@ func (t *Translator) TranslateChapter(
 	}
 
 	items, states := t.buildPayload(segs)
-
 	run := &chapterRun{
 		bible:     bible,
 		chapterID: chapterID,
 		source:    chapterSource,
-		prevCtx:   prevCtx,
 		targets:   make(map[string]string, len(segs)),
 	}
-	batches := chunk(items, t.batchSize())
-	var batchErrs []error
-	for idx, batchItems := range batches {
-		before := run.usage
-		err := t.translateBatch(ctx, run, batch{
-			idx:   idx,
-			items: batchItems,
-			prev:  run.precedingContext(idx, batches),
-		})
-		// Reported before the error is dealt with, for the same reason the
-		// caller used to add Outcome.Usage before its own error check: a refusal
-		// and a truncation are billable responses. It also has to happen before
-		// the rate-limit return below, or the batch that hit the wall would go
-		// unaccounted.
-		if t.OnBatch != nil {
-			t.OnBatch(len(batchItems), run.usage.since(before))
-		}
 
-		if err != nil {
-			// A rate limit is not a bad reply, it is the end of the road: every
-			// remaining batch would fail the same way, and degrading them would
-			// emit a book that looks finished while half of it is raw draft —
-			// unpersisted, so not even resumable. Stop here and let the caller
-			// fail the run; what previous chapters refined is already in the TM.
-			if errors.Is(err, llm.ErrRateLimited) {
-				return Outcome{Usage: run.usage, Degraded: batchErrs}, err
-			}
-			batchErrs = append(batchErrs, err)
+	err := t.translateBatch(ctx, run, batch{items: items, prev: tailRunes(prevCtx, contextRunes)})
+	t.applyTargets(segs, states, run.targets)
+	tail := batchTail(items, run.targets)
+	if err != nil {
+		// A rate limit or a transport/credential failure is fatal: the caller
+		// fails the run. A refusal, truncation or empty reply is degradable —
+		// the segments kept their draft — so it is reported, not raised.
+		if errors.Is(err, llm.ErrRateLimited) || !IsDegradable(err) {
+			return Outcome{Usage: run.usage, Tail: tail}, err
+		}
+		return Outcome{Usage: run.usage, Degraded: []error{err}, Tail: tail}, nil
+	}
+	return Outcome{Usage: run.usage, Tail: tail}, nil
+}
+
+// batchTail is the French this batch produced, read from the raw model answers
+// in request order and skipping unanswered segments, trimmed to contextRunes.
+// It is exactly what the old in-chapter walk fed the next batch, so threading it
+// through the pipeline keeps a multi-batch chapter's prompts byte-identical.
+func batchTail(items []requestSegment, targets map[string]string) string {
+	var sb strings.Builder
+	for _, item := range items {
+		if target := targets[item.ID]; strings.TrimSpace(target) != "" {
+			sb.WriteString(target)
+			sb.WriteByte('\n')
 		}
 	}
-	if len(missingItems(items, run.targets)) == len(items) {
-		if len(batchErrs) > 0 {
-			return Outcome{Usage: run.usage}, errors.Join(batchErrs...)
-		}
-		return Outcome{Usage: run.usage}, ErrEmptyResponse
-	}
+	return tailRunes(strings.TrimSpace(sb.String()), contextRunes)
+}
 
-	for i, seg := range segs {
-		state := states[i]
-
-		// An unanswered segment reads as the empty string here, which is the
-		// same predicate missingItems retries on: "retried" and "fell back to
-		// the draft" stay one condition.
-		target := t.Glossary.Apply(run.targets[seg.ID], state.subs)
-		if strings.TrimSpace(target) == "" || !inlinePlaceholdersPreserved(state.source, target) {
-			seg.TargetText = state.draft
-			seg.Status = segment.StatusTranslated
-			continue
-		}
-
-		seg.TargetText = target
-		seg.Status = segment.StatusPostEdited
-	}
-
-	return Outcome{Usage: run.usage, Degraded: batchErrs}, nil
+// IsDegradable reports whether a literary error leaves the batch on its NMT
+// draft rather than failing the run. A refusal, a truncation and an empty reply
+// are all recoverable by keeping the draft; a rate limit and a
+// transport/credential error are not.
+func IsDegradable(err error) bool {
+	return errors.Is(err, ErrProviderRefusal) ||
+		errors.Is(err, ErrIncompleteResponse) ||
+		errors.Is(err, ErrEmptyResponse)
 }
 
 // translateBatch translates b in a single LLM call and merges the results into
@@ -286,8 +236,8 @@ func (t *Translator) TranslateChapter(
 // a single segment. Whatever is still unanswered keeps its NMT draft.
 //
 // Transport and provider errors do fail the batch — a smaller batch will not
-// fix bad credentials — so they propagate to TranslateChapter, which decides
-// whether the chapter as a whole produced anything.
+// fix bad credentials — so they propagate to TranslateBatch, which decides
+// whether the batch as a whole produced anything.
 func (t *Translator) translateBatch(ctx context.Context, run *chapterRun, b batch) error {
 	resp, err := t.Chat.Chat(ctx, llm.ChatRequest{
 		Model:      t.Model,
@@ -374,7 +324,7 @@ func (run *chapterRun) mergeTargets(items []requestSegment, answers []responseSe
 }
 
 // missingItems returns the items that targets has no usable translation for.
-// The emptiness test matches the draft-fallback condition in TranslateChapter,
+// The emptiness test matches the draft-fallback condition in applyTargets,
 // so "retried" and "fell back to the draft" stay the same predicate.
 func missingItems(items []requestSegment, targets map[string]string) []requestSegment {
 	missing := make([]requestSegment, 0, len(items))
@@ -415,19 +365,6 @@ func (t *Translator) buildPayload(segs []*segment.Segment) ([]requestSegment, []
 	}
 
 	return items, states
-}
-
-// chunk splits items into batches of at most size segments. A size below 1
-// yields a single batch, matching the "no batching" behaviour.
-func chunk(items []requestSegment, size int) [][]requestSegment {
-	if size < 1 {
-		size = len(items)
-	}
-	batches := make([][]requestSegment, 0, (len(items)+size-1)/size)
-	for i := 0; i < len(items); i += size {
-		batches = append(batches, items[i:min(i+size, len(items))])
-	}
-	return batches
 }
 
 // encodePayload renders items as the JSON request body. Encoding a struct of
