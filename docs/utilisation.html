@@ -839,7 +839,7 @@ heuristic</code>.</figcaption>
 
 <h3><code>series-bible</code> — construire la bible avant de traduire</h3>
 
-<pre><code>epub-translator series-bible --input-dir ./books/lumen --series lumen [--samples 3] [--merge] [--dry-run]</code></pre>
+<pre><code>epub-translator series-bible --input-dir ./books/lumen --series lumen [--samples 3] [--merge] [--dry-run] [--from-volume N]</code></pre>
 
 <div class="table-wrap">
 <table>
@@ -848,6 +848,7 @@ heuristic</code>.</figcaption>
   <tr><td><code>--samples</code></td><td class="num">3</td><td>Documents échantillonnés <em>par tome</em> pour le style, les voix et le vouvoiement. <strong>Attention</strong> : ils partent tous dans <em>un seul</em> appel, donc l'entrée croît avec la série — voir l'encadré ci-dessous.</td></tr>
   <tr><td><code>--merge</code></td><td><code>false</code></td><td>Enrichit les bibles existantes au lieu de les écraser.</td></tr>
   <tr><td><code>--dry-run</code></td><td><code>false</code></td><td>Imprime la projection de coût et <strong>s'arrête avant le premier appel</strong>. Rien n'est créé — pas même la base de la bible.</td></tr>
+  <tr><td><code>--from-volume</code></td><td class="num">0</td><td>Mode <em>append</em> : ne résume que les tomes ≥ N et <strong>ajoute</strong> leurs synopsis au STORY_SO_FAR de la bible existante, sans régénérer les précédents. 0 = build complet. Idempotent : un tome déjà présent n'est pas réécrit.</td></tr>
 </table>
 </div>
 
@@ -1275,7 +1276,7 @@ just down</code></pre>
   <tr><td><code>just literary &lt;in&gt; &lt;série&gt; [glossaire] [run-id]</code></td><td>Traduction littéraire.</td></tr>
   <tr><td><code>just estimate &lt;in.epub&gt;</code></td><td>Projection de coût.</td></tr>
   <tr><td><code>just series-bible-cost &lt;dir&gt; &lt;série&gt; [samples]</code></td><td>Projeter le coût du build de bible — 0 appel, aucun credential. Le pendant d'<code>estimate</code> pour ce job.</td></tr>
-  <tr><td><code>just series-bible &lt;dir&gt; &lt;série&gt; [samples] [merge]</code></td><td>Construire les bibles de toute la série. <code>samples</code> vaut 3 par défaut : voir le piège en §6.</td></tr>
+  <tr><td><code>just series-bible &lt;dir&gt; &lt;série&gt; [samples] [merge] [from_volume]</code></td><td>Construire les bibles de la série. <code>from_volume N</code> = mode append (n'ajoute que les tomes ≥ N au STORY_SO_FAR). <code>samples</code> vaut 3 par défaut : voir le piège en §6.</td></tr>
   <tr><td><code>just bible &lt;db&gt; &lt;série&gt;</code></td><td>Afficher une bible en clair — <strong>à faire avant un run complet</strong>, une erreur s'y propage partout.</td></tr>
   <tr><td><code>just glossary-suggest &lt;in&gt; [out] [min]</code></td><td>Extraire les noms propres.</td></tr>
   <tr><td><code>just eval-ref &lt;cand&gt; &lt;ref&gt;</code> · <code>just eval-qe &lt;segments&gt;</code></td><td>chrF · COMET-QE.</td></tr>
@@ -1600,6 +1601,10 @@ just down</code></pre>
       proc: 'Enrichit la bible existante au lieu de l\'écraser.',
       out: 'Conserve les corrections manuelles ou les tomes déjà profilés.',
       cost: 'Identique à une génération. Dans les deux cas le préfixe change → le cache LLM est invalidé une fois.' },
+    { f: '--from-volume',
+      proc: 'Mode append de <code>series-bible</code> : ne résume que les tomes ≥ N et ajoute leurs synopsis à la bible existante, sans refaire les précédents. 0 = build complet.',
+      out: 'STORY_SO_FAR étendu jusqu\'au dernier tome fourni ; voix, style et tomes antérieurs intacts.',
+      cost: 'Ne paie que les tomes ≥ N (map : 1 appel par chapitre de ces tomes), pas toute la série — l\'intérêt du flag.' },
     { f: '--reference-dir',
       proc: '<code>batch</code> : cherche <code>&lt;dir&gt;/&lt;book-id&gt;.epub</code> après chaque livre réussi. Absent = ignoré silencieusement.',
       out: 'Ajoute un chrF par livre et une moyenne dans <code>batch-report.json</code>.',

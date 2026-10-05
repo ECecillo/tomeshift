@@ -253,12 +253,15 @@ seed-bible input series samples="8" merge="":
 # is a 966,000-token call — past Haiku 4.5's context window entirely.
 #   just series-bible "epub/lumen" lumen 3
 #   just series-bible "epub/lumen" lumen 3 merge
-series-bible input_dir series samples="3" merge="":
+# Append only new volumes to an existing bible's STORY_SO_FAR (no full rebuild):
+#   just series-bible "epub/lumen" lumen@vol33 3 "" 34
+series-bible input_dir series samples="3" merge="" from_volume="0":
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
     args=(series-bible --input-dir "{{input_dir}}" --series "{{series}}" --samples "{{samples}}")
     if [ "{{merge}}" = "merge" ]; then args+=(--merge); fi
+    if [ "{{from_volume}}" != "0" ]; then args+=(--from-volume "{{from_volume}}"); fi
     uses_llm=1
     {{op_guard}}
     "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
