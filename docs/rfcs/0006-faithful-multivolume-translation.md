@@ -304,7 +304,7 @@ deterministic, no live network in unit/integration tests.
 - **Inconsistent tu/vous** → explicit address matrix consulted on every call;
   continuity check flags violations.
 - **Placeholder loss via LLM** → existing strict restore + QA gate (already
-  catches the LibreTranslate `<x></x>` case fixed in `94a6f9c`).
+  catches the LibreTranslate `<x></x>` case fixed in `966ea06`).
 - **Provider lock-in / pricing shifts** → `internal/llm` is an interface; the
   OpenAI-compatible adapter + config-driven model make switching providers a
   config change. Prices are volatile (the table is a June 2026 snapshot) — the

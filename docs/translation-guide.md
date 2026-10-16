@@ -177,7 +177,7 @@ bible that translates volume N contains only the synopses of volumes 1..N.
 
 Why this bound: the series' style relies on factual description within the
 *Return by Ash* loops, an effect that depends on not knowing. A model aware of
-a character's true nature would color their dialogue from volume 1.
+a character's true nature colors their dialogue from volume 1.
 
 ```bash
 # A new volume is published → regenerate, once, from the full directory

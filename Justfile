@@ -16,6 +16,8 @@ secret_refs := ".env.op"
 #
 # Two configurations need none: a self-hosted NMT engine, and the CLI-backed
 # chat provider, which authenticates through its own subscription session.
+# A key already set in the environment (from .env.local, without 1Password)
+# needs none either: `op run` is only added for a key that is still empty.
 # A recipe that calls the LLM sets uses_llm=1 before expanding this.
 #
 # `${runner[@]+...}` rather than `${runner[@]}`: macOS still ships bash 3.2,
@@ -23,8 +25,11 @@ secret_refs := ".env.op"
 op_guard := '''
 runner=()
 need_secret=0
-if [ "${TOMESHIFT_NMT_PROVIDER:-}" = "google" ]; then need_secret=1; fi
-if [ "${uses_llm:-0}" = "1" ] && [ "${TOMESHIFT_LLM_CHAT_PROVIDER:-}" != "claude-cli" ]; then
+if [ "${TOMESHIFT_NMT_PROVIDER:-}" = "google" ] && [ -z "${TOMESHIFT_NMT_API_KEY:-}" ]; then
+  need_secret=1
+fi
+if [ "${uses_llm:-0}" = "1" ] && [ "${TOMESHIFT_LLM_CHAT_PROVIDER:-}" != "claude-cli" ] \
+  && [ -z "${TOMESHIFT_LLM_API_KEY:-}" ]; then
   need_secret=1
 fi
 if [ "$need_secret" = "1" ]; then runner=(op run --env-file=.env.op --); fi
@@ -75,8 +80,11 @@ preflight:
     command -v docker  >/dev/null || echo "docker not found: container recipes will not work (non-blocking)"
 
     # Secrets. A missing op session must say so here rather than surface as a
-    # raw 'op' error in the middle of a paid run.
-    if [ -f "{{secret_refs}}" ]; then
+    # raw 'op' error in the middle of a paid run. Keys set in the env file make
+    # op unnecessary for the runs they cover (see op_guard).
+    if [ -n "${TOMESHIFT_NMT_API_KEY:-}${TOMESHIFT_LLM_API_KEY:-}" ] && ! command -v op >/dev/null; then
+      echo "secrets: API keys set in {{env_file}}, 1password cli not installed (runs that need a missing key will fail)"
+    elif [ -f "{{secret_refs}}" ]; then
       if ! command -v op >/dev/null; then
         echo "1password cli not found: recipes that call a provider will fail (see {{secret_refs}})"
         fail=1

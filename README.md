@@ -176,13 +176,14 @@ brew install mise 1password-cli
    ```bash
    cp .env.example .env.local
    ```
-3. Edit `.env.local` with your NMT endpoint and **non-secret** settings. Keep it
-   to `KEY=VALUE` lines.
-4. Leave the API keys empty there. Either export them in your shell, or keep
-   them in a 1Password vault referenced by the committed [`.env.op`](.env.op)
-   and injected per command by `op run`. The recipes that call a provider are
-   wrapped; `estimate`, `glossary-suggest` and `eval-ref` are not, so they never
-   ask for a credential.
+3. Edit `.env.local` with your NMT endpoint and other settings. Keep it to
+   `KEY=VALUE` lines.
+4. API keys, two options ([details](docs/INSTALLATION.md#secrets-1password-or-environment-variables)):
+   keep them in a 1Password vault referenced by the committed [`.env.op`](.env.op)
+   and injected per command by `op run` (recommended), or set them directly in
+   the gitignored `.env.local`, in which case `op` is never called. Recipes that
+   make no provider call (`estimate`, `glossary-suggest`, `eval-ref`) never ask
+   for a credential.
 5. `just preflight` checks all of the above at once.
 
 ## Run
