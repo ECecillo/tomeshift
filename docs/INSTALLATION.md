@@ -23,14 +23,14 @@ brew install mise 1password-cli     # the only two manual prerequisites (macOS)
 | **golangci-lint** | lint | `mise` |
 | **Python** (3.12) | `scripts/*.py` (`carve`, `compare`, doc audit) | `mise` |
 | **uv** | COMET-QE service — quality eval | `mise` |
-| **`op`** (1Password CLI) | secret injection at launch (optional, see §3) | manual |
+| **`op`** (1Password CLI) | secret injection at launch (not needed with keys in `.env.local`, see §3) | manual |
 | **`sqlite3`** | `just bible` | provided by the OS |
 | **Docker** (option) | containerized workflow | manual |
 | **`epubcheck`** (option) | EPUB validation | jar to download |
 
 > Without Java/`epubcheck`, everything works: EPUB validation is simply skipped.
 > Without `uv`, everything works except COMET-QE evaluation. The 1Password CLI is
-> only needed if you choose the 1Password route for secrets (§3).
+> not needed if you put the API keys in `.env.local` (Option B, §3).
 
 ---
 
@@ -103,12 +103,15 @@ file nor in your shell.
 > disk", not "a human approved this specific run". For the latter, set the app's
 > auto-lock aggressively.
 
-**Option B — environment variables.** If you would rather not use 1Password,
-provide the keys as environment variables instead. Export them in your shell
-before the command, or set them in your gitignored `.env.local` (which `mise`
-loads when you enter the directory). This is simpler, but the key then lives in
-the environment of everything you launch from that folder — which is exactly what
-the `op run` wrapper exists to avoid.
+**Option B — keys in `.env.local`.** If you would rather not use 1Password, set
+`TOMESHIFT_NMT_API_KEY` / `TOMESHIFT_LLM_API_KEY` in your gitignored `.env.local`.
+The recipes add `op run` only for a key that is still empty, so when every key a
+run needs is set, `op` is not called and does not need to be installed. Set them
+in `.env.local` rather than exporting them in your shell: the recipes source
+`.env.local`, and its empty `*_API_KEY=` lines would override an exported value.
+This is simpler, but the key then sits on disk and in the environment of
+everything you launch from that folder, which is exactly what the `op run`
+wrapper exists to avoid.
 
 Edit `.env.local`. Key variables (prefix `TOMESHIFT_`):
 
@@ -116,7 +119,7 @@ Edit `.env.local`. Key variables (prefix `TOMESHIFT_`):
 |---|---|---|
 | `NMT_PROVIDER` | `http` (dev) \| `libretranslate` \| `google` | `http` |
 | `NMT_ENDPOINT` | NMT service; required by `run`/`batch` except for `google`, which supplies its host | `http://localhost:8081/translate` |
-| `NMT_API_KEY` | NMT API key — **in `.env.op`, or an env var; not here** | `op://Dev/gcp…` |
+| `NMT_API_KEY` | NMT API key — **empty with Option A (resolved from `.env.op`), set here with Option B** | — |
 | `NMT_FREE_CHARS_PER_MONTH` | provider's monthly free quota (`500000` for Google) | `0` |
 | `TM_PATH` | translation memory (SQLite) | `./data/tm.sqlite` |
 | `NARRATIVE_PATH` | series bible (SQLite) | `./data/lumen-series.sqlite` |
@@ -127,14 +130,14 @@ Edit `.env.local`. Key variables (prefix `TOMESHIFT_`):
 | `LLM_TOKEN_MULTIPLIER` | tokenizer density (`1.30` for `claude-sonnet-5`) | `1.0` |
 | `LLM_CACHE_READ_PER_MTOK_USD` | prompt-cache read rate (`0` = no cache) | `0.30` |
 | `LLM_BATCH_SIZE` | segments per literary LLM call (`0` = internal default) | `0` |
-| `LLM_API_KEY` | LLM provider key — **in `.env.op`, or an env var; not here** | `op://Dev/anthropic…` |
+| `LLM_API_KEY` | LLM provider key — **empty with Option A (resolved from `.env.op`), set here with Option B** | — |
 | `COMET_ENDPOINT` | COMET-QE service (eval) | `http://localhost:8000/score` |
 
-> 🔐 **Keep the two `*_API_KEY` out of a versioned file.** With Option A they are
-> resolved from 1Password at launch (see above). With Option B you set them as
-> environment variables — in your shell or in the gitignored `.env.local` —
-> accepting that they then live in the environment of everything you launch from
-> that folder, which is the trade-off `op run` exists to remove.
+> 🔐 **Never put the two `*_API_KEY` in a versioned file.** With Option A they
+> are resolved from 1Password at launch (see above). With Option B they live in
+> the gitignored `.env.local`, accepting that they are then on disk and in the
+> environment of everything you launch from that folder, which is the trade-off
+> `op run` exists to remove.
 
 ---
 

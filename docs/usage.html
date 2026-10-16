@@ -135,7 +135,7 @@
   <h1>tomeshift — usage guide<br/><span style="color:var(--muted);font-size:0.75em">install, configure, run, and know what each command changes</span></h1>
   <div class="meta">
     Operational guide · 8 August 2026 ·
-    code frozen at <a href="https://github.com/ECecillo/tomeshift/tree/621724fb2e8190d7358c64bcc77b80eff823c93a"><code>953441d</code></a><br/>
+    code frozen at <a href="https://github.com/ECecillo/tomeshift/tree/621724fb2e8190d7358c64bcc77b80eff823c93a"><code>621724f</code></a><br/>
     To understand <em>how it works inside</em>: <a href="understanding-the-project.html">understanding-the-project.html</a>
     · Text references: <code>docs/INSTALLATION.md</code>, <code>docs/translation-guide.md</code>
   </div>
@@ -238,6 +238,13 @@ TOMESHIFT_NMT_API_KEY=op://Dev/gcp-cloud-translation/credential</code></pre>
   memory for the duration of the command, and nowhere else. The others are not — so
   <code>estimate</code>, <code>glossary-suggest</code> and <code>eval-ref</code>
   <strong>never</strong> ask for a credential, since they make no calls.
+</p>
+
+<p>
+  Without 1Password, set <code>TOMESHIFT_LLM_API_KEY</code> /
+  <code>TOMESHIFT_NMT_API_KEY</code> directly in <code>.env.local</code>: a recipe only adds
+  <code>op run</code> for a key that is still empty, so when every key a run needs is set,
+  <code>op</code> is never called. Simpler, but the key then sits on disk in that file.
 </p>
 
 <figure>
@@ -434,7 +441,7 @@ op vault list          <span class="cmt"># the current account's vaults</span>
 <span class="cmt"># 4. Create the items. --account is explicit here: the commands below</span>
 <span class="cmt">#    run in YOUR shell, which does not source .env.local.</span>
 op item create --account my.1password.eu --category="API Credential" \
-  --vault=Personal --title="anthropic-tomeshift" \
+  --vault=Personal --title="anthropic-epub-translator" \
   credential="sk-ant-…"
 
 op item create --account my.1password.eu --category="API Credential" \
@@ -489,13 +496,13 @@ op read --account my.1password.eu "op://Personal/gcp-cloud-translation/credentia
 flowchart TB
     subgraph SETUP["Once"]
       GCP["GCP console<br/>billing + API + restricted key"] --> I1["1Password item<br/>gcp-cloud-translation"]
-      ANT["console.anthropic.com<br/>API key"] --> I2["1Password item<br/>anthropic-tomeshift"]
+      ANT["console.anthropic.com<br/>API key"] --> I2["1Password item<br/>anthropic-epub-translator"]
       I1 --> REF[".env.op<br/>2 op:// references<br/>versioned"]
       I2 --> REF
     end
     subgraph RUN["At each command"]
-      REF --> GUARD{"does the command<br/>need a secret?"}
-      GUARD -->|"no — estimate,<br/>glossary-suggest, claude-cli"| DIRECT["direct launch<br/>no prompt"]
+      REF --> GUARD{"does the command need<br/>a key that is still empty?"}
+      GUARD -->|"no — estimate, glossary-suggest,<br/>claude-cli, key set in .env.local"| DIRECT["direct launch<br/>no prompt"]
       GUARD -->|"yes"| OPRUN["op run --env-file=.env.op --"]
       OPRUN --> BIO["biometric unlock<br/>if the app is locked"]
       BIO --> PROC["key in process memory,<br/>for the run's duration"]
@@ -1283,7 +1290,7 @@ just down</code></pre>
 </div>
 
 <footer>
-  tomeshift · usage guide · code frozen at <code>953441d</code> ·
+  tomeshift · usage guide · code frozen at <code>621724f</code> ·
   text supplements: <code>docs/INSTALLATION.md</code>, <code>docs/translation-guide.md</code>,
   <code>docs/quality-evaluation.md</code>, <code>docs/improving-translations.md</code>
 </footer>
