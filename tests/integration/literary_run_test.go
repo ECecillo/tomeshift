@@ -11,15 +11,15 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/commandexec"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
-	"github.com/ECecillo/ebooks-translator/internal/llm/openaitest"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
-	"github.com/ECecillo/ebooks-translator/internal/pipeline"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
-	"github.com/ECecillo/ebooks-translator/internal/tm"
-	"github.com/ECecillo/ebooks-translator/internal/translate/nmttest"
+	"github.com/ECecillo/tomeshift/internal/commandexec"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/llm/openaitest"
+	"github.com/ECecillo/tomeshift/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/pipeline"
+	"github.com/ECecillo/tomeshift/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/tm"
+	"github.com/ECecillo/tomeshift/internal/translate/nmttest"
 )
 
 func TestRun_LiteraryModeEndToEnd(t *testing.T) {

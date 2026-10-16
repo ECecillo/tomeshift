@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/literary"
-	"github.com/ECecillo/ebooks-translator/internal/llm"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/literary"
+	"github.com/ECecillo/tomeshift/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/segment"
 )
 
 // liveCLIEnv opts into the live Claude Code CLI test.
@@ -21,7 +21,7 @@ import (
 // call consumes a real subscription quota, so it has to be asked for
 // explicitly. It is the check to run once before starting a volume, not on
 // every `just test`.
-const liveCLIEnv = "EPUB_TRANSLATOR_LIVE_CLI_TEST"
+const liveCLIEnv = "TOMESHIFT_LIVE_CLI_TEST"
 
 func skipUnlessLiveCLI(t *testing.T) {
 	t.Helper()
@@ -41,13 +41,13 @@ func skipUnlessLiveCLI(t *testing.T) {
 func TestLiterary_ClaudeCLI_TranslatesEverySegment(t *testing.T) {
 	skipUnlessLiveCLI(t)
 
-	model := os.Getenv("EPUB_TRANSLATOR_LLM_MODEL")
+	model := os.Getenv("TOMESHIFT_LLM_MODEL")
 	if model == "" {
 		model = "opus"
 	}
 
 	translator := &literary.Translator{
-		Chat:  llm.NewCLIChatClient(os.Getenv("EPUB_TRANSLATOR_LLM_CLI_BIN")),
+		Chat:  llm.NewCLIChatClient(os.Getenv("TOMESHIFT_LLM_CLI_BIN")),
 		Model: model,
 	}
 

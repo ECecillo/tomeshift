@@ -91,7 +91,7 @@ flowchart LR
 
 ## Proposed Decision
 
-**Option A.** Un flag `--no-draft` (et l'env `EPUB_TRANSLATOR_LITERARY_DRAFT`)
+**Option A.** Un flag `--no-draft` (et l'env `TOMESHIFT_LITERARY_DRAFT`)
 qui, en `none`, saute l'étape `DraftChapter` : le LLM traduit directement depuis
 `source_text`. Politique de dégradation retenue : **dégrader vers la source**
 (segment non traduit, compté par la QA, non persisté, repris par `--resume`) —
@@ -102,7 +102,7 @@ affinée par le garde-fou chapitre du refactor (voir §Impact).
 Les ancres ci-dessous visent l'architecture à ports de la RFC 0009 (phase 1).
 
 ### Config — `internal/config/config.go`
-1. Ajouter `LiteraryDraft string` (env `EPUB_TRANSLATOR_LITERARY_DRAFT`, défaut
+1. Ajouter `LiteraryDraft string` (env `TOMESHIFT_LITERARY_DRAFT`, défaut
    `nmt`), validé dans `{nmt, none}` avec une sentinelle dans
    `internal/config/errors.go`.
 2. Exposer `--no-draft` sur `run` et `literary` (`internal/cli`) ; le flag force
@@ -210,10 +210,10 @@ Les ancres ci-dessous visent l'architecture à ports de la RFC 0009 (phase 1).
 
 ## Documentation (living docs — même changement)
 
-- `docs/utilisation.html` : `--no-draft` en §6 (table des flags) **et** l'array
-  `FLAGS` (catégorie processing) ; `EPUB_TRANSLATOR_LITERARY_DRAFT` en §8 ;
+- `docs/usage.html` : `--no-draft` en §6 (table des flags) **et** l'array
+  `FLAGS` (catégorie processing) ; `TOMESHIFT_LITERARY_DRAFT` en §8 ;
   valeurs `--mode`/pipeline en §5-6.
-- `docs/comprendre-le-projet.html` : widget pipeline §1 (les deux chemins) ;
+- `docs/understanding-the-project.html` : widget pipeline §1 (les deux chemins) ;
   invariant §13 (« brouillon = filet, pas source de traduction » ; et « un
   chapitre LLM-only sans aucun raffinement échoue, il ne se dégrade pas en
   silence »).

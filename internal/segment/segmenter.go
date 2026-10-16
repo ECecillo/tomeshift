@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ECecillo/ebooks-translator/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/epub"
 )
 
 // Segmenter turns a parsed XHTML document into ordered translatable segments.

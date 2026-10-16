@@ -1,0 +1,1381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Understanding tomeshift — illustrated architecture</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #151824;
+    --border: #2a2d3e;
+    --text: #e2e4f0;
+    --muted: #8b8fa8;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --purple: #c084fc;
+    --orange: #fb923c;
+    --tag-bg: #252840;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    padding: 2rem 1.25rem 5rem;
+    max-width: 1000px;
+    margin: 0 auto;
+  }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+  header h1 { font-size: 1.45rem; color: var(--blue); letter-spacing: 0.02em; line-height: 1.35; }
+  header .meta { color: var(--muted); margin-top: 0.6rem; font-size: 0.82rem; }
+  header .meta a { color: var(--muted); }
+
+  h2 { font-size: 1.05rem; color: var(--yellow); margin: 3rem 0 0.9rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 0.95rem; color: var(--purple); margin: 1.9rem 0 0.6rem; }
+  h4 { font-size: 0.87rem; color: var(--text); margin: 1.2rem 0 0.4rem; }
+  p { margin: 0.7rem 0; }
+  ul, ol { padding-left: 1.3rem; margin: 0.6rem 0; }
+  li { margin: 0.3rem 0; }
+  a { color: var(--blue); text-decoration: none; border-bottom: 1px dotted var(--border); }
+  a:hover { border-bottom-style: solid; }
+  strong { color: #fff; }
+  code { background: var(--tag-bg); border-radius: 3px; padding: 0.08rem 0.32rem; font-size: 0.92em; color: var(--green); }
+  pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.9rem 1rem; overflow-x: auto; margin: 0.9rem 0; font-size: 0.85rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; color: var(--text); }
+
+  .badge { display: inline-block; background: var(--tag-bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.5rem; font-size: 0.72rem; color: var(--yellow); margin-right: 0.4rem; }
+  .badge.ok { color: var(--green); }
+  .badge.bad { color: var(--red); }
+  .badge.info { color: var(--blue); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.1rem 0; }
+  .card.note { border-left: 3px solid var(--blue); }
+  .card.warn { border-left: 3px solid var(--red); }
+  .card.key { border-left: 3px solid var(--green); }
+  .card.extend { border-left: 3px solid var(--purple); }
+  .card > .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; min-width: 520px; }
+  th, td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+  th { background: var(--tag-bg); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.06em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  figure { margin: 1.5rem 0; }
+  figure figcaption { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; text-align: center; }
+  pre.mermaid { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; text-align: center; overflow-x: auto; }
+  blockquote { border-left: 3px solid var(--border); padding: 0.2rem 0 0.2rem 1rem; margin: 0.9rem 0; color: var(--muted); font-style: italic; }
+  hr { border: none; border-top: 1px solid var(--border); margin: 2.5rem 0; }
+  footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.78rem; }
+
+  .toc { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; }
+  .toc .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+  .toc ol { margin: 0; columns: 2; column-gap: 2rem; }
+  @media (max-width: 640px) { .toc ol { columns: 1; } }
+
+  /* ── Interactive widgets ──────────────────────────────────────────── */
+  .widget { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.1rem 1.25rem; margin: 1.4rem 0; }
+  .widget .wlabel { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.8rem; }
+  .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin-top: 0.9rem; }
+  button {
+    font-family: inherit; font-size: 0.78rem; color: var(--text);
+    background: var(--tag-bg); border: 1px solid var(--border); border-radius: 5px;
+    padding: 0.35rem 0.8rem; cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover { background: #2f3350; border-color: var(--blue); }
+  button:disabled { opacity: 0.4; cursor: default; }
+  button.primary { border-color: var(--green); color: var(--green); }
+  button.active { border-color: var(--blue); color: var(--blue); background: #1e2438; }
+
+  /* Animated pipeline */
+  .flowline { display: flex; align-items: stretch; gap: 0.35rem; flex-wrap: wrap; }
+  .stage {
+    flex: 1 1 96px; min-width: 96px; text-align: center;
+    border: 1px solid var(--border); border-radius: 6px; background: var(--surface2);
+    padding: 0.55rem 0.35rem; font-size: 0.72rem; color: var(--muted);
+    transition: color 0.25s, border-color 0.25s, background 0.25s, transform 0.25s;
+  }
+  .stage .sname { display: block; color: var(--text); font-size: 0.76rem; }
+  .stage.lit { color: var(--text); border-color: var(--blue); background: #1b2740; transform: translateY(-3px); }
+  .stage.done { border-color: #2f4a35; }
+  .stage.done .sname { color: var(--green); }
+
+  /* Stepper placeholders */
+  .stepbox { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.9rem 1rem; min-height: 8.4rem; font-size: 0.82rem; line-height: 1.7; overflow-x: auto; }
+  .stepbox .lbl { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; display: block; margin: 0.55rem 0 0.15rem; }
+  .stepbox .lbl:first-child { margin-top: 0; }
+  .tok { color: var(--orange); background: rgba(251,146,60,0.12); border-radius: 3px; padding: 0 2px; }
+  .gtok { color: var(--purple); background: rgba(192,132,252,0.12); border-radius: 3px; padding: 0 2px; }
+  .fr { color: var(--green); }
+  .en { color: var(--text); }
+  .mk { color: var(--blue); }
+  .stepdesc { color: var(--muted); font-size: 0.8rem; margin-top: 0.7rem; min-height: 3.2rem; }
+  .stepdots { display: flex; gap: 0.3rem; margin-left: auto; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--border); transition: background 0.2s; }
+  .dot.on { background: var(--blue); }
+
+  /* Routing simulator */
+  .segrow { display: grid; grid-template-columns: repeat(auto-fill, minmax(26px, 1fr)); gap: 4px; margin: 0.4rem 0 0.9rem; }
+  .seg { height: 26px; border-radius: 4px; border: 1px solid var(--border); background: var(--surface2); transition: background 0.3s, border-color 0.3s, transform 0.3s; }
+  .seg.tm { background: rgba(74,222,128,0.22); border-color: var(--green); }
+  .seg.nmt { background: rgba(96,165,250,0.22); border-color: var(--blue); }
+  .seg.llm { background: rgba(192,132,252,0.25); border-color: var(--purple); }
+  .seg.active { transform: scale(1.25); }
+  .legend { display: flex; gap: 1rem; flex-wrap: wrap; font-size: 0.76rem; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  .counters { display: flex; gap: 1.4rem; flex-wrap: wrap; margin-top: 0.8rem; font-size: 0.8rem; }
+  .counters b { color: var(--text); font-variant-numeric: tabular-nums; }
+  .bar { height: 8px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; margin-top: 0.5rem; }
+  .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--green), var(--blue)); width: 0; transition: width 0.35s; }
+
+  /* Prompt cache */
+  .promptstack { display: flex; flex-direction: column; gap: 4px; }
+  .pblock { border: 1px solid var(--border); border-radius: 5px; padding: 0.45rem 0.7rem; font-size: 0.76rem; background: var(--surface2); transition: background 0.3s, border-color 0.3s, opacity 0.3s; }
+  .pblock .tagline { float: right; color: var(--muted); font-size: 0.7rem; }
+  .pblock.cached { border-color: var(--green); background: rgba(74,222,128,0.08); }
+  .pblock.written { border-color: var(--yellow); background: rgba(250,204,21,0.09); }
+  .pblock.volatile { border-color: var(--orange); background: rgba(251,146,60,0.08); }
+  .costbars { display: grid; grid-template-columns: 7rem 1fr 5rem; gap: 0.5rem 0.7rem; align-items: center; margin-top: 0.9rem; font-size: 0.78rem; }
+  .costbars .track { height: 14px; background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+  .costbars .track > span { display: block; height: 100%; width: 0; transition: width 0.6s ease-out; }
+  .costbars .track.frozen > span { background: var(--green); }
+  .costbars .track.evolving > span { background: var(--red); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>tomeshift — understanding the project<br/><span style="color:var(--muted);font-size:0.75em">architecture, concepts, and logic, illustrated</span></h1>
+  <div class="meta">
+    Educational document &amp; contributor documentation · 8 August 2026<br/>
+    Referenced code pinned at <a href="https://github.com/ECecillo/tomeshift/tree/953441dc1b7a4fca3231daf39e00d99753abc8cf"><code>953441d</code></a>
+    · Architecture source of truth: <code>docs/ARCHITECTURE.md</code>
+    · To <em>use</em> the tool: <a href="usage.html">usage.html</a>
+  </div>
+</header>
+
+<div class="toc">
+  <span class="label">Contents</span>
+  <ol>
+    <li><a href="#quoi">What the program does</a></li>
+    <li><a href="#vocabulaire">The vocabulary, in one page</a></li>
+    <li><a href="#epub">Anatomy of an EPUB and parsing</a></li>
+    <li><a href="#placeholders">Segmentation &amp; placeholders <span class="badge info">animated</span></a></li>
+    <li><a href="#tm">Normalization, hash, and translation memory</a></li>
+    <li><a href="#routage">Routing a segment <span class="badge info">animated</span></a></li>
+    <li><a href="#literary">Literary mode and the series bible</a></li>
+    <li><a href="#cache">The cacheable prefix <span class="badge info">animated</span></a></li>
+    <li><a href="#cout">The cost model and the guardrails</a></li>
+    <li><a href="#qa">QA, recomposition, and artifacts</a></li>
+    <li><a href="#carte">Code map, package by package</a></li>
+    <li><a href="#etendre">Extending the project: four recipes</a></li>
+    <li><a href="#invariants">The invariants not to break</a></li>
+  </ol>
+</div>
+
+<h2 id="quoi">1. What the program does</h2>
+
+<p>
+  <strong>tomeshift</strong> is a Go CLI that translates an EPUB book from English to
+  French <em>without breaking the book</em>: the file structure, the formatting, the inline tags
+  (<code>&lt;em&gt;</code>, links, notes), and the chapter order come out intact. It is
+  built around three obsessions, in this order:
+</p>
+
+<ol>
+  <li><strong>Lose nothing.</strong> Markup is extracted before translation and put back after, and
+    the operation is atomic: if it cannot be faithful, the source is kept rather than
+    emitting broken HTML.</li>
+  <li><strong>Don't pay twice.</strong> Translation memory, LLM completion cache,
+    cacheable prompt prefix, the NMT provider's free tier: anything already translated
+    or already sent is not paid for again.</li>
+  <li><strong>Never spend blindly.</strong> A run projects its worst-case cost
+    <em>before</em> the first network call and stops dead if it exceeds the cap.</li>
+</ol>
+
+<div class="widget" id="w-pipeline">
+  <span class="wlabel">A run's pipeline, from file to file</span>
+  <div class="flowline" id="flowline"></div>
+  <div class="controls">
+    <button class="primary" id="flow-play">▶ Replay</button>
+    <span style="color:var(--muted);font-size:0.78rem" id="flow-caption">Each stage is a
+      collaborator injected into the orchestrator: it tests on its own.</span>
+  </div>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    A["EPUB EN"] --> B["Extract<br/>archive/zip"]
+    B --> C["Parse OPF<br/>spine + manifest"]
+    C --> D["Segmentation<br/>1 block = 1 segment"]
+    D --> E{"Routing"}
+    E -->|"known hash"| F["Translation memory"]
+    E -->|"unknown"| G["NMT draft"]
+    G --> H{"mode?"}
+    H -->|"nmt"| I["Placeholder<br/>restoration"]
+    H -->|"literary"| J["LLM rewrite<br/>bible + glossary"]
+    F --> I
+    J --> I
+    I --> K["EPUB recomposition"]
+    K --> L["QA + epubcheck"]
+    L --> M["EPUB FR + artifacts"]
+</pre>
+<figcaption>Overview. The entry point is
+<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/cmd/tomeshift/main.go#L10-L14"><code>cmd/tomeshift/main.go</code></a>,
+the loop is
+<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/orchestrator.go#L81-L281"><code>Orchestrator.Run</code></a>.</figcaption>
+</figure>
+
+<div class="card key">
+  <span class="label">The structuring idea</span>
+  <p style="margin-top:0">
+    <strong>The two modes share everything but two things.</strong> Extraction, parsing,
+    segmentation, budget guardrail, recomposition, QA, ledger, artifacts: identical. Only
+    <em>how cost is projected</em> and <em>how translation happens</em> differ — which is
+    exactly what the
+    <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/mode.go#L27-L52"><code>translationMode</code></a>
+    interface abstracts (4 methods: <code>Init</code>, <code>Project</code>, <code>Translate</code>, <code>Cost</code>).
+    Adding a third mode means implementing this interface, not touching the pipeline.
+  </p>
+</div>
+
+<h2 id="vocabulaire">2. The vocabulary, in one page</h2>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Term</th><th>What it is</th><th>Where it lives</th></tr>
+  <tr>
+    <td><strong>EPUB</strong></td>
+    <td>A ZIP archive containing XHTML, a <em>spine</em> (the reading order), and
+      metadata. No DRM here: the project only handles open files.</td>
+    <td><code>internal/epub</code></td>
+  </tr>
+  <tr>
+    <td><strong>Segment</strong></td>
+    <td>The unit of translation: a <code>&lt;p&gt;</code> or <code>&lt;h1..h6&gt;</code> block.
+      V1 is <em>paragraph</em>, not sentence.</td>
+    <td><code>internal/segment</code></td>
+  </tr>
+  <tr>
+    <td><strong>Placeholder</strong></td>
+    <td>A <code>&lt;x id="N"/&gt;</code> token that replaces inline markup during translation.
+      The translator sees text, not HTML.</td>
+    <td><code>segment/placeholder.go</code></td>
+  </tr>
+  <tr>
+    <td><strong>TM</strong> (translation memory)</td>
+    <td>A SQLite table <code>hash → translation</code>. A sentence already translated never goes back
+      to a provider.</td>
+    <td><code>internal/tm</code></td>
+  </tr>
+  <tr>
+    <td><strong>NMT</strong></td>
+    <td>Neural machine translation — the <em>draft</em>. Three adapters: built-in dev
+      server, self-hosted LibreTranslate, Google Cloud Translation v2.</td>
+    <td><code>internal/translate</code></td>
+  </tr>
+  <tr>
+    <td><strong>LLM</strong></td>
+    <td>The chat model that <em>rewrites</em> the draft in literary mode (Anthropic, OpenAI,
+      DeepSeek).</td>
+    <td><code>internal/llm</code>, <code>internal/literary</code></td>
+  </tr>
+  <tr>
+    <td><strong>Series bible</strong></td>
+    <td>Style guide + character voices + address-form rules (tu/vous) + per-volume synopsis.
+      Generated once, <em>as input</em> to a run, never as output.</td>
+    <td><code>internal/narrative</code></td>
+  </tr>
+  <tr>
+    <td><strong>Locked glossary</strong></td>
+    <td>EN→FR mappings enforced <em>mechanically</em>: the term is hidden behind a
+      <code>&lt;g id="N"/&gt;</code> token before the call and re-substituted after. The model is not
+      allowed to get it wrong.</td>
+    <td><code>internal/glossary</code></td>
+  </tr>
+  <tr>
+    <td><strong>COMET-QE</strong></td>
+    <td>A <em>reference-free</em> quality score: it rates a (source, translation) pair. Used to
+      escalate weak drafts to the LLM, and to evaluate a run afterward.</td>
+    <td><code>internal/eval</code></td>
+  </tr>
+  <tr>
+    <td><strong>chrF</strong></td>
+    <td>A <em>reference-based</em> score: compares the produced translation to a human translation of
+      the <em>same</em> edition.</td>
+    <td><code>eval/chrf.go</code></td>
+  </tr>
+</table>
+</div>
+
+<h2 id="epub">3. Anatomy of an EPUB and parsing</h2>
+
+<p>
+  An EPUB is a ZIP in which three entries matter to us: <code>mimetype</code>,
+  <code>META-INF/container.xml</code> (which points to the OPF), and the OPF itself, which lists the
+  <em>manifest</em> (all files) and the <em>spine</em> (the reading order). The parser follows this
+  path rather than guessing file names.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    Z["source.epub<br/>ZIP archive"] --> M["META-INF/container.xml"]
+    M --> O["content.opf"]
+    O --> MAN["manifest<br/>all files"]
+    O --> SPI["spine<br/>reading order"]
+    SPI --> X1["chapter_1.xhtml"]
+    SPI --> X2["chapter_2.xhtml"]
+    SPI --> X3["…"]
+    X1 --> DOM["Live DOM tree<br/>golang.org/x/net/html"]
+    DOM --> N["Translatable nodes<br/>p, h1..h6"]
+    N --> NP["Stable NodePath<br/>/html/body/section[1]/p[12]"]
+</pre>
+<figcaption>Parsing keeps a <strong>live DOM tree</strong>: segments point into it, recomposition
+rewrites those nodes in place.</figcaption>
+</figure>
+
+<div class="card note">
+  <span class="label">A detail that matters</span>
+  <p style="margin-top:0">
+    <code>Segment.Node</code> is a <em>pointer</em> into the parsed tree
+    (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/segment/segmenter.go#L51-L61">segmenter.go:51</a>).
+    Restoring a translation means mutating the tree; recomposing means re-serializing the mutated tree
+    into a new ZIP. There is never any string "re-gluing", so never any misalignment between what was
+    translated and what is written.
+  </p>
+  <p>
+    Translated tags: <code>p</code>, <code>h1</code>…<code>h6</code>. Tags ignored
+    entirely: <code>head</code>, <code>script</code>, <code>style</code>, <code>code</code>,
+    <code>pre</code>
+    (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/epub/xhtml.go#L12-L20">xhtml.go:12</a>).
+  </p>
+</div>
+
+<h2 id="placeholders">4. Segmentation &amp; placeholders</h2>
+
+<p>
+  This is the heart of "lose nothing". A novel paragraph rarely looks like pure text: it
+  contains italics, links, notes. You can't send this HTML to a translator (it mangles it),
+  nor strip it (you'd lose it). The solution: <strong>tokenize</strong>.
+</p>
+
+<p>
+  Two distinct treatments, depending on the child node encountered
+  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/segment/placeholder.go#L37-L113">placeholder.go:37</a>):
+</p>
+
+<ul>
+  <li><strong>Simple inline</strong> (a <code>&lt;em&gt;</code> that contains only text) → a
+    <em>pair</em> of opening/closing tokens, and the inner text is exposed to translation. So the
+    italic word gets translated, and it stays italic.</li>
+  <li><strong>Everything else</strong> (nested, empty element, comment) → an
+    <em>opaque</em> token: the subtree is set aside verbatim and put back as-is.</li>
+</ul>
+
+<div class="widget" id="w-steps">
+  <span class="wlabel">A paragraph's round trip — click to advance</span>
+  <div class="stepbox" id="stepbox"></div>
+  <div class="stepdesc" id="stepdesc"></div>
+  <div class="controls">
+    <button id="step-prev">‹ Previous</button>
+    <button class="primary" id="step-next">Next ›</button>
+    <button id="step-auto">▶ Auto play</button>
+    <div class="stepdots" id="stepdots"></div>
+  </div>
+</div>
+
+<h3>Why restoration is <em>atomic</em></h3>
+
+<p>
+  A provider may return the tokens out of order, duplicated, or lose one. A simple
+  presence check is not enough: <code>open-1 open-3 close-2 close-4</code> is
+  "balanced" and would rebuild two <em>nested</em> elements instead of adjacent ones — valid
+  but wrong HTML, silently.
+</p>
+
+<p>
+  <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/segment/placeholder.go#L229-L287"><code>validateTokens</code></a>
+  therefore runs a full <em>preflight</em> — presence, uniqueness, opening/closing pairing — <strong>before
+  touching the node</strong>. On failure, the node keeps its source markup: the segment degrades to
+  "untranslated", QA counts it, and the run continues. Never any broken markup in the output.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    T["Translated text received"] --> V{"validateTokens"}
+    V -->|"missing token"| E1["ErrMissingPlaceholder"]
+    V -->|"duplicate token"| E2["ErrMisorderedPlaceholder"]
+    V -->|"mismatched pair"| E2
+    V -->|"all good"| R["detachChildren<br/>then reconstruction"]
+    E1 --> K["Node keeps<br/>its source markup"]
+    E2 --> K
+    R --> OK["Node translated,<br/>markup identical"]
+    K --> QA["QA counts<br/>the untranslated segment"]
+</pre>
+<figcaption>Fail cleanly rather than produce something false: the rule of the whole pipeline.</figcaption>
+</figure>
+
+<h2 id="tm">5. Normalization, hash, and translation memory</h2>
+
+<p>
+  Before being stored or looked up, a segment is <strong>normalized</strong>: multiple spaces
+  collapsed, non-breaking spaces replaced, typographic apostrophes and quotes folded to their
+  ASCII equivalent, em dashes → single dash, <code>…</code> → <code>...</code>
+  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/segment/normalizer.go#L8-L25">normalizer.go:8</a>).
+</p>
+
+<pre><code>« He said,  “Wait.” »          →  He said, "Wait."      → sha256 → 3f9c…
+« He said, "Wait." »           →  He said, "Wait."      → sha256 → 3f9c…   ← same TM entry</code></pre>
+
+<p>
+  The TM key is <code>sha256(normalized text)</code>. Two phrasings that are visually
+  identical but typographically different therefore share their translation: this is what raises
+  the reuse rate from one volume to the next.
+</p>
+
+<h3>An entry's engine carries meaning</h3>
+
+<div class="card warn">
+  <span class="label">A subtle trap, already fixed in the code</span>
+  <p style="margin-top:0">
+    A TM entry carries an <code>engine</code> tag: <code>nmt-google</code>,
+    <code>nmt-libretranslate</code>, <code>literary</code>, <code>llm-postedit</code>. In literary
+    mode, <strong>a draft is never a hit</strong>
+    (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/orchestrator.go#L734-L749"><code>lookupTranslation</code></a>
+    rejects <code>nmt-*</code> engines). Without this rule, a draft written by an old run
+    would be served back as a finished translation and that segment would <em>never again</em> be refined.
+    Literary mode, moreover, only persists what the LLM produced — and only
+    <em>after</em> placeholder restoration has succeeded.
+  </p>
+</div>
+
+<p>
+  The same SQLite database carries a second role: the <strong>spend ledger</strong>, append-only
+  (table <code>run_attempts</code>). It answers "how much have I spent today / this
+  month" and "how many free characters do I have left with this provider".
+</p>
+
+<h2 id="routage">6. Routing a segment</h2>
+
+<p>
+  For each segment, the question is: <em>what is the cheapest path that yields acceptable
+  quality?</em>
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    S["Segment"] --> TM{"hash in the TM?"}
+    TM -->|"yes, final engine"| REUSE["Reused — $0"]
+    TM -->|"no"| PROT["Glossary protection<br/>locked terms → g id=N"]
+    PROT --> NMT["NMT call<br/>draft"]
+    NMT --> QE{"COMET-QE<br/>configured?"}
+    QE -->|"yes, score < threshold"| ESC["LLM escalation"]
+    QE -->|"no"| LEN{"length ≥<br/>ESCALATE_MIN_CHARS?"}
+    LEN -->|"yes"| ESC
+    LEN -->|"no"| KEEP["Keep the draft"]
+    ESC --> SAFE{"SafePostEdit<br/>placeholders intact?"}
+    SAFE -->|"yes"| BETTER["Improved translation"]
+    SAFE -->|"no"| KEEP
+</pre>
+<figcaption><code>nmt</code> mode. Escalation can never degrade the output: on failure we
+fall back to the draft — but the call is still billed, and counted as such
+(<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/orchestrator.go#L644-L676">orchestrator.go:560</a>).</figcaption>
+</figure>
+
+<div class="widget" id="w-sim">
+  <span class="wlabel">Simulator — 40 segments of a chapter, second pass over the series</span>
+  <div class="segrow" id="segrow"></div>
+  <div class="legend">
+    <span><i style="background:rgba(74,222,128,0.5);border:1px solid var(--green)"></i>TM (free)</span>
+    <span><i style="background:rgba(96,165,250,0.5);border:1px solid var(--blue)"></i>NMT (draft)</span>
+    <span><i style="background:rgba(192,132,252,0.5);border:1px solid var(--purple)"></i>LLM (escalated)</span>
+  </div>
+  <div class="counters">
+    <span>TM <b id="c-tm">0</b></span>
+    <span>NMT <b id="c-nmt">0</b></span>
+    <span>LLM <b id="c-llm">0</b></span>
+    <span>characters sent <b id="c-chars">0</b></span>
+    <span>cost <b id="c-cost">$0.0000</b></span>
+  </div>
+  <div class="bar"><span id="c-bar"></span></div>
+  <div class="controls">
+    <button class="primary" id="sim-play">▶ Run</button>
+    <button id="sim-mode" class="active" data-mode="nmt">mode: nmt</button>
+    <span style="color:var(--muted);font-size:0.78rem" id="sim-note">Google rate: $0.02 / 1000 characters, outside the free tier.</span>
+  </div>
+</div>
+
+<h2 id="literary">7. Literary mode and the series bible</h2>
+
+<p>
+  The <code>nmt</code> mode produces a correct but flat draft. The <code>literary</code> mode
+  adds an LLM pass that <em>rewrites</em> that draft with knowledge of the series: its style, each
+  character's voice, who addresses whom formally, and what happened in the previous volumes. This
+  knowledge is the <strong>series bible</strong>.
+</p>
+
+<figure>
+<pre class="mermaid">
+sequenceDiagram
+    autonumber
+    participant P as Pipeline
+    participant TM as Memory
+    participant N as NMT
+    participant L as LLM
+    participant DB as LLM cache
+
+    Note over P: for EACH chapter
+    P->>TM: lookup of the N segments
+    TM-->>P: k reused, N-k missing
+    P->>N: TranslateBatch of the N-k missing (1 request)
+    N-->>P: drafts
+    P->>L: batch of 50 segments + stable prefix
+    L->>DB: response cached (key = model + messages)
+    L-->>P: JSON {segments:[{id,target_text}]}
+    Note over P,L: incomplete batch → split in two and retry
+    P->>P: placeholder restoration (atomic)
+    P->>TM: persists ONLY the refined segments
+</pre>
+<figcaption>A chapter in literary mode
+(<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/mode.go#L200-L298">mode.go:178</a>).</figcaption>
+</figure>
+
+<h3>The prompt: one frozen part, one volatile part</h3>
+
+<p>
+  Each LLM call is made of two messages
+  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/literary/prompt.go#L22-L113">prompt.go:22</a>):
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Block</th><th>Content</th><th>Changes when?</th></tr>
+  <tr>
+    <td><code>system</code><br/><span class="badge ok">cacheable</span></td>
+    <td>Absolute instructions · <code>GUIDE_DE_STYLE</code> · <code>VOIX_DES_PERSONNAGES</code> ·
+      <code>REGLES_DE_VOUVOIEMENT_TUTOIEMENT</code> · <code>RESUME_DE_L_HISTOIRE</code> ·
+      <code>GLOSSAIRE</code> · <strong><code>SOURCE_INTEGRALE_DU_CHAPITRE</code></strong></td>
+    <td>Once per chapter (the source changes), never between the batches of the same chapter.</td>
+  </tr>
+  <tr>
+    <td><code>user</code><br/><span class="badge">volatile</span></td>
+    <td><code>CONTEXTE_PRECEDENT</code> (the last 1200 characters of French already produced) and
+      the batch's segments in JSON.</td>
+    <td>Every batch.</td>
+  </tr>
+</table>
+</div>
+
+<p>
+  Putting the <em>entire chapter source</em> in the system block is counterintuitive but
+  deliberate: it is constant across all the chapter's batches, so the prompt cache absorbs it
+  after the first call. In the user turn, it would be resent at full rate on every batch.
+  And it is what lets the model resolve a pronoun or a callback located elsewhere in the
+  chapter.
+</p>
+
+<h3>Batches that repair themselves</h3>
+
+<p>
+  A batch starts with 50 segments. If the response omits some (a small model that stops, truncated
+  JSON), the code does not retry identically: it <strong>splits the missing segments into two halves</strong>
+  and starts over, recursively, down to a single segment
+  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/literary/translator.go#L291-L359">translator.go:243</a>).
+  Whatever is left unanswered keeps its NMT draft.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    B["Batch of 8 segments"] --> R{"complete response?"}
+    R -->|"yes"| OK["8 refined"]
+    R -->|"3 missing"| S["split"]
+    S --> H1["batch of 2"]
+    S --> H2["batch of 1"]
+    H1 --> R2{"complete?"}
+    H2 --> R3{"complete?"}
+    R2 -->|"yes"| OK2["2 refined"]
+    R3 -->|"no, 1 segment"| DRAFT["keeps its draft<br/>ErrIncompleteResponse logged"]
+</pre>
+<figcaption>A transport error (bad key, unknown model) is not split: it propagates up.
+Only <em>unusable</em> responses are repaired by splitting.</figcaption>
+</figure>
+
+<h3>The bible is an input, never an output</h3>
+
+<p>
+  <code>series-bible</code> builds the bible <strong>before</strong> any translation, from
+  all the volumes in the directory. Style, voices, and address forms come from all volumes; the
+  <em>summaries</em>, however, are bounded: the bible that translates volume N only contains the
+  synopses of volumes 1..N.
+</p>
+
+<div class="card note">
+  <span class="label">Why bound the summaries</span>
+  <p style="margin-top:0">
+    A model that knows a character's true nature colors their dialogue from volume 1. The
+    bounding is encoded in the identifier itself —
+    <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/narrative/types.go#L59-L67"><code>ScopedSeriesID</code></a>
+    produces <code>lumen@volume-01</code> — so neither the database schema nor the run flags had
+    to change.
+  </p>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    subgraph GEN["series-bible — once per publication"]
+      V1["volume 1"] --> SEED["Seed: style, voices,<br/>address forms — all volumes"]
+      V2["volume 2"] --> SEED
+      V1 --> MAP1["map: 1 summary<br/>per chapter"]
+      V2 --> MAP2["map: 1 summary<br/>per chapter"]
+      MAP1 --> RED1["reduce:<br/>volume 1 synopsis"]
+      MAP2 --> RED2["reduce:<br/>volume 2 synopsis"]
+    end
+    SEED --> B1["lumen@volume-01<br/>synopsis: volume 1"]
+    SEED --> B2["lumen@volume-02<br/>synopsis: volumes 1+2"]
+    RED1 --> B1
+    RED1 --> B2
+    RED2 --> B2
+    B1 --> RUN1["run --series lumen@volume-01"]
+    B2 --> RUN2["run --series lumen@volume-02"]
+</pre>
+<figcaption>Map-reduce of the synopses, then atomic publication of all the bibles
+(<code>SaveAll</code>): either the whole generation is visible, or none of it.</figcaption>
+</figure>
+
+<h2 id="cache">8. The cacheable prefix, or why freeze the bible</h2>
+
+<p>
+  The <code>--update-bible</code> option lets the bible evolve chapter after chapter. Appealing on
+  paper, ruinous in practice: the bible is <em>in the prefix</em>. Modifying it every chapter
+  rewrites the cacheable prefix once per chapter instead of once per run — and leaves on disk a
+  bible different from the one the run started with, so the re-run is no longer free or
+  reproducible.
+</p>
+
+<div class="widget" id="w-cache">
+  <span class="wlabel">The same volume, two strategies</span>
+  <div class="controls" style="margin-top:0;margin-bottom:0.9rem">
+    <button class="active" id="cache-frozen">Frozen bible (default)</button>
+    <button id="cache-evolving">--update-bible</button>
+  </div>
+  <div class="promptstack" id="promptstack"></div>
+  <div class="costbars">
+    <span>Frozen bible</span><div class="track frozen"><span id="bar-frozen"></span></div><span class="num" id="lbl-frozen">—</span>
+    <span>--update-bible</span><div class="track evolving"><span id="bar-evolving"></span></div><span class="num" id="lbl-evolving">—</span>
+  </div>
+  <p style="color:var(--muted);font-size:0.78rem;margin-top:0.7rem" id="cache-note"></p>
+</div>
+
+<p>
+  Two distinct caches are layered, not to be confused:
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Cache</th><th>Where</th><th>Key</th><th>Effect</th></tr>
+  <tr>
+    <td>Completion cache</td>
+    <td>Local SQLite (<code>LLM_CACHE_PATH</code>)</td>
+    <td>model + messages</td>
+    <td>Identical re-run = <strong>free and instant</strong>, zero network call.</td>
+  </tr>
+  <tr>
+    <td>Anthropic prompt cache</td>
+    <td>At the provider</td>
+    <td>prompt prefix (<code>cache_control: ephemeral</code>)</td>
+    <td>Subsequent calls re-read the prefix at ~0.1× the input rate.</td>
+  </tr>
+</table>
+</div>
+
+<h2 id="cout">9. The cost model and the guardrails</h2>
+
+<div class="card key">
+  <span class="label">The central property</span>
+  <p style="margin-top:0">
+    <strong>There is only one cost model.</strong> <code>estimate</code> and the run guardrail
+    both go through
+    <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/cost/model.go#L119-L128"><code>Model.Project</code></a>.
+    What <code>estimate</code> announces is therefore exactly what the per-book cap applies —
+    they cannot diverge.
+  </p>
+</div>
+
+<h3>A projection that learns from what was measured</h3>
+
+<p>
+  The per-character heuristic predicts the <em>length</em> of a translation. It does not predict what
+  a model spends to produce it, and the gap is not a margin: on one measured chapter, 16,180
+  projected output tokens versus <strong>53,409</strong> consumed. A cap applied to the
+  first figure lets through three times the work it thinks it authorizes.
+</p>
+
+<p>
+  The ledger therefore keeps, per attempt, the token counters and the
+  <code>(llm_provider, llm_model)</code> pair that produced them; the next projection replaces its
+  output heuristic with this measurement. The key is the model and its transport — verbosity carries
+  over from one volume to the next, whereas nothing in a book's characters predicts it.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    RUN["literary run"] -->|"tokens per batch<br/>via OnBatch"| RES["report.json"]
+    RUN --> LED["ledger run_attempts<br/>+ llm_provider, llm_model"]
+    LED -->|"MeasuredLLM<br/>weighted by segments"| CAL["calibration:<br/>output tokens / segment"]
+    CAL --> PROJ["Model.Project"]
+    HEUR["per-character heuristic"] -.->|"only if<br/>nothing is measured"| PROJ
+    PROJ --> EST["estimate"]
+    PROJ --> GARDE["run guard"]
+</pre>
+<figcaption>The calibration enters the <em>same</em> <code>Project</code> that both readers
+share: calibrating one without the other would reinstate, through the back door, the divergence the
+single model exists to prevent. And it is <em>dated</em>: two runs of the same chapter two
+weeks apart measured 207 then 160 output tokens per segment — the most recent measurement
+is better than the heuristic, not definitive.</figcaption>
+</figure>
+
+<h3>And it prices what's left, not the book</h3>
+
+<p>
+  Before pricing, the projection asks the translation memory what it can already serve and
+  drops those segments — a chapter entirely in memory doesn't even contribute a call's prefix,
+  since no call will be made for it. This is what makes a resume viable: a run
+  cut off at 80% used to project the whole book and could be refused by a cap sized for the 20%
+  remaining.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Question</th><th>Answer</th></tr>
+  <tr>
+    <td>Does a cached <code>nmt-*</code> draft count as acquired?</td>
+    <td>It depends on the mode, and it's <code>translationMode.ReusesDrafts</code> that decides: yes in NMT
+      (the draft <em>is</em> the output), no in literary (it's an intermediate to redo).
+      The projection applies exactly the <code>lookupTranslation</code> rule — otherwise it
+      would let through a run that then pays for every segment.</td>
+  </tr>
+  <tr>
+    <td>So does <code>estimated_cost_usd</code> drop on a resume?</td>
+    <td>No. This field stays the <strong>whole book with no reuse</strong>, because it is the
+      base that <code>cost_savings_usd</code> subtracts from. The cap, in turn, is applied to the
+      projection of the remaining work. Two numbers, two jobs.</td>
+  </tr>
+  <tr>
+    <td>What do we lose?</td>
+    <td>The projection is no longer a property of the book alone: the same volume projects differently
+      depending on the machine's memory. Accepted — it speaks about <em>this run</em>.</td>
+  </tr>
+</table>
+</div>
+
+<h3>Transport is part of the price</h3>
+
+<p>
+  Two facts about <em>how</em> the calls are issued change the bill by a factor, without changing
+  the prompt at all. Neither is a setting: they are deduced from who executes the pass.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Fact</th><th>Measured effect</th><th>Where it's decided</th></tr>
+  <tr>
+    <td>The CLI opens a <strong>fresh session on every call</strong>: nothing guarantees that a
+      cacheable prefix survives to be re-read. Billed as rewritten on every call — an
+      <strong>upper bound</strong>, not a description.</td>
+    <td>Two runs of the same chapter: 46,970 then <strong>13,927</strong> write tokens per call,
+      a factor of 3.4 on the very term being billed. Without the upper bound, the projection was ×1.9 to
+      ×3.7 too low — always in the direction that lets a run through.</td>
+    <td><code>llm.RewritesPrefixPerCall</code>, read from the chat provider: no one should have
+      to configure this.</td>
+  </tr>
+  <tr>
+    <td>The HTTP post-editor has <strong>no cache</strong>: one JSON POST per segment, without
+      <code>cache_control</code>.</td>
+    <td>Its prefix is paid at full rate on every call. That is what the code already asserted in
+      a comment while its arithmetic billed one write then N re-reads.</td>
+    <td><code>LLMPass.Uncached</code>, carried by the pass: a property of the service that runs it,
+      not of the account.</td>
+  </tr>
+</table>
+</div>
+
+<h3>Two shapes of pass, because output isn't predicted the same way</h3>
+
+<p>
+  <code>LLMPass</code> computes output as <code>characters × expansion</code>: the response
+  reformulates the input, which is true of a translation. A <strong>summary</strong> doesn't work
+  like that — it runs a few hundred tokens whether the chapter is two pages or forty. Using
+  <code>LLMPass</code> for the bible build would amount to billing a 19,000-character chapter as if
+  the summary returned 19,000 in response.
+</p>
+
+<p>
+  Hence <code>SummaryPass</code>, in the same package — a single place applies rates, that's
+  the invariant — but with a <em>bounded</em> output rather than a proportional one, and with no term
+  of prefix: each call carries a different chapter behind a system prompt of about a hundred
+  tokens, well below any provider's cacheable minimum.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th></th><th><code>LLMPass</code> (translation)</th><th><code>SummaryPass</code> (bible)</th></tr>
+  <tr><td>Output</td><td>proportional to input</td><td><strong>bounded</strong>: ~274 tokens per chapter summary, ~400 per synopsis</td></tr>
+  <tr><td>Prefix</td><td>bible + chapter source, repeated and cacheable</td><td>none — nothing to cache</td></tr>
+  <tr><td>Without rates</td><td>projects 0</td><td>still projects the <strong>tokens</strong>: it's the command you run on a subscription, where the token is the only figure that counts</td></tr>
+</table>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    SHAPE["Series measurement<br/>non-empty chapters + characters"] --> P{"ProjectSeriesBible"}
+    P --> S["style: 1 call<br/>all samples<br/>from all volumes"]
+    P --> M["map: 1 call per chapter<br/>← the dominant cost"]
+    P --> R["reduce: 1 call per volume"]
+    S --> T["Total projection"]
+    M --> T
+    R --> T
+    T --> C{"exceeds the per-book<br/>cap?"}
+    C -->|"yes"| STOP["exit 7<br/>zero provider call"]
+    C -->|"no"| GO["build"]
+    T -.->|"--dry-run"| PRINT["print only,<br/>nothing is created"]
+</pre>
+<figcaption>Until this session, <code>series-bible</code> was the only command able to spend
+with neither projection nor cap — and the biggest: one call per chapter across the whole series.</figcaption>
+</figure>
+
+<p>
+  What makes the projection correct is counting the <strong>calls</strong> and not only the
+  segments: each call repeats the prefix. This is why
+  <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/cost/model.go#L36-L77"><code>LLMPass</code></a>
+  separates <code>Segments</code>, <code>Chars</code>, <code>Calls</code>, <code>PrefixChars</code>,
+  and details the shape <em>per chapter</em> rather than on average: a long chapter has both a
+  bigger prefix and more calls to re-read it, and the average crushes precisely that
+  covariance.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    START["Run start"] --> SEG["Segmentation"]
+    SEG --> LEDGER["Ledger read:<br/>free characters already used this month"]
+    LEDGER --> PROJ["Worst-case projection<br/>no TM reuse assumed"]
+    PROJ --> C1{"exceeds the per-book<br/>cap?"}
+    C1 -->|"yes"| STOP1["exit 7 — zero provider call"]
+    C1 -->|"no"| C2{"today's spend<br/>+ projection above the cap?"}
+    C2 -->|"yes"| STOP1
+    C2 -->|"no"| C3{"month's spend<br/>+ projection above the cap?"}
+    C3 -->|"yes"| STOP1
+    C3 -->|"no"| GO["Translation"]
+    GO --> REC["Record the actual spend<br/>in the ledger — even if the run fails"]
+</pre>
+<figcaption>The three caps are checked <em>before</em> the first paid call. The ledger is
+written in a <code>defer</code>: a run that died in the middle was still billed, and forgetting it
+would skew the next run's projection.</figcaption>
+</figure>
+
+<p>
+  Two billing subtleties are worth knowing:
+</p>
+
+<ul>
+  <li>The free tier is counted in <strong>characters per calendar month</strong>, not in dollars.
+    A fully free run therefore still consumes the allocation against which the next one will be
+    billed — hence the dedicated metric <code>translation_nmt_chars_total</code>.</li>
+  <li>The characters counted are those the <em>adapter</em> actually sent
+    (<code>translate.Meter</code>), not those reconstructed from the segments: retried
+    attempts and glossary-protected text are invisible to the second count.</li>
+</ul>
+
+<h2 id="qa">10. QA, recomposition, and artifacts</h2>
+
+<p>
+  The quality gate combines static thresholds and an external validator
+  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/qa/checks.go#L11-L41">checks.go:11</a>):
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Check</th><th>Threshold</th><th>Blocking?</th></tr>
+  <tr><td>Placeholder restoration</td><td>≥ 99.5%</td><td class="num">yes</td></tr>
+  <tr><td>Untranslated segments</td><td>≤ 0.5%</td><td class="num">yes</td></tr>
+  <tr><td>Missing spine documents</td><td>0</td><td class="num">yes</td></tr>
+  <tr><td>Locked glossary violations</td><td>0</td><td class="num">yes</td></tr>
+  <tr><td><code>epubcheck</code></td><td>success</td><td class="num">yes, unless absent → skipped</td></tr>
+  <tr><td>Text identical to the source after normalization</td><td>—</td><td class="num">no, warning</td></tr>
+</table>
+</div>
+
+<p>
+  <strong>Artifacts are written even when QA fails</strong>: a failed run must stay
+  diagnosable. Each run produces, in <code>runs/&lt;run-id&gt;/</code>:
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>File</th><th>Content</th><th>What it's for</th></tr>
+  <tr><td><code>translated.epub</code></td><td>The book</td><td>The product</td></tr>
+  <tr><td><code>report.json</code></td><td>Segments, TM hits, tokens, estimated/actual costs, QA block</td><td>Post-mortem of a run</td></tr>
+  <tr><td><code>segments.jsonl</code></td><td>1 line per segment: source, target, hash, placeholders, status</td><td>Input to <code>eval --segments</code>, side-by-side review</td></tr>
+  <tr><td><code>metrics.json</code></td><td>Flat metrics, canonical names</td><td>Ready for a scraper in service mode</td></tr>
+  <tr><td><code>logs.ndjson</code></td><td>Structured logs (zap)</td><td>Tracing <code>run_id</code>/<code>chapter_id</code>/<code>segment_id</code></td></tr>
+</table>
+</div>
+
+<div class="card note">
+  <span class="label">Metrics contract</span>
+  <p style="margin-top:0">
+    <code>docs/ARCHITECTURE.md §10</code> is the authoritative list. Some metrics are
+    <em>conditional</em>: <code>translation_quality_score</code> appears only if COMET scored
+    at least one segment, and the token counters appear only if the run actually
+    consumed tokens — a run entirely served by the cache consumed none, so it reports none
+    rather than replaying those of the run that paid.
+  </p>
+</div>
+
+<h2 id="carte">11. Code map, package by package</h2>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    CLI["cmd/tomeshift"] --> CE["commandexec<br/>assembly + exit codes"]
+    CE --> CLIP["cli<br/>flag parsing"]
+    CE --> CFG["config<br/>env → typed struct"]
+    CE --> PIPE["pipeline<br/>orchestrator + modes"]
+    PIPE --> EPUB["epub"]
+    PIPE --> SEG["segment"]
+    PIPE --> TMP["tm"]
+    PIPE --> TR["translate"]
+    PIPE --> LIT["literary"]
+    PIPE --> NAR["narrative"]
+    PIPE --> GLO["glossary"]
+    PIPE --> QA2["qa"]
+    PIPE --> COST["cost"]
+    LIT --> LLM["llm"]
+    NAR --> LLM
+    CE --> EVAL["eval"]
+    CE --> PROG["progress<br/>progress bar"]
+    PROG -.->|"pipeline.Reporter"| PIPE
+</pre>
+<figcaption>A dependency never flows upward: <code>pipeline</code> does not know
+<code>commandexec</code>, and no business package knows the CLI.</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Package</th><th>Responsibility</th><th>Key interfaces</th></tr>
+  <tr><td><code>cli</code></td><td>Parses and validates flags. No business logic.</td><td>—</td></tr>
+  <tr><td><code>config</code></td><td>Loads <code>TOMESHIFT_*</code> into a struct, applies per-provider defaults, validates.</td><td><code>Load()</code>, <code>CostModel()</code></td></tr>
+  <tr><td><code>commandexec</code></td><td>Assembles the orchestrator, dispatches commands, maps errors to exit codes.</td><td><code>ConfigLoader</code></td></tr>
+  <tr><td><code>pipeline</code></td><td>The end-to-end run, the budget guardrail, the artifacts.</td><td><code>translationMode</code>, <code>QualityEstimator</code>, <code>Reporter</code></td></tr>
+  <tr><td><code>epub</code></td><td>ZIP, OPF, spine, XHTML tree, recomposition.</td><td><code>Extractor</code>, <code>Parser</code>, <code>Recomposer</code></td></tr>
+  <tr><td><code>segment</code></td><td>Splitting, normalization, hash, placeholders.</td><td><code>Segmenter</code>, <code>PlaceholderManager</code></td></tr>
+  <tr><td><code>tm</code></td><td>Translation memory + spend ledger (SQLite).</td><td><code>Store</code></td></tr>
+  <tr><td><code>translate</code></td><td>NMT adapters, retries, character counting.</td><td><code>Translator</code>, <code>Meter</code></td></tr>
+  <tr><td><code>llm</code></td><td>Chat clients (Anthropic / OpenAI-compatible), SQLite cache, HTTP post-editing.</td><td><code>ChatClient</code>, <code>PostEditor</code></td></tr>
+  <tr><td><code>literary</code></td><td>Prompt construction, self-repairing batches, JSON decoding.</td><td><code>Translator</code></td></tr>
+  <tr><td><code>narrative</code></td><td>Series bible: model, persistence, LLM profiling.</td><td><code>Store</code>, <code>Profiler</code></td></tr>
+  <tr><td><code>glossary</code></td><td>Locked terms, protection/substitution, heuristic extraction.</td><td>—</td></tr>
+  <tr><td><code>qa</code></td><td>Static checks + <code>epubcheck</code>.</td><td><code>EPUBChecker</code></td></tr>
+  <tr><td><code>cost</code></td><td>The single cost model and the <code>estimate</code> scenarios.</td><td><code>Model</code></td></tr>
+  <tr><td><code>eval</code></td><td>chrF (reference-based) and COMET client (reference-free).</td><td>—</td></tr>
+  <tr><td><code>progress</code></td><td>The terminal progress bar. Knows neither the pipeline nor the CLI: <code>commandexec</code> builds it and injects it as <code>pipeline.Reporter</code>.</td><td><code>Bar</code>, <code>IsTerminal()</code></td></tr>
+</table>
+</div>
+
+<h2 id="etendre">12. Extending the project: four recipes</h2>
+
+<div class="card extend">
+  <span class="label">Recipe 1 — Add an NMT provider</span>
+  <p style="margin-top:0">Implement <code>translate.Translator</code>:</p>
+  <pre><code>type Translator interface {
+    Translate(ctx, Request) (Response, error)
+    TranslateBatch(ctx, BatchRequest) ([]Response, error)
+    Engine() string          // TM tag, e.g. "nmt-deepl" — MUST start with "nmt-"
+}</code></pre>
+  <ol>
+    <li>Create <code>internal/translate/deepl.go</code> and embed <code>charMeter</code> so that
+      the characters sent are counted (free tier + ledger).</li>
+    <li>Register the name in <code>NewProvider</code> and, if an endpoint is needed,
+      in <code>RequiresEndpoint</code>.</li>
+    <li>If the provider has a free tier or a public rate, add it to
+      <code>config.applyProviderDefaults</code> — otherwise a paid provider would be selectable
+      with a guardrail that projects $0.</li>
+    <li>If it requires credentials, add it to <code>translate.RequiresAPIKey</code>. Validation
+      happens <strong>at provider construction</strong>, never at config load —
+      otherwise <code>estimate</code>, which makes no call, would refuse to start without a key, and
+      would demand a secret from the password manager just to do a sum.</li>
+    <li>The <code>nmt-</code> prefix is not cosmetic: it's what prevents a draft from being
+      served back as a finished translation in literary mode.</li>
+  </ol>
+</div>
+
+<div class="card extend">
+  <span class="label">Recipe 2 — Add an LLM provider</span>
+  <p style="margin-top:0">Implement <code>llm.ChatClient</code>:</p>
+  <pre><code>type ChatClient interface {
+    Chat(ctx, ChatRequest) (ChatResponse, error)
+}</code></pre>
+  <ul>
+    <li>If the API is OpenAI-compatible, there is <strong>nothing to write</strong>: just
+      <code>LLM_CHAT_PROVIDER=openai</code> + <code>LLM_BASE_URL</code> + <code>LLM_MODEL</code>.</li>
+    <li>The transport does not have to be HTTP. <code>llm.CLIChatClient</code>
+      (<code>LLM_CHAT_PROVIDER=claude-cli</code>) launches a subprocess per completion and fills
+      the same <code>ChatResponse</code>; the SQLite cache keeps working without knowing,
+      since it keys on the model and the messages, not on the transport.</li>
+    <li>Otherwise, fill <code>ChatResponse</code> completely — including
+      <code>InputTokens</code>, <code>OutputTokens</code>, <code>CacheReadInputTokens</code>,
+      <code>CacheCreationInputTokens</code>, and <code>StopReason</code>. These fields are not
+      decorative: the run's actual cost is derived from them, and <code>StopReason</code> distinguishes
+      a refusal from a truncation.</li>
+    <li>The SQLite cache applies automatically by composition
+      (<code>CachedChatClient{Inner: …}</code>): nothing to do on the adapter side.</li>
+  </ul>
+</div>
+
+<div class="card extend">
+  <span class="label">Recipe 3 — Add a translation mode</span>
+  <p style="margin-top:0">
+    Implement <code>translationMode</code> in <code>internal/pipeline/mode.go</code> and
+    route it in <code>newTranslationMode</code>. The four methods:
+  </p>
+  <ul>
+    <li><code>Init(result)</code> — stamp the mode and its own fields.</li>
+    <li><code>Project(chapters, usedFreeChars)</code> — the worst case <em>without</em> TM reuse.
+      This is what the cap compares against; underestimating here amounts to disabling the guardrail.</li>
+    <li><code>Translate(...)</code> — fill the targets, restore the placeholders, increment the
+      counters <em>as you go</em> so that a mid-way failure leaves an exact trace.</li>
+    <li><code>Cost(result, usedFreeChars)</code> — pure, callable after a failure.</li>
+  </ul>
+  <p>Also remember: the value of the <code>--mode</code> flag in <code>cli/flags.go</code>.</p>
+</div>
+
+<div class="card extend">
+  <span class="label">Recipe 4 — Add a QA check or a metric</span>
+  <ul>
+    <li><strong>QA check</strong>: add a <code>check*</code> in
+      <code>qa.Evaluate</code>, a field in <code>Report</code>, and decide whether it enters
+      <code>Report.Passed()</code> (blocking) or only <code>Warnings</code>.</li>
+    <li><strong>Metric</strong>: write it in <code>writeMetrics</code>
+      <strong>and</strong> in <code>docs/ARCHITECTURE.md §10</code>. The document is the contract:
+      "a metric added to the code belongs there too".</li>
+    <li>If it doesn't always make sense, emit it conditionally rather than publishing a zero
+      that would read as a measurement.</li>
+  </ul>
+</div>
+
+<h2 id="invariants">13. The invariants not to break</h2>
+
+<p>
+  These rules are decisions paid for by bugs already encountered. They are covered by
+  tests; if a test opposes your change, it probably documents one of these points.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>#</th><th>Invariant</th><th>What breaks if you ignore it</th></tr>
+  <tr><td>1</td><td>Placeholder restoration is <strong>atomic</strong>: validate before mutating.</td><td>Silently wrong markup, or lost content.</td></tr>
+  <tr><td>2</td><td>An <code>nmt-*</code> draft is <strong>never</strong> a TM hit in literary mode.</td><td>The segment skips refinement — permanently.</td></tr>
+  <tr><td>3</td><td>You persist <strong>after</strong> <code>Restore</code>, never before.</td><td>A translation that rebuilds bad markup gets stored as "finished".</td></tr>
+  <tr><td>4</td><td>Spend is recorded in a <code>defer</code>, including on failure.</td><td>The provider does not refund; the next projection becomes wrong.</td></tr>
+  <tr><td>5</td><td>A ledger read that fails <strong>stops</strong> the run (fail closed).</td><td>The cap is silently bypassed.</td></tr>
+  <tr><td>6</td><td>Tokens are counted <strong>before</strong> the batch's error check.</td><td>A refusal or truncation is billed but counted as zero.</td></tr>
+  <tr><td>7</td><td>The stable prefix stays byte-for-byte identical across an entire run.</td><td>The prompt cache no longer triggers: ×10 on the input cost.</td></tr>
+  <tr><td>8</td><td>Errors are wrapped <code>unable to &lt;context&gt;, err: %w</code>, with sentinels in <code>errors.go</code>.</td><td><code>errors.Is</code> no longer works, so neither does the mapping to exit codes.</td></tr>
+  <tr><td>9</td><td>A failed LLM batch degrades the chapter, it does not cancel it — but it is logged.</td><td>Either you lose the successful batches, or you no longer know why part of it isn't refined.</td></tr>
+  <tr><td>10</td><td>Artifacts are written even when QA fails.</td><td>A failed run becomes undiagnosable.</td></tr>
+  <tr><td>11</td><td>The displayed progress is <strong>never</strong> a data source: it is derived from the same counters as <code>report.json</code>, and a segment is reported <strong>once</strong> — fresh in the NMT loop or via <code>literary.Translator.OnBatch</code>, reused on a TM hit. The displayed amount comes from <code>mode.Cost</code>, the one that writes <code>actual_cost_usd</code>: the last figure seen is the report's.</td><td>A bar that exceeds 100%, or that freezes for a whole chapter, and a CLI whose stdout is no longer parseable.</td></tr>
+  <tr><td>12</td><td><code>estimate</code> and the run guardrail apply the <strong>same</strong> calibration, read from the same ledger. And a calibration that cannot be read leaves the heuristic in place instead of stopping the run — unlike the free-tier read, which fails closed.</td><td>A projection that changes its base between two invocations, or a run refused because an estimate refinement couldn't be read.</td></tr>
+  <tr><td>13</td><td>LLM tokens are accumulated in <strong>a single place</strong>: the <code>OnBatch</code> hook. <code>Outcome.Usage</code> carries the same tokens seen per chapter — adding both bills twice.</td><td>An exactly doubled cost, invisible without a reference measurement.</td></tr>
+  <tr><td>14</td><td>A rate limit (<code>llm.ErrRateLimited</code>, an HTTP 429) <strong>stops</strong> the chapter, it does not degrade it — it's the only batch error that does not degrade.</td><td>The rest of the book fails batch by batch silently and comes out as an NMT draft — which literary mode does not persist, so with nothing to resume.</td></tr>
+  <tr><td>15</td><td>The projection applied to the cap prices the <strong>remaining</strong> work; <code>estimated_cost_usd</code> stays the whole book with no reuse. These are two different numbers and they have two jobs.</td><td>Either a resume refused for a bill it won't pay, or <code>cost_savings_usd</code> dropping to zero exactly on the runs where memory worked the most.</td></tr>
+</table>
+</div>
+
+<h3>The ritual before committing</h3>
+
+<pre><code>gofmt -w -s .
+golangci-lint run
+env -u GOROOT go test ./...
+# or, all at once:
+just check</code></pre>
+
+<p>
+  Unit tests live next to the code in <code>internal/*</code>, integration tests
+  in <code>tests/integration/</code> (full run on a fixture EPUB, literary mode, batch,
+  series bible, eval). <code>just fuzz</code> runs the fuzz tests — notably on
+  the placeholder round trip — and is deliberately not in CI.
+</p>
+
+<div class="card note">
+  <span class="label">To go further</span>
+  <ul style="margin-bottom:0">
+    <li><a href="ARCHITECTURE.md">docs/ARCHITECTURE.md</a> — constraints, data schemas, metrics contract</li>
+    <li><a href="rfcs/">docs/rfcs/</a> — the <em>why</em> of each decision, RFC by RFC</li>
+    <li><a href="rfc-0007-google-translate.html">RFC 0007 illustrated</a> — Google draft + token-based cost model</li>
+    <li><a href="implementation/">docs/implementation/</a> — detailed implementation notes</li>
+    <li><a href="usage.html">usage.html</a> — the operational user guide</li>
+  </ul>
+</div>
+
+<footer>
+  tomeshift · educational document · code pinned at <code>953441d</code> ·
+  Mermaid diagrams · animations in native JavaScript, no external dependency besides Mermaid
+</footer>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#151824',
+      primaryColor: '#252840',
+      primaryTextColor: '#e2e4f0',
+      primaryBorderColor: '#2a2d3e',
+      lineColor: '#8b8fa8',
+      secondaryColor: '#1a1d27',
+      tertiaryColor: '#1f2f3a',
+      fontFamily: "'SF Mono','Fira Code',ui-monospace,monospace",
+      fontSize: '12px'
+    },
+    flowchart: { curve: 'basis', padding: 14 },
+    sequence: { actorMargin: 40, width: 150 }
+  });
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ── 1. Animated pipeline ───────────────────────────────────────── */
+  var STAGES = [
+    ['Extract', 'zip'], ['Parse', 'opf + spine'], ['Segment', 'p, h1..h6'],
+    ['Budget', 'projection'], ['Translate', 'TM / NMT / LLM'], ['Restore', 'placeholders'],
+    ['Recompose', 'new epub'], ['QA', 'epubcheck'], ['Artifacts', 'report + jsonl']
+  ];
+  var flowline = document.getElementById('flowline');
+  STAGES.forEach(function (s) {
+    var d = document.createElement('div');
+    d.className = 'stage';
+    d.innerHTML = '<span class="sname">' + s[0] + '</span>' + s[1];
+    flowline.appendChild(d);
+  });
+  var flowTimer = null;
+  function playFlow() {
+    var els = flowline.children, i = 0;
+    clearInterval(flowTimer);
+    for (var k = 0; k < els.length; k++) els[k].className = 'stage';
+    if (reduce) { for (var j = 0; j < els.length; j++) els[j].className = 'stage done'; return; }
+    flowTimer = setInterval(function () {
+      if (i > 0) els[i - 1].className = 'stage done';
+      if (i >= els.length) { clearInterval(flowTimer); return; }
+      els[i].className = 'stage lit';
+      i++;
+    }, 420);
+  }
+  document.getElementById('flow-play').addEventListener('click', playFlow);
+  playFlow();
+
+  /* ── 2. Stepper placeholders ────────────────────────────────────── */
+  var STEPS = [
+    {
+      title: 'XHTML source',
+      body: '<span class="lbl">chapter node</span>' +
+        '<span class="mk">&lt;p&gt;</span>She whispered <span class="mk">&lt;em&gt;</span>Return by Ash<span class="mk">&lt;/em&gt;</span> and vanished.<span class="mk">&lt;/p&gt;</span>',
+      desc: 'A &lt;p&gt; block from the chapter, with inline markup. It can neither be sent as-is to the translator nor stripped out.'
+    },
+    {
+      title: 'Tokenize',
+      body: '<span class="lbl">text exposed to translation</span>' +
+        'She whispered <span class="tok">&lt;x id="1"/&gt;</span>Return by Ash<span class="tok">&lt;x id="2"/&gt;</span> and vanished.' +
+        '<span class="lbl">placeholders stored</span>' +
+        '1 = opening &lt;em&gt; · 2 = closing',
+      desc: '&lt;em&gt; contains only text: it becomes an opening/closing PAIR, and its content stays translatable. A nested or empty element would instead become an opaque token.'
+    },
+    {
+      title: 'Protect (glossary)',
+      body: '<span class="lbl">text sent to the provider</span>' +
+        'She whispered <span class="tok">&lt;x id="1"/&gt;</span><span class="gtok">&lt;g id="1"/&gt;</span><span class="tok">&lt;x id="2"/&gt;</span> and vanished.' +
+        '<span class="lbl">pending substitution</span>' +
+        '&lt;g id="1"/&gt; → "Retour par la Cendre"',
+      desc: 'The locked glossary term is masked. The model CANNOT mistranslate it: it never sees it.'
+    },
+    {
+      title: 'Hash + lookup TM',
+      body: '<span class="lbl">normalized</span>' +
+        'She whispered &lt;x id="1"/&gt;Return by Ash&lt;x id="2"/&gt; and vanished.' +
+        '<span class="lbl">key</span>sha256 → <span class="fr">a91f4c…</span>' +
+        '<span class="lbl">result</span>miss → call the provider',
+      desc: 'Whitespace collapsed, typography folded to ASCII: two visually identical phrasings share their TM entry. A hit here would cost $0.'
+    },
+    {
+      title: 'Translation',
+      body: '<span class="lbl">provider response</span>' +
+        '<span class="fr">Elle murmura <span class="tok">&lt;x id="1"/&gt;</span><span class="gtok">&lt;g id="1"/&gt;</span><span class="tok">&lt;x id="2"/&gt;</span> et disparut.</span>',
+      desc: 'The provider receives format=html: it copies the tokens instead of translating their attributes. The tokens have moved WITHIN the sentence — this is normal and expected.'
+    },
+    {
+      title: 'Apply + validate',
+      body: '<span class="lbl">glossary re-substituted</span>' +
+        '<span class="fr">Elle murmura <span class="tok">&lt;x id="1"/&gt;</span>Retour par la Cendre<span class="tok">&lt;x id="2"/&gt;</span> et disparut.</span>' +
+        '<span class="lbl">validateTokens</span>' +
+        '1 present · 2 present · no duplicate · 2 properly closes 1 → <span class="fr">OK</span>',
+      desc: 'Full preflight BEFORE touching the node. If a token were missing or the pair reversed, we would stop here and the node would keep its source.'
+    },
+    {
+      title: 'Restore',
+      body: '<span class="lbl">reconstructed node</span>' +
+        '<span class="mk">&lt;p&gt;</span><span class="fr">Elle murmura </span><span class="mk">&lt;em&gt;</span><span class="fr">Retour par la Cendre</span><span class="mk">&lt;/em&gt;</span><span class="fr"> et disparut.</span><span class="mk">&lt;/p&gt;</span>' +
+        '<span class="lbl">TM</span>a91f4c… → translation, engine = nmt-google',
+      desc: 'The italics are still in the right place, on the right word. The mutated node goes straight to recomposition — no string re-gluing.'
+    }
+  ];
+  var sIdx = 0, sTimer = null;
+  var stepbox = document.getElementById('stepbox');
+  var stepdesc = document.getElementById('stepdesc');
+  var stepdots = document.getElementById('stepdots');
+  STEPS.forEach(function () {
+    var d = document.createElement('span'); d.className = 'dot'; stepdots.appendChild(d);
+  });
+  function renderStep() {
+    var s = STEPS[sIdx];
+    stepbox.innerHTML = s.body;
+    stepdesc.innerHTML = '<strong style="color:var(--yellow)">' + (sIdx + 1) + '. ' + s.title + '</strong> — ' + s.desc;
+    for (var i = 0; i < stepdots.children.length; i++) {
+      stepdots.children[i].className = 'dot' + (i === sIdx ? ' on' : '');
+    }
+    document.getElementById('step-prev').disabled = sIdx === 0;
+    document.getElementById('step-next').disabled = sIdx === STEPS.length - 1;
+  }
+  document.getElementById('step-prev').addEventListener('click', function () {
+    clearInterval(sTimer); if (sIdx > 0) { sIdx--; renderStep(); }
+  });
+  document.getElementById('step-next').addEventListener('click', function () {
+    clearInterval(sTimer); if (sIdx < STEPS.length - 1) { sIdx++; renderStep(); }
+  });
+  document.getElementById('step-auto').addEventListener('click', function () {
+    clearInterval(sTimer);
+    sIdx = 0; renderStep();
+    if (reduce) return;
+    sTimer = setInterval(function () {
+      if (sIdx >= STEPS.length - 1) { clearInterval(sTimer); return; }
+      sIdx++; renderStep();
+    }, 2600);
+  });
+  renderStep();
+
+  /* ── 3. Routing simulator ───────────────────────────────────────── */
+  // Fixed sequence (no randomness): 40 segments, ~35% already in TM,
+  // the long ones (>= 240 characters) are escalated.
+  var N = 40;
+  var SEGS = [];
+  for (var i = 0; i < N; i++) {
+    SEGS.push({
+      tm: (i * 7) % 20 < 7,                 // ~35% hits
+      chars: 90 + ((i * 53) % 320)          // 90..409 characters
+    });
+  }
+  var segrow = document.getElementById('segrow');
+  var cells = [];
+  for (var j = 0; j < N; j++) {
+    var c = document.createElement('div'); c.className = 'seg';
+    segrow.appendChild(c); cells.push(c);
+  }
+  var simTimer = null, simMode = 'nmt';
+  var modeBtn = document.getElementById('sim-mode');
+  function resetSim() {
+    clearInterval(simTimer);
+    cells.forEach(function (c) { c.className = 'seg'; });
+    ['c-tm', 'c-nmt', 'c-llm'].forEach(function (id) { document.getElementById(id).textContent = '0'; });
+    document.getElementById('c-chars').textContent = '0';
+    document.getElementById('c-cost').textContent = '$0.0000';
+    document.getElementById('c-bar').style.width = '0';
+  }
+  function playSim() {
+    resetSim();
+    var i = 0, tm = 0, nmt = 0, llm = 0, chars = 0;
+    function tick() {
+      if (i > 0) cells[i - 1].classList.remove('active');
+      if (i >= N) { clearInterval(simTimer); return; }
+      var s = SEGS[i];
+      if (s.tm) { cells[i].className = 'seg tm active'; tm++; }
+      else {
+        chars += s.chars; nmt++;
+        var escalate = simMode === 'literary' || s.chars >= 240;
+        cells[i].className = 'seg ' + (escalate ? 'llm' : 'nmt') + ' active';
+        if (escalate) llm++;
+      }
+      document.getElementById('c-tm').textContent = tm;
+      document.getElementById('c-nmt').textContent = nmt;
+      document.getElementById('c-llm').textContent = llm;
+      document.getElementById('c-chars').textContent = chars.toLocaleString('en-US');
+      document.getElementById('c-cost').textContent =
+        '$' + (chars / 1000 * 0.02).toFixed(4);
+      document.getElementById('c-bar').style.width = (tm / (i + 1) * 100) + '%';
+      i++;
+    }
+    if (reduce) { for (var k = 0; k < N; k++) tick(); return; }
+    simTimer = setInterval(tick, 70);
+  }
+  modeBtn.addEventListener('click', function () {
+    simMode = simMode === 'nmt' ? 'literary' : 'nmt';
+    modeBtn.textContent = 'mode: ' + simMode;
+    document.getElementById('sim-note').textContent = simMode === 'literary'
+      ? 'In literary mode, EVERY fresh segment goes through the LLM: the draft is only an intermediate.'
+      : 'In nmt mode, only long segments (≥ 240 characters) are escalated — or the weakest ones if COMET-QE is wired in.';
+    playSim();
+  });
+  document.getElementById('sim-play').addEventListener('click', playSim);
+  playSim();
+
+  /* ── 4. Cacheable prefix ────────────────────────────────────────── */
+  var stack = document.getElementById('promptstack');
+  var noteEl = document.getElementById('cache-note');
+  function renderCache(frozen) {
+    var bibleCls = frozen ? 'cached' : 'written';
+    var bibleTag = frozen ? 'read from cache · ~0.1× input' : 'REWRITTEN every chapter · full rate +25%';
+    stack.innerHTML =
+      '<div class="pblock ' + bibleCls + '"><span class="tagline">' + bibleTag + '</span>' +
+        'system · instructions + GUIDE_DE_STYLE + VOIX + TU/VOUS + RÉSUMÉS + GLOSSAIRE</div>' +
+      '<div class="pblock written"><span class="tagline">written 1× per chapter, then re-read</span>' +
+        'system · SOURCE_INTEGRALE_DU_CHAPITRE</div>' +
+      '<div class="pblock volatile"><span class="tagline">sent per batch · full rate</span>' +
+        'user · CONTEXTE_PRECEDENT (1200 chars) + the batch\'s 50 segments</div>';
+    var bf = document.getElementById('bar-frozen'), be = document.getElementById('bar-evolving');
+    bf.style.width = '0'; be.style.width = '0';
+    setTimeout(function () { bf.style.width = '9%'; be.style.width = '100%'; }, reduce ? 0 : 40);
+    document.getElementById('lbl-frozen').textContent = '$0.25–0.41';
+    document.getElementById('lbl-evolving').textContent = '$4.33';
+    noteEl.innerHTML = frozen
+      ? 'Frozen bible: the prefix is byte-for-byte identical across the volume\'s 68 chapters. It is written once, re-read 67 times — and a full re-run is served by the local SQLite cache, so <strong>free</strong>.'
+      : '<strong>--update-bible</strong>: the bible changes after each chapter, so the prefix is rewritten 68 times instead of once. And the bible on disk no longer matches the starting one: the re-run is neither free nor reproducible. Figures measured on one volume, see the README.';
+    document.getElementById('cache-frozen').className = frozen ? 'active' : '';
+    document.getElementById('cache-evolving').className = frozen ? '' : 'active';
+  }
+  document.getElementById('cache-frozen').addEventListener('click', function () { renderCache(true); });
+  document.getElementById('cache-evolving').addEventListener('click', function () { renderCache(false); });
+  renderCache(true);
+})();
+</script>
+
+</body>
+</html>

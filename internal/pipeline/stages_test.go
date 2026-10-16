@@ -13,13 +13,13 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/epub"
-	"github.com/ECecillo/ebooks-translator/internal/glossary"
-	"github.com/ECecillo/ebooks-translator/internal/pipeline"
-	"github.com/ECecillo/ebooks-translator/internal/qa"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
-	"github.com/ECecillo/ebooks-translator/internal/tm"
-	"github.com/ECecillo/ebooks-translator/internal/translate"
+	"github.com/ECecillo/tomeshift/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/glossary"
+	"github.com/ECecillo/tomeshift/internal/pipeline"
+	"github.com/ECecillo/tomeshift/internal/qa"
+	"github.com/ECecillo/tomeshift/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/tm"
+	"github.com/ECecillo/tomeshift/internal/translate"
 )
 
 // The stage bodies own the rules the flow trusts by construction: which mode

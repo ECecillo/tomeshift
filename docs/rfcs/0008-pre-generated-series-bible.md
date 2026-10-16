@@ -260,7 +260,7 @@ content rather than translation commentary.
    volumes 1..N. Emit one bible per N when the series has more than one volume.
 6. `internal/pipeline`: bump the version on content change; leave `--update-bible`
    functional but drop it from the documented workflow.
-7. `docs/guide-traduction.md`, `docs/ameliorer-traduction.md`, `Justfile`: the new
+7. `docs/translation-guide.md`, `docs/improving-translations.md`, `Justfile`: the new
    pre-translation step, and the removal of `--update-bible` from the recipes.
 
 ## Rollout Plan

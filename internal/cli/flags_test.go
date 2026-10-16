@@ -173,10 +173,10 @@ func TestPrintRootUsage(t *testing.T) {
 	if !strings.Contains(out, "Usage:") {
 		t.Fatalf("PrintRootUsage() missing Usage header, got %q", out)
 	}
-	if !strings.Contains(out, "epub-translator run --input") {
+	if !strings.Contains(out, "tomeshift run --input") {
 		t.Fatalf("PrintRootUsage() missing command synopsis, got %q", out)
 	}
-	if !strings.Contains(out, "epub-translator style-profile --input") {
+	if !strings.Contains(out, "tomeshift style-profile --input") {
 		t.Fatalf("PrintRootUsage() missing style-profile synopsis, got %q", out)
 	}
 }

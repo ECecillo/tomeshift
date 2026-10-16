@@ -136,9 +136,9 @@ exactly what `segments.jsonl` (`ARCHITECTURE.md §16.1`) already claims to be.
 
 ```mermaid
 flowchart LR
-    CLI["epub-translator run / batch<br/>(no secrets, drives the progress bar)"]
+    CLI["tomeshift run / batch<br/>(no secrets, drives the progress bar)"]
     T["Temporal dev server<br/>:7233 gRPC · :8233 UI<br/>SQLite history"]
-    W["epub-translator worker<br/>(op run — holds the API keys)"]
+    W["tomeshift worker<br/>(op run — holds the API keys)"]
     subgraph deps[" "]
         NMT["NMT provider"]
         LLM["LLM provider"]
@@ -461,7 +461,7 @@ the example asked for, is Resolve → RefineBatch × n (no draft) → Commit:
 | `pipeline` | `llmMode` struct; `Project` reuses the existing `full-llm` scenario (`cost/estimate.go:296`) | ~100 lines + `RunBook` scenarios | no |
 | `internal/temporal` | nothing — no new activity, `RefineBatch` accepts an empty draft | 0 | — |
 | `cli` | `--mode llm` accepted | ~10 lines | no |
-| docs | `utilisation.html` §6, `comprendre-le-projet.html` §1 and recipe 3 | — | — |
+| docs | `usage.html` §6, `understanding-the-project.html` §1 and recipe 3 | — | — |
 
 A mode that needs a **new** step costs, in the adapter, one `Steps` method, one
 `Stages` method, one activity registration and one `policy.go` line — ~30
@@ -491,7 +491,7 @@ Each phase is one PR, green on `just check`, and leaves the tool usable.
    (`temporalio/temporal server start-dev --ip 0.0.0.0 --db-filename
    /data/temporal.db`, ports 7233 and 8233, pinned tag); `just temporal-up /
    temporal-down` folded into `up` / `down`; `preflight` probes 7233; the three
-   `EPUB_TRANSLATOR_TEMPORAL_*` variables; `DEPENDENCIES.md` entry for
+   `TOMESHIFT_TEMPORAL_*` variables; `DEPENDENCIES.md` entry for
    `go.temporal.io/sdk`.
 3. **Worker and the NMT workflow.** `internal/temporal` (client, worker,
    `Steps`/`Runtime` adapters, policy, error mapping), `worker` subcommand,
@@ -511,8 +511,8 @@ Each phase is one PR, green on `just check`, and leaves the tool usable.
    default (`pipeline/inprocess.go` stays, test-only), `RetryingTranslator`,
    `OnBatch`, `costFn`, the pipeline progress hooks and the
    tty probe. Update `ARCHITECTURE.md` §5, §7, §9, §10, §13; rewrite M4 around
-   what Temporal now provides; `utilisation.html` (§4 services, §6 `worker`, §8
-   variables, §11 recipes), `comprendre-le-projet.html` (§1 widget, §11 map,
+   what Temporal now provides; `usage.html` (§4 services, §6 `worker`, §8
+   variables, §11 recipes), `understanding-the-project.html` (§1 widget, §11 map,
    §13 invariants); README; `just docs-audit`.
 
 ## Testing Strategy
@@ -556,7 +556,7 @@ Per phase:
 
 - One environment: the developer's machine. Phases 1–2 change nothing a user sees.
 - Phases 3–5 add the Temporal path while the in-process path stays the default;
-  `EPUB_TRANSLATOR_ENGINE=temporal` selects the new one during that window and
+  `TOMESHIFT_ENGINE=temporal` selects the new one during that window and
   is removed in phase 6.
 - Rollback: before phase 6, unset the variable; after phase 6, revert the phase 6 PR.
 
@@ -617,12 +617,12 @@ Per phase:
    as today.** No `approve-budget` signal; the `ProjectCost` step returns
    `ErrBudgetExceeded` and the run ends before any provider call.
 2. ~~Rate-limit cooldown.~~ **Decided 2026-09-10: 30 min initial, doubling, ceiling
-   5 h** (the Claude CLI quota window). `EPUB_TRANSLATOR_RATE_LIMIT_COOLDOWN`
+   5 h** (the Claude CLI quota window). `TOMESHIFT_RATE_LIMIT_COOLDOWN`
    and `..._COOLDOWN_MAX` carry the two values.
 3. ~~`--detach` + `status`, or blocking?~~ **Decided 2026-09-10: blocking.** `run`
    starts the workflow, polls the `progress` query to drive the existing bar,
    waits for the result and maps it to the exit code. No `--detach` in this RFC.
-4. ~~One task queue or two?~~ **Decided 2026-09-10: one** (`epub-translator`).
+4. ~~One task queue or two?~~ **Decided 2026-09-10: one** (`tomeshift`).
 5. ~~Temporal Schedules for a nightly `batch`.~~ **Decided 2026-09-10: after phase 5,
    only if a need appears.** Not in this RFC's plan.
 

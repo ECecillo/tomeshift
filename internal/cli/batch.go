@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// BatchCommand is the parsed contract for `epub-translator batch`, which
+// BatchCommand is the parsed contract for `tomeshift batch`, which
 // translates every EPUB in a directory through a shared TM and glossary.
 type BatchCommand struct {
 	InputDir   string
@@ -21,7 +21,7 @@ type BatchCommand struct {
 	NoProgress bool
 }
 
-// ParseBatchArgs parses flags for `epub-translator batch`.
+// ParseBatchArgs parses flags for `tomeshift batch`.
 func ParseBatchArgs(args []string, stderr io.Writer) (BatchCommand, error) {
 	fs := flag.NewFlagSet("batch", flag.ContinueOnError)
 	fs.SetOutput(stderr)

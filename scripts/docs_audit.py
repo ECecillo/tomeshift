@@ -4,7 +4,7 @@
 The two HTML documents under docs/ are meant to stay true as the project grows.
 Prose drifts silently, so this checks the one thing that can be checked
 mechanically: every element of the user-facing surface — CLI command, flag,
-EPUB_TRANSLATOR_* variable, just recipe, exit code — is mentioned somewhere in
+TOMESHIFT_* variable, just recipe, exit code — is mentioned somewhere in
 them.
 
 It proves coverage, not correctness: mentioning a flag is not explaining it.
@@ -26,8 +26,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # The documents under audit. A new element must appear in at least one of them.
 DOCS = [
-    ROOT / "docs" / "utilisation.html",
-    ROOT / "docs" / "comprendre-le-projet.html",
+    ROOT / "docs" / "usage.html",
+    ROOT / "docs" / "understanding-the-project.html",
 ]
 
 # Elements deliberately left out of the illustrated docs, with the reason.
@@ -45,13 +45,13 @@ ALLOW = {
     "recipe:comet-down": "symmetric with comet-up, no distinct consequence",
     "recipe:seed-bible": "documented under its command name, style-profile",
     "recipe:batch": "documented under its command name",
-    "env:EPUB_TRANSLATOR_NMT_RETRY_BASE_MS": "documented next to NMT_MAX_ATTEMPTS",
-    "env:EPUB_TRANSLATOR_COMET_API_KEY": "documented next to COMET_ENDPOINT",
-    "env:EPUB_TRANSLATOR_LLM_ENABLED": "documented next to LLM_ENDPOINT",
-    "env:EPUB_TRANSLATOR_LLM_CACHE_WRITE_MULTIPLIER": "pricing detail, covered by the cost model section",
-    "env:EPUB_TRANSLATOR_LLM_OUTPUT_EXPANSION": "pricing detail, covered by the cost model section",
-    "env:EPUB_TRANSLATOR_LLM_PROMPT_OVERHEAD_TOKENS": "pricing detail, covered by the cost model section",
-    "env:EPUB_TRANSLATOR_COST_PER_SEGMENT_USD": "documented next to COST_PER_1000_CHARS_USD",
+    "env:TOMESHIFT_NMT_RETRY_BASE_MS": "documented next to NMT_MAX_ATTEMPTS",
+    "env:TOMESHIFT_COMET_API_KEY": "documented next to COMET_ENDPOINT",
+    "env:TOMESHIFT_LLM_ENABLED": "documented next to LLM_ENDPOINT",
+    "env:TOMESHIFT_LLM_CACHE_WRITE_MULTIPLIER": "pricing detail, covered by the cost model section",
+    "env:TOMESHIFT_LLM_OUTPUT_EXPANSION": "pricing detail, covered by the cost model section",
+    "env:TOMESHIFT_LLM_PROMPT_OVERHEAD_TOKENS": "pricing detail, covered by the cost model section",
+    "env:TOMESHIFT_COST_PER_SEGMENT_USD": "documented next to COST_PER_1000_CHARS_USD",
 }
 
 
@@ -87,7 +87,7 @@ def flags() -> set[str]:
 def env_vars() -> set[str]:
     """Settings the operator is expected to know, i.e. what .env.example lists."""
     src = read(ROOT / ".env.example")
-    return set(re.findall(r"^(EPUB_TRANSLATOR_[A-Z0-9_]+)=", src, re.M))
+    return set(re.findall(r"^(TOMESHIFT_[A-Z0-9_]+)=", src, re.M))
 
 
 def recipes() -> set[str]:
@@ -127,9 +127,9 @@ def main() -> int:
     text = corpus()
 
     checks = [
-        ("command", commands(), lambda c: f"epub-translator {c}"),
+        ("command", commands(), lambda c: f"tomeshift {c}"),
         ("flag", flags(), lambda f: f"--{f}"),
-        ("env", env_vars(), lambda e: e.removeprefix("EPUB_TRANSLATOR_")),
+        ("env", env_vars(), lambda e: e.removeprefix("TOMESHIFT_")),
         ("recipe", recipes(), lambda r: f"just {r}"),
         ("exit", exit_codes(), lambda c: f"exit {c}"),
     ]

@@ -6,7 +6,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ECecillo/ebooks-translator/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/epub"
 )
 
 // ApplyReport is what a consumer observes after ApplyTranslations. It accounts

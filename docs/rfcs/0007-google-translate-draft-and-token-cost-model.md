@@ -57,8 +57,8 @@ All figures come from the repository, not from estimates. Commands are inline in
 
 | Quantity | Value | Source |
 | --- | --- | --- |
-| WN vol. 1 | 4,269 segments / 472,509 chars / 68 spine chapters | `epub-translator estimate` |
-| LN vol. 1 (commercial edition) | 2,833 segments / 414,044 chars | `epub-translator estimate` |
+| WN vol. 1 | 4,269 segments / 472,509 chars / 68 spine chapters | `tomeshift estimate` |
+| LN vol. 1 (commercial edition) | 2,833 segments / 414,044 chars | `tomeshift estimate` |
 | Stable prefix (bible v3 + glossary) | ~10,500 chars ~ 3,000 tokens | `data/lumen-series.sqlite` |
 | Median chapter | ~1,020 tokens | EPUB spine walk |
 | Whole book | ~119,000 tokens | EPUB spine walk |
@@ -292,7 +292,7 @@ The two concerns are distinct, and only the second is a context problem:
    `Protect`/`Apply` per segment; drop the draft `TM.Save` on the literary path.
 6. `internal/segment/placeholder.go`: pre-flight token validation in `Restore`;
    correct the now-true comment at the call site.
-7. Config, `.env.example`, `docs/INSTALLATION.md`, `docs/guide-traduction.md`.
+7. Config, `.env.example`, `docs/INSTALLATION.md`, `docs/translation-guide.md`.
 8. **Checkpoint:** run chapter 1, record chrF and COMET-QE. This is the Google-only
    baseline.
 
@@ -322,7 +322,7 @@ The two concerns are distinct, and only the second is a context problem:
    named failure rather than letting it fall through to `decodeResponse`.
 3. `internal/cost` + config: add `LLM_TOKEN_MULTIPLIER` (default `1.0`), applied on
    top of `charsPerToken` in both the guardrail and `estimate`.
-4. `.env.example`, `docs/guide-traduction.md`: `claude-sonnet-5` as the documented
+4. `.env.example`, `docs/translation-guide.md`: `claude-sonnet-5` as the documented
    example, with the Sonnet 5 rates and multiplier.
 5. **Checkpoint:** re-run chapter 1 and read `usage.output_tokens`. With thinking
    disabled it should track the Sonnet 4.6 baseline within the tokenizer factor; a
@@ -339,7 +339,7 @@ Compare chrF, COMET-QE and a three-column read. Total spend is a few cents.
 
 - Local only. There is no staging or production environment for this pipeline.
 - Order: chapter 1 (67 segments, free, seconds) before any full volume.
-- Google is opt-in per run via `EPUB_TRANSLATOR_NMT_PROVIDER`; rollback is one
+- Google is opt-in per run via `TOMESHIFT_NMT_PROVIDER`; rollback is one
   environment variable back to `libretranslate`.
 - Batches 2 and 3 are behind no flag; rollback is `git revert` of the batch.
 - The free-tier counter must be seeded honestly: if characters were already spent
@@ -386,7 +386,7 @@ post-August figure rather than on the introductory one.
 - One new outbound dependency. Book text — third-party copyrighted content — is
   sent to Google. This is the same exposure class as the existing Anthropic call,
   but Argos was local, so the change is real and worth stating.
-- `EPUB_TRANSLATOR_NMT_API_KEY` already exists and is already excluded from the
+- `TOMESHIFT_NMT_API_KEY` already exists and is already excluded from the
   repository; no new secret-handling pattern.
 - Cloud Translation requires a GCP project with billing enabled, including for the
   free tier.

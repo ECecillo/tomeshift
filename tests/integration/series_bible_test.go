@@ -11,11 +11,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/commandexec"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
-	"github.com/ECecillo/ebooks-translator/internal/llm/openaitest"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/commandexec"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/llm/openaitest"
+	"github.com/ECecillo/tomeshift/internal/narrative"
 )
 
 // TestSeriesBible_BuildsScopedBiblesFromEveryVolume covers the shape RFC 0008
@@ -311,5 +311,5 @@ func TestSeriesBible_BudgetCapStopsBeforeTheFirstCall(t *testing.T) {
 	require.Zero(t, called, "the cap must stop the job before the first provider call")
 	// The message names the setting, so a refused build points at the knob
 	// rather than looking like a failure.
-	require.Contains(t, stderr.String(), "EPUB_TRANSLATOR_PER_BOOK_BUDGET_USD")
+	require.Contains(t, stderr.String(), "TOMESHIFT_PER_BOOK_BUDGET_USD")
 }

@@ -120,7 +120,7 @@ UPDATE`, identical in intent to the SQLite upsert.
 1. (Now) Document parity + decision (this RFC). No code change.
 2. (V2) Add `internal/tm/postgres.go` implementing `tm.Store` against pgx.
 3. (V2) Add a store factory selecting backend from config
-   (`EPUB_TRANSLATOR_TM_DRIVER=sqlite|postgres`, `..._TM_DSN`).
+   (`TOMESHIFT_TM_DRIVER=sqlite|postgres`, `..._TM_DSN`).
 4. (V2) Add a one-shot migration command exporting SQLite `segments`/`runs`
    into PostgreSQL (idempotent upserts keyed by primary keys).
 5. (V2) Extend CI with a Postgres service container to run the same

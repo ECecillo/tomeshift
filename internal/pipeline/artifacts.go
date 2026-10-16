@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ECecillo/ebooks-translator/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/segment"
 )
 
 const (

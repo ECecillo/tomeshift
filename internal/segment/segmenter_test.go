@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"golang.org/x/net/html"
 
-	"github.com/ECecillo/ebooks-translator/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/epub"
 )
 
 // allElements returns every element with the given tag in document order.

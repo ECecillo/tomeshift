@@ -330,7 +330,7 @@ Wire orchestrator into CLI and create integration tests. This phase completes th
 ### Acceptance Criteria
 
 - [ ] Integration tests written BEFORE CLI wiring
-- [ ] `epub-translator run --input <fixture.epub> --output-dir ./out` succeeds
+- [ ] `tomeshift run --input <fixture.epub> --output-dir ./out` succeeds
 - [ ] Output EPUB exists at expected path
 - [ ] Output EPUB has same spine document count as input
 - [ ] All paragraphs contain translated text (mock NMT output)

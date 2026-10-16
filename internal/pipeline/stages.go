@@ -9,16 +9,16 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ECecillo/ebooks-translator/internal/cost"
-	"github.com/ECecillo/ebooks-translator/internal/epub"
-	"github.com/ECecillo/ebooks-translator/internal/glossary"
-	"github.com/ECecillo/ebooks-translator/internal/literary"
-	"github.com/ECecillo/ebooks-translator/internal/llm"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
-	"github.com/ECecillo/ebooks-translator/internal/qa"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
-	"github.com/ECecillo/ebooks-translator/internal/tm"
-	"github.com/ECecillo/ebooks-translator/internal/translate"
+	"github.com/ECecillo/tomeshift/internal/cost"
+	"github.com/ECecillo/tomeshift/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/glossary"
+	"github.com/ECecillo/tomeshift/internal/literary"
+	"github.com/ECecillo/tomeshift/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/qa"
+	"github.com/ECecillo/tomeshift/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/tm"
+	"github.com/ECecillo/tomeshift/internal/translate"
 )
 
 // ledgerWriteTimeout bounds the detached write used when a run is recorded

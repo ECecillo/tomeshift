@@ -1,4 +1,4 @@
-# Toolchain and non-secret environment for epub-translator.
+# Toolchain and non-secret environment for tomeshift.
 #
 # `mise install` gets every tool the Justfile actually calls, at one pinned set
 # of versions shared by every machine and by CI. Before this file, `just
@@ -32,7 +32,7 @@ uv = "latest"
 #   - `sqlite3`: only reachable through the conda backend, and every supported
 #     OS ships it. `just preflight` checks it.
 #   - `epubcheck`: a jar, not a binary — no backend serves it. Point
-#     EPUB_TRANSLATOR_EPUBCHECK_JAR at it, or let the QA gate skip it.
+#     TOMESHIFT_EPUBCHECK_JAR at it, or let the QA gate skip it.
 #   - `docker`: a daemon, not a CLI version to pin.
 
 [env]

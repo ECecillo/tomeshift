@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ECecillo/ebooks-translator/internal/qa"
+	"github.com/ECecillo/tomeshift/internal/qa"
 )
 
 // Progress stage labels. Coarser than the old per-sub-stage bar because a stage

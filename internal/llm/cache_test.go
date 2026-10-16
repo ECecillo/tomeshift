@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/llm"
 )
 
 type mockChatClient struct {

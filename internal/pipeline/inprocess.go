@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ECecillo/ebooks-translator/internal/qa"
+	"github.com/ECecillo/tomeshift/internal/qa"
 )
 
 // InProcessSteps runs each activity as a direct Stages call under one context.

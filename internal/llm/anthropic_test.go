@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/llm"
 )
 
 func TestAnthropicClient_ChatSendsHeadersAndCacheControl(t *testing.T) {

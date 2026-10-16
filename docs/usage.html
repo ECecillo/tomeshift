@@ -1,0 +1,1660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>tomeshift — usage guide</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --surface: #1a1d27;
+    --surface2: #151824;
+    --border: #2a2d3e;
+    --text: #e2e4f0;
+    --muted: #8b8fa8;
+    --green: #4ade80;
+    --yellow: #facc15;
+    --red: #f87171;
+    --blue: #60a5fa;
+    --purple: #c084fc;
+    --orange: #fb923c;
+    --tag-bg: #252840;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+    font-size: 13px; line-height: 1.65;
+    padding: 2rem 1.25rem 5rem; max-width: 1000px; margin: 0 auto;
+  }
+  header { border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }
+  header h1 { font-size: 1.45rem; color: var(--blue); letter-spacing: 0.02em; line-height: 1.35; }
+  header .meta { color: var(--muted); margin-top: 0.6rem; font-size: 0.82rem; }
+  header .meta a { color: var(--muted); }
+
+  h2 { font-size: 1.05rem; color: var(--yellow); margin: 3rem 0 0.9rem; padding-bottom: 0.4rem; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 0.95rem; color: var(--purple); margin: 1.9rem 0 0.6rem; }
+  h4 { font-size: 0.87rem; color: var(--text); margin: 1.2rem 0 0.4rem; }
+  p { margin: 0.7rem 0; }
+  ul, ol { padding-left: 1.3rem; margin: 0.6rem 0; }
+  li { margin: 0.3rem 0; }
+  a { color: var(--blue); text-decoration: none; border-bottom: 1px dotted var(--border); }
+  a:hover { border-bottom-style: solid; }
+  strong { color: #fff; }
+  code { background: var(--tag-bg); border-radius: 3px; padding: 0.08rem 0.32rem; font-size: 0.92em; color: var(--green); }
+  pre { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.9rem 1rem; overflow-x: auto; margin: 0.9rem 0; font-size: 0.85rem; line-height: 1.55; }
+  pre code { background: none; padding: 0; color: var(--text); }
+  .cmt { color: var(--muted); }
+
+  .badge { display: inline-block; background: var(--tag-bg); border: 1px solid var(--border); border-radius: 4px; padding: 0.1rem 0.5rem; font-size: 0.72rem; color: var(--yellow); margin-right: 0.4rem; }
+  .badge.ok { color: var(--green); } .badge.bad { color: var(--red); } .badge.info { color: var(--blue); }
+  .badge.free { color: var(--green); } .badge.paid { color: var(--orange); }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.1rem 0; }
+  .card.note { border-left: 3px solid var(--blue); }
+  .card.warn { border-left: 3px solid var(--red); }
+  .card.key { border-left: 3px solid var(--green); }
+  .card > .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+
+  .table-wrap { overflow-x: auto; margin: 1rem 0; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.85rem; min-width: 560px; }
+  th, td { border: 1px solid var(--border); padding: 0.45rem 0.7rem; text-align: left; vertical-align: top; }
+  th { background: var(--tag-bg); color: var(--muted); font-weight: 600; text-transform: uppercase; font-size: 0.7rem; letter-spacing: 0.06em; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+  figure { margin: 1.5rem 0; }
+  figure figcaption { color: var(--muted); font-size: 0.78rem; margin-top: 0.5rem; text-align: center; }
+  pre.mermaid { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 1rem; text-align: center; overflow-x: auto; }
+  blockquote { border-left: 3px solid var(--border); padding: 0.2rem 0 0.2rem 1rem; margin: 0.9rem 0; color: var(--muted); font-style: italic; }
+  footer { margin-top: 3rem; padding-top: 1.2rem; border-top: 1px solid var(--border); color: var(--muted); font-size: 0.78rem; }
+
+  .toc { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 2rem; }
+  .toc .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.5rem; }
+  .toc ol { margin: 0; columns: 2; column-gap: 2rem; }
+  @media (max-width: 640px) { .toc ol { columns: 1; } }
+
+  /* ── widgets ─────────────────────────────────────────────────────── */
+  .widget { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.1rem 1.25rem; margin: 1.4rem 0; }
+  .widget .wlabel { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.09em; color: var(--muted); display: block; margin-bottom: 0.8rem; }
+  .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; margin: 0.6rem 0; }
+  .ctlgroup { display: flex; flex-direction: column; gap: 0.35rem; margin-bottom: 0.7rem; }
+  .ctlgroup > span { font-size: 0.74rem; color: var(--muted); }
+  button {
+    font-family: inherit; font-size: 0.78rem; color: var(--text);
+    background: var(--tag-bg); border: 1px solid var(--border); border-radius: 5px;
+    padding: 0.35rem 0.8rem; cursor: pointer; transition: background 0.15s, border-color 0.15s, color 0.15s;
+  }
+  button:hover { background: #2f3350; border-color: var(--blue); }
+  button.active { border-color: var(--blue); color: var(--blue); background: #1e2438; }
+  button.primary { border-color: var(--green); color: var(--green); }
+  button:disabled { opacity: 0.4; cursor: default; }
+
+  .out { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; font-size: 0.8rem; line-height: 1.6; overflow-x: auto; white-space: pre; }
+  .out .k { color: var(--blue); } .out .v { color: var(--green); } .out .c { color: var(--muted); }
+  .consequence { font-size: 0.8rem; color: var(--muted); margin-top: 0.7rem; border-top: 1px dashed var(--border); padding-top: 0.7rem; }
+  .consequence b { color: var(--yellow); }
+
+  /* timeline */
+  .tl { display: flex; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.9rem; }
+  .tlstep {
+    flex: 1 1 110px; min-width: 110px; text-align: left; cursor: pointer;
+    border: 1px solid var(--border); border-left: 3px solid var(--border); border-radius: 5px;
+    background: var(--surface2); padding: 0.5rem 0.6rem; font-size: 0.74rem; color: var(--muted);
+    transition: border-color 0.25s, background 0.25s, transform 0.2s;
+  }
+  .tlstep b { display: block; color: var(--text); font-size: 0.78rem; }
+  .tlstep .cost { font-size: 0.7rem; }
+  .tlstep.on { border-left-color: var(--blue); background: #1b2740; color: var(--text); transform: translateY(-2px); }
+  .tlstep.done { border-left-color: var(--green); }
+  .tlbody { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.9rem 1rem; min-height: 10.5rem; }
+  .tlbody h5 { color: var(--yellow); font-size: 0.85rem; margin-bottom: 0.4rem; }
+  .tlbody pre { margin: 0.5rem 0; background: #10131d; }
+
+  /* flag explorer */
+  .flaglist { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .flaglist button { font-size: 0.75rem; }
+  .fgrid { display: grid; grid-template-columns: 1fr; gap: 0.6rem; }
+  @media (min-width: 720px) { .fgrid { grid-template-columns: repeat(3, 1fr); } }
+  .fcell { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.7rem 0.85rem; font-size: 0.79rem; }
+  .fcell .h { display: block; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 0.35rem; }
+  .fcell.proc { border-top: 2px solid var(--blue); }
+  .fcell.out2 { border-top: 2px solid var(--green); }
+  .fcell.cost { border-top: 2px solid var(--orange); }
+
+  /* exit codes */
+  .exitgrid { display: flex; gap: 0.35rem; flex-wrap: wrap; margin-bottom: 0.8rem; }
+  .exitbox { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: 0.85rem 1rem; font-size: 0.82rem; min-height: 6.5rem; }
+  .exitbox .code { color: var(--red); font-weight: 600; }
+
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>tomeshift — usage guide<br/><span style="color:var(--muted);font-size:0.75em">install, configure, run, and know what each command changes</span></h1>
+  <div class="meta">
+    Operational guide · 8 August 2026 ·
+    code frozen at <a href="https://github.com/ECecillo/tomeshift/tree/953441dc1b7a4fca3231daf39e00d99753abc8cf"><code>953441d</code></a><br/>
+    To understand <em>how it works inside</em>: <a href="understanding-the-project.html">understanding-the-project.html</a>
+    · Text references: <code>docs/INSTALLATION.md</code>, <code>docs/translation-guide.md</code>
+  </div>
+</header>
+
+<div class="toc">
+  <span class="label">Contents</span>
+  <ol>
+    <li><a href="#prerequis">Prerequisites and installation</a></li>
+    <li><a href="#config">Configure <code>.env.local</code> <span class="badge info">interactive</span></a></li>
+    <li><a href="#credentials">Create the accounts and store the keys</a></li>
+    <li><a href="#services">Choose and start the services</a></li>
+    <li><a href="#parcours">The typical workflow <span class="badge info">animated</span></a></li>
+    <li><a href="#commandes">Reference of the seven commands</a></li>
+    <li><a href="#flags">What each flag changes <span class="badge info">interactive</span></a></li>
+    <li><a href="#env">The variables that change the output</a></li>
+    <li><a href="#artefacts">Reading a run's artifacts</a></li>
+    <li><a href="#exit">Exit codes and diagnostics <span class="badge info">interactive</span></a></li>
+    <li><a href="#docker">Docker and the <code>just</code> cheat sheet</a></li>
+  </ol>
+</div>
+
+<h2 id="prerequis">1. Prerequisites and installation</h2>
+
+<p>
+  The toolchain is <strong>declared in <code>mise.toml</code></strong>: one command
+  installs it, at the same versions for everyone. Two prerequisites stay manual.
+</p>
+
+<pre><code><span class="cmt"># macOS (Homebrew) — the only two tools to install yourself</span>
+brew install mise 1password-cli
+
+<span class="cmt"># Fetch and prepare the project</span>
+git clone git@github.com:ECecillo/tomeshift.git tomeshift
+cd tomeshift
+mise trust                        <span class="cmt"># mise won't run a repo's config without consent</span>
+mise install                      <span class="cmt"># go, java, just, golangci-lint, rg, python, uv</span>
+cp .env.example .env.local        <span class="cmt"># NON-SECRET config, gitignored</span>
+just preflight                    <span class="cmt"># config + tools + 1Password session + NMT health</span>
+go build -o ./bin/tomeshift ./cmd/tomeshift</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Tool</th><th>Why</th><th>Managed by</th><th>Required?</th></tr>
+  <tr><td><strong>Go</strong> 1.26</td><td>compile and run the CLI</td><td><code>mise</code></td><td>yes</td></tr>
+  <tr><td><strong>just</strong></td><td>task runner (sources <code>.env.local</code> for you)</td><td><code>mise</code></td><td>recommended</td></tr>
+  <tr><td><strong>Java</strong> temurin 21</td><td>carries <code>epubcheck</code></td><td><code>mise</code></td><td>no — without it validation is <em>skipped</em>, not failed</td></tr>
+  <tr><td><strong>golangci-lint</strong></td><td>lint</td><td><code>mise</code></td><td>to contribute</td></tr>
+  <tr><td><strong>ripgrep</strong></td><td>output of some <code>just</code> recipes</td><td><code>mise</code></td><td>for <code>just preflight</code></td></tr>
+  <tr><td><strong>Python</strong> 3.12</td><td><code>scripts/*.py</code>: <code>carve</code>, <code>compare</code>, doc audit</td><td><code>mise</code></td><td>yes</td></tr>
+  <tr><td><strong>uv</strong></td><td>COMET-QE service</td><td><code>mise</code></td><td>no — only for quality eval</td></tr>
+  <tr><td><strong><code>op</code></strong> (1Password CLI)</td><td>injects the API keys at launch</td><td>manual</td><td>yes as soon as a paid provider is used</td></tr>
+  <tr><td><strong><code>sqlite3</code></strong></td><td><code>just bible</code></td><td>provided by the OS</td><td>optional</td></tr>
+  <tr><td><strong>Docker</strong></td><td>containerized workflow, LibreTranslate, COMET</td><td>manual</td><td>optional</td></tr>
+</table>
+</div>
+
+<div class="card note">
+  <span class="label">Why mise rather than a list in a README</span>
+  <p style="margin-top:0">
+    The <code>Justfile</code> calls <strong>ten</strong> tools; the old <code>preflight</code>
+    checked five. <code>python3</code>, <code>sqlite3</code>, <code>uv</code> and
+    <code>docker</code> were declared nowhere: they failed with
+    <code>command not found</code> at the exact moment you ran <code>just bible</code> or
+    <code>just compare</code>. <code>mise.toml</code> makes the list executable, and in
+    particular pins the Java ≥ 21 that <code>epubcheck</code> requires and that only existed in a sentence.
+  </p>
+</div>
+
+<div class="card warn">
+  <span class="label">Startup pitfall</span>
+  <p style="margin-top:0">
+    Broken <code>GOROOT</code> (<code>go: cannot find GOROOT directory</code>) → prefix the
+    commands: <code>env -u GOROOT go test ./...</code>. <em>Never</em> put this prefix in
+    a <code>Justfile</code> recipe.
+  </p>
+</div>
+
+<h3>Secrets are not in a file</h3>
+
+<p>
+  Two files, two roles — that's the rule to remember:
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>File</th><th>Content</th><th>Versioned?</th></tr>
+  <tr><td><code>.env.local</code></td><td><strong>Non-secret</strong> configuration: provider, database paths, caps, prices.</td><td>no (gitignored)</td></tr>
+  <tr><td><code>.env.op</code></td><td><strong>References</strong> <code>op://</code> to the 1Password vault. No values.</td><td><strong>yes</strong></td></tr>
+</table>
+</div>
+
+<pre><code><span class="cmt"># .env.op — committable as-is, these are just pointers</span>
+TOMESHIFT_LLM_API_KEY=op://Dev/anthropic-epub-translator/credential
+TOMESHIFT_NMT_API_KEY=op://Dev/gcp-cloud-translation/credential</code></pre>
+
+<p>
+  The recipes that call a provider are wrapped in
+  <code>op run --env-file=.env.op --</code>: the key is resolved at launch, lives in the process's
+  memory for the duration of the command, and nowhere else. The others are not — so
+  <code>estimate</code>, <code>glossary-suggest</code> and <code>eval-ref</code>
+  <strong>never</strong> ask for a credential, since they make no calls.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    OP[("1Password vault")]
+    REF[".env.op<br/>op:// references<br/>versioned"]
+    LOC[".env.local<br/>non-secret config<br/>gitignored"]
+    REF --> RUN["op run --env-file=.env.op --"]
+    OP -->|"biometric unlock"| RUN
+    LOC --> PROC
+    RUN --> PROC["tomeshift process<br/>key in memory, run lifetime"]
+    PROC --> END["end of run:<br/>the secret disappears"]
+    LOC -.->|"never"| SEC["plaintext key on disk"]
+</pre>
+<figcaption>The secret is neither at rest on disk nor in the shell environment: it exists
+only in the launched process.</figcaption>
+</figure>
+
+<div class="card warn">
+  <span class="label">What biometrics guarantees, exactly</span>
+  <p style="margin-top:0">
+    The Touch ID prompt appears when the 1Password app is <strong>locked</strong>. As long
+    as it's unlocked, <code>op</code> authorizes without asking again. The guarantee you buy is
+    therefore "the secret is never at rest on disk and doesn't leak into the environment", not
+    "a human approved this specific run". For the latter, set the app's auto-lock
+    aggressively.
+  </p>
+</div>
+
+<h2 id="config">2. Configure <code>.env.local</code></h2>
+
+<p>
+  All configuration goes through environment variables prefixed
+  <code>TOMESHIFT_</code>, loaded into a typed struct at startup. The
+  <code>just</code> recipes source <code>.env.local</code> automatically; if you call the binary
+  directly, source it yourself (<code>set -a; source .env.local; set +a</code>).
+</p>
+
+<div class="widget" id="w-cfg">
+  <span class="wlabel">Configuration generator — choose, copy the block</span>
+
+  <div class="ctlgroup">
+    <span>Draft engine (NMT) — always required, even in literary mode</span>
+    <div class="controls" id="g-nmt">
+      <button data-v="http" class="active">built-in dev server</button>
+      <button data-v="google">Google Cloud Translation v2</button>
+      <button data-v="libretranslate">self-hosted LibreTranslate</button>
+    </div>
+  </div>
+
+  <div class="ctlgroup">
+    <span>Translation mode</span>
+    <div class="controls" id="g-mode">
+      <button data-v="nmt" class="active">nmt — fast draft</button>
+      <button data-v="literary">literary — LLM rewrite</button>
+    </div>
+  </div>
+
+  <div class="ctlgroup" id="g-llm-group" style="display:none">
+    <span>LLM provider (literary mode)</span>
+    <div class="controls" id="g-llm">
+      <button data-v="anthropic" class="active">Anthropic</button>
+      <button data-v="openai">OpenAI</button>
+      <button data-v="deepseek">DeepSeek</button>
+      <button data-v="claude-cli">Claude Code CLI <span class="badge info" style="margin:0 0 0 .3rem">exp.</span></button>
+    </div>
+  </div>
+
+  <div class="ctlgroup">
+    <span>COMET-QE quality evaluation</span>
+    <div class="controls" id="g-qe">
+      <button data-v="off" class="active">disabled</button>
+      <button data-v="on">enabled (local service :8000)</button>
+    </div>
+  </div>
+
+  <div class="out" id="cfg-out"></div>
+  <div class="controls">
+    <button class="primary" id="cfg-copy">Copy the block</button>
+    <span style="color:var(--muted);font-size:0.78rem" id="cfg-copied"></span>
+  </div>
+  <div class="consequence" id="cfg-cons"></div>
+</div>
+
+<h2 id="credentials">3. Create the accounts and store the keys in 1Password</h2>
+
+<p>
+  This section is the link between "where the keys go" and "how to obtain them". It's done
+  <strong>once</strong>. Good news: depending on the setup, there are between <strong>zero and
+  two</strong> credentials to create.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Service</th><th>Required when</th><th>Variable</th><th>Cost</th></tr>
+  <tr>
+    <td><strong>Google Cloud Translation v2</strong></td>
+    <td><code>NMT_PROVIDER=google</code></td>
+    <td><code>NMT_API_KEY</code></td>
+    <td><span class="badge free">free</span> 500,000 chars/month, then $20/M</td>
+  </tr>
+  <tr>
+    <td><strong>Anthropic</strong> (API)</td>
+    <td><code>LLM_CHAT_PROVIDER=anthropic</code></td>
+    <td><code>LLM_API_KEY</code></td>
+    <td><span class="badge paid">paid</span> ~$4–6.50/volume (Sonnet)</td>
+  </tr>
+  <tr>
+    <td><strong>OpenAI</strong> / <strong>DeepSeek</strong></td>
+    <td><code>LLM_CHAT_PROVIDER=openai|deepseek</code></td>
+    <td><code>LLM_API_KEY</code></td>
+    <td><span class="badge paid">paid</span> DeepSeek &lt; $1/volume</td>
+  </tr>
+  <tr>
+    <td><strong>Claude Code CLI</strong></td>
+    <td><code>LLM_CHAT_PROVIDER=claude-cli</code></td>
+    <td class="num">—</td>
+    <td><span class="badge free">no credential</span> app session</td>
+  </tr>
+  <tr>
+    <td><strong>LibreTranslate</strong> / <strong>dev NMT</strong></td>
+    <td>self-hosted</td>
+    <td class="num">—</td>
+    <td><span class="badge free">no credential</span></td>
+  </tr>
+  <tr>
+    <td><strong>COMET-QE</strong></td>
+    <td>quality eval, local</td>
+    <td class="num">—</td>
+    <td><span class="badge free">no credential</span> (except hosted service)</td>
+  </tr>
+</table>
+</div>
+
+<h3>3.1 Google Cloud Translation — the API key</h3>
+
+<ol>
+  <li>GCP console → create or pick a project.</li>
+  <li><strong>Enable billing on the project.</strong> This is required <em>even for the free
+    tier</em>: without it, the API refuses calls even though nothing would be billed.</li>
+  <li>"APIs &amp; Services" → "Enable APIs" → enable <strong>Cloud Translation API</strong>.</li>
+  <li>"APIs &amp; Services" → "Credentials" → "Create credentials" → <strong>API key</strong>.</li>
+  <li><strong>Restrict the key</strong> to the Cloud Translation API only ("Restrict key" → API
+    restrictions). An unrestricted key grants access to everything enabled on the project.</li>
+</ol>
+
+<div class="card note">
+  <span class="label">The free tier, precisely</span>
+  <p style="margin-top:0">
+    500,000 characters per calendar month, <strong>shared between Basic and Advanced and across
+    the whole project</strong> — about one volume. Only the overage is billed. The pipeline's
+    counter is its own run ledger: if characters were consumed outside this tool this month, the
+    projection underestimates by that much. You then have to lower
+    <code>NMT_FREE_CHARS_PER_MONTH</code> by hand.
+  </p>
+</div>
+
+<h3>3.2 The LLM provider — the chat key</h3>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Provider</th><th>Where to create the key</th><th>Additional settings</th></tr>
+  <tr><td>Anthropic</td><td>console.anthropic.com → API keys</td><td><code>LLM_MODEL=claude-sonnet-5</code>, <code>LLM_TOKEN_MULTIPLIER=1.30</code></td></tr>
+  <tr><td>OpenAI</td><td>platform.openai.com → API keys</td><td><code>LLM_BASE_URL=https://api.openai.com/v1</code></td></tr>
+  <tr><td>DeepSeek</td><td>platform.deepseek.com → API keys</td><td><code>LLM_BASE_URL=https://api.deepseek.com</code></td></tr>
+</table>
+</div>
+
+<p>
+  In all three cases, remember to <strong>set the prices</strong> (<code>LLM_INPUT_PER_MTOK_USD</code>
+  and friends): without them the projection is $0 and the per-book cap compares nothing anymore.
+</p>
+
+<h3>3.3 Store the keys in 1Password</h3>
+
+<p>
+  The project expects items of category <strong>API Credential</strong>, whose secret field is
+  named <code>credential</code> — that's what the
+  <code>op://&lt;vault&gt;/&lt;item&gt;/credential</code> references in <code>.env.op</code> point to.
+</p>
+
+<pre><code><span class="cmt"># 1. Enable the CLI ↔ app integration (it's what triggers Touch ID):</span>
+<span class="cmt">#    1Password app → Settings → Developer → "Integrate with 1Password CLI"</span>
+
+<span class="cmt"># 2. Find YOUR vaults and YOUR accounts — there is no default name:</span>
+op account list        <span class="cmt"># the connected accounts</span>
+op vault list          <span class="cmt"># the current account's vaults</span>
+
+<span class="cmt"># 3. If several accounts are connected, pin the one to use in .env.local</span>
+<span class="cmt">#    — this applies to `just` recipes, NOT to your terminal:</span>
+<span class="cmt">#      OP_ACCOUNT=my.1password.eu</span>
+
+<span class="cmt"># 4. Create the items. --account is explicit here: the commands below</span>
+<span class="cmt">#    run in YOUR shell, which does not source .env.local.</span>
+op item create --account my.1password.eu --category="API Credential" \
+  --vault=Personal --title="anthropic-tomeshift" \
+  credential="sk-ant-…"
+
+op item create --account my.1password.eu --category="API Credential" \
+  --vault=Personal --title="gcp-cloud-translation" \
+  credential="AIza…"
+
+<span class="cmt"># 5. Check that each reference resolves (that's what `op run` will do):</span>
+op read --account my.1password.eu "op://Personal/anthropic-epub-translator/credential"
+op read --account my.1password.eu "op://Personal/gcp-cloud-translation/credential"</code></pre>
+
+<div class="card warn">
+  <span class="label">Two pitfalls, in this order</span>
+  <p style="margin-top:0">
+    <strong>1. The vault.</strong> <code>Personal</code> above is <em>a</em> name, not a default:
+    <code>op item create --vault=X</code> fails with <code>"X" isn't a vault in this account</code>
+    if X doesn't exist for you. <code>op vault list</code> first, then adapt <code>.env.op</code> —
+    don't rename your vaults to match a doc.
+  </p>
+  <p>
+    <strong>2. The account.</strong> An <code>op://</code> reference names a <em>vault</em>, never
+    an <em>account</em>. With a work account and a personal account connected at the same time,
+    <code>op</code> resolves against the one it considers current — hence a personal key looked up in
+    the employer's vault. The symptom is misleading: <code>"Personal" isn't a vault in this
+    account</code> looks like a vault problem when it's the account that's wrong.
+  </p>
+  <p style="margin-bottom:0">
+    <strong>And the two settings don't cover the same thing.</strong>
+    <code>OP_ACCOUNT</code> in <code>.env.local</code> decides for the <code>just</code> recipes,
+    which source that file; <strong>your terminal does not source it</strong>, so the
+    <code>op item create</code> and <code>op read</code> you type by hand need
+    <code>--account</code> (or an <code>export OP_ACCOUNT=…</code> in the session).
+    <code>just preflight</code> warns you if several accounts are connected without pinning.
+  </p>
+</div>
+
+<p>
+  In the app, right-click the field → "Copy Secret Reference" gives the exact
+  <code>op://…</code> string, vault included.
+</p>
+
+<div class="card note">
+  <span class="label">Personal project, personal account</span>
+  <p style="margin-top:0">
+    If your machine has both accounts, put this project's keys in the <strong>personal
+    account</strong>. A key stored in a vault managed by the employer falls under their
+    administration and disappears when you leave; that's not the place for a personal project.
+  </p>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    subgraph SETUP["Once"]
+      GCP["GCP console<br/>billing + API + restricted key"] --> I1["1Password item<br/>gcp-cloud-translation"]
+      ANT["console.anthropic.com<br/>API key"] --> I2["1Password item<br/>anthropic-tomeshift"]
+      I1 --> REF[".env.op<br/>2 op:// references<br/>versioned"]
+      I2 --> REF
+    end
+    subgraph RUN["At each command"]
+      REF --> GUARD{"does the command<br/>need a secret?"}
+      GUARD -->|"no — estimate,<br/>glossary-suggest, claude-cli"| DIRECT["direct launch<br/>no prompt"]
+      GUARD -->|"yes"| OPRUN["op run --env-file=.env.op --"]
+      OPRUN --> BIO["biometric unlock<br/>if the app is locked"]
+      BIO --> PROC["key in process memory,<br/>for the run's duration"]
+    end
+</pre>
+<figcaption>The <code>Justfile</code> decides on its own whether to wrap: a self-hosted NMT
+provider and a <code>claude-cli</code> chat need no secret, so nothing asks to be unlocked.</figcaption>
+</figure>
+
+<h3>3.4 Check that everything is in place</h3>
+
+<pre><code>just preflight        <span class="cmt"># config + tools + 1Password session + NMT health</span>
+op whoami             <span class="cmt"># active session?</span>
+just estimate ./books/volume-01.epub   <span class="cmt"># 0 API calls, 0 credential: must pass without asking for anything</span></code></pre>
+
+<div class="card warn">
+  <span class="label">Common errors at this step</span>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Message</th><th>Cause</th></tr>
+    <tr><td><code>1password: not signed in</code></td><td>App locked or CLI integration not enabled in the Developer settings.</td></tr>
+    <tr><td><code>could not resolve item</code></td><td>The item or vault name in <code>.env.op</code> doesn't match. Check with <code>op read</code>.</td></tr>
+    <tr><td><code>unable to build the "google" NMT provider</code></td><td>The recipe wasn't wrapped, or the reference resolved to an empty value.</td></tr>
+    <tr><td>403 from Cloud Translation</td><td>Billing not enabled on the project, or key restricted to another API.</td></tr>
+  </table>
+  </div>
+</div>
+
+<h2 id="services">4. Choose and start the services</h2>
+
+<p>
+  The pipeline <strong>always</strong> needs an NMT engine: it's the draft in
+  <code>nmt</code> mode, and the fallback in <code>literary</code> mode when an LLM batch fails.
+</p>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    Q1{"What do you want?"}
+    Q1 -->|"check that the chain runs"| DEV["built-in dev server<br/>just nmt-dev — :8081"]
+    Q1 -->|"the best draft quality"| Q2{"can the text<br/>leave the machine?"}
+    Q2 -->|"yes"| GOO["Google Cloud Translation v2<br/>free up to 500,000 chars/month"]
+    Q2 -->|"no"| LIB["LibreTranslate in Docker<br/>real-nmt profile"]
+    DEV --> NOTE1["word-for-word dictionary:<br/>toy quality, but zero install"]
+    GOO --> NOTE2["GCP billing to enable<br/>even for the free tier"]
+    LIB --> NOTE3["first launch:<br/>download of the en→fr model"]
+</pre>
+<figcaption>The choice changes with a single variable — <code>NMT_PROVIDER</code> — so going
+back is trivial.</figcaption>
+</figure>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Service</th><th>Command</th><th>Port</th><th>Consequence</th></tr>
+  <tr>
+    <td>dev NMT</td><td><code>just nmt-dev</code></td><td class="num">8081</td>
+    <td>Word-for-word dictionary substitution. Preserves placeholders. <strong>Not to be used for judging quality</strong> — useful to validate the pipeline for free.</td>
+  </tr>
+  <tr>
+    <td>LibreTranslate</td><td><code>just libretranslate-up</code></td><td class="num">5050</td>
+    <td>Real local NMT. The text does not leave the machine. Slower than a hosted service.</td>
+  </tr>
+  <tr>
+    <td>Google Cloud Translation</td><td><span class="cmt">no service to start</span></td><td class="num">—</td>
+    <td>The adapter knows the public host: <code>NMT_ENDPOINT</code> can stay empty. A chapter's segments go out in batches (≤ 128 texts or 5000 characters per request): a volume's draft drops from ~14 min to ~30 s. <strong>The book's text is sent to Google.</strong></td>
+  </tr>
+  <tr>
+    <td>COMET-QE</td><td><code>just comet-dev</code> or <code>just comet-up</code></td><td class="num">8000</td>
+    <td>Reference-free scoring. 1<sup>st</sup> launch: ~2.3 GB of model. Used for eval <em>and</em> for selective escalation during a run.</td>
+  </tr>
+  <tr>
+    <td>Temporal (dev server)</td><td><code>just temporal-up</code> · <code>just up</code></td><td class="num">7233 · 8233</td>
+    <td>Durable execution engine for runs (RFC 0009). Stores workflow history in SQLite (volume <code>temporal-data</code>). gRPC on 7233; web UI on <a href="http://localhost:8233">localhost:8233</a> (<code>just temporal-ui</code>). The worker that registers the workflows arrives in phase 3 — the server alone translates nothing.</td>
+  </tr>
+</table>
+</div>
+
+<h2 id="parcours">5. The typical workflow</h2>
+
+<p>
+  Seriously translating a series is five steps in this order. Click a step to see the command,
+  what it produces and what it costs.
+</p>
+
+<div class="widget" id="w-tl">
+  <div class="tl" id="tl"></div>
+  <div class="tlbody" id="tlbody"></div>
+  <div class="controls">
+    <button class="primary" id="tl-play">▶ Play the workflow</button>
+    <span style="color:var(--muted);font-size:0.78rem">Steps 1 to 3 are done once per series; step 4 repeats per volume.</span>
+  </div>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart LR
+    G["glossary-suggest<br/>free"] --> GJ["glossary.json<br/>to curate by hand"]
+    SB["series-bible<br/>~$0.65 per volume, once"] --> BIB[("narrative.sqlite<br/>1 bible per volume")]
+    EST["estimate<br/>0 API calls"] --> DEC{"is the cost<br/>acceptable?"}
+    DEC -->|"no"| TUNE["adjust: model,<br/>LLM_BATCH_SIZE, caps"]
+    DEC -->|"yes"| RUN["run --mode literary"]
+    GJ --> RUN
+    BIB --> RUN
+    TUNE --> EST
+    RUN --> ART["runs/&lt;id&gt;/"]
+    ART --> EV["eval --segments<br/>COMET-QE"]
+    ART --> CMP["just compare<br/>EN | FR review"]
+</pre>
+<figcaption>The glossary and the bible are <em>inputs</em> prepared once; runs consume them
+without modifying them.</figcaption>
+</figure>
+
+<h2 id="commandes">6. Reference of the seven commands</h2>
+
+<h3><code>run</code> — translate a book</h3>
+
+<pre><code>tomeshift run --input &lt;f.epub&gt; --output-dir &lt;dir&gt; --source-lang en --target-lang fr \
+  [--mode nmt|literary] [--series &lt;id&gt;] [--glossary &lt;f.json&gt;] [--run-id &lt;id&gt;] \
+  [--update-bible] [--resume] [--no-progress]</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Flag</th><th>Default</th><th>Effect</th></tr>
+  <tr><td><code>--input</code></td><td class="num">required</td><td>The source EPUB. Its filename (without extension) becomes the <code>book_id</code>.</td></tr>
+  <tr><td><code>--output-dir</code></td><td class="num">required</td><td>Artifacts go into <code>&lt;output-dir&gt;/&lt;run-id&gt;/</code>, not directly inside it.</td></tr>
+  <tr><td><code>--source-lang</code> / <code>--target-lang</code></td><td class="num">required</td><td>V1 only accepts <code>en</code> → <code>fr</code>. Any other value is rejected at flag parsing (exit 2), before any work.</td></tr>
+  <tr><td><code>--mode</code></td><td><code>nmt</code></td><td><code>nmt</code>: draft + optional escalation. <code>literary</code>: LLM rewrite of each fresh segment, with mandatory bible.</td></tr>
+  <tr><td><code>--series</code></td><td class="num">—</td><td>Required if <code>--mode literary</code>. Target the volume's <em>bounded</em> bible: <code>lumen@volume-01</code>. Missing or invalid bible = immediate failure.</td></tr>
+  <tr><td><code>--glossary</code></td><td class="num">—</td><td><code>locked</code> terms are masked before the call and re-substituted after. A residual violation <strong>fails the QA gate</strong>.</td></tr>
+  <tr><td><code>--run-id</code></td><td>UTC timestamp</td><td>Names the artifacts folder. Reusing the same identifier <strong>overwrites</strong> the previous artifacts.</td></tr>
+  <tr><td><code>--update-bible</code></td><td><code>false</code></td><td>Lets the bible evolve during the run. <span class="badge bad">discouraged</span> Breaks the cacheable prefix (≈ ×10 on cost) and makes re-runs non-reproducible.</td></tr>
+  <tr><td><code>--no-progress</code></td><td><code>false</code></td><td>Turns off the progress bar. It only shows anyway if someone can see it (see the box below): in CI or to a file, there's nothing to turn off. The flag is for cases the detection doesn't cover — a captured session, a screen reader, or a log built through a relay.</td></tr>
+  <tr><td><code>--resume</code></td><td><code>false</code></td><td>Today a simple logged marker: resumption <em>in fact</em> comes from the translation memory, which re-serves everything already translated. Restarting an interrupted run doesn't re-pay for work already done.</td></tr>
+</table>
+</div>
+
+<p>
+  During the run, a line rewritten in place on <code>stderr</code> tells you where things stand:
+</p>
+
+<figure>
+<pre><code>extract   … 0s
+segment   … 0s
+translate [███░░░░░░░░░░░░░░░░░░░░░]  14% 604/4269 seg · $1.4450 · 0s · eta 2s
+translate [███████████░░░░░░░░░░░░░]  49% 2077/4269 seg · tm 2% · $4.4734 · 1s · eta 1s
+qa        [████████████████████████] 100% 4269/4269 seg · tm 2% · $9.3898 · 3s
+run cost completed: 4269 segments, 87 tm hits, 4182 nmt, output=runs/cost/translated.epub</code></pre>
+<figcaption>Real capture on <code>vol1.epub</code> (469,492 characters): the Google price is
+applied, free tier disabled, but the draft comes from the local NMT server — hence durations in
+seconds where a real provider would take minutes.</figcaption>
+</figure>
+
+<ul>
+  <li><code>ch</code> only appears in literary mode: NMT mode flattens the book and doesn't track
+    chapters.</li>
+  <li><code>tm</code> is the share of segments served by the translation memory. It's what
+    explains a bar that advances fast then slows: hits are instant, provider calls are not.</li>
+  <li>The amount is the <em>real cumulative spend</em>, computed by the same cost model as
+    <code>actual_cost_usd</code> in <code>report.json</code>: the last number shown is the one the
+    report carries. It doesn't appear when it's 0 — a self-hosted engine with no LLM pass costs
+    nothing, and a column of <code>$0.0000</code> would be noise. In literary mode it only
+    advances at <em>chapter seams</em>: that's where the provider returns the tokens it has
+    consumed.</li>
+  <li>The ETA is withheld before 10% of the book — extrapolating the speed of a burst of TM hits
+    would announce a few seconds for an hour of work.</li>
+  <li>The last line, though, goes to <code>stdout</code>: it's the only parseable output, and the
+  bar never mixes into it.</li>
+</ul>
+
+<div class="card note">
+  <span class="label">When it shows, and why it's not "stderr is a terminal"</span>
+  <p style="margin-top:0">
+    That was the first rule, and it turned off the bar exactly on the commands you watch.
+    Any recipe that needs a key is wrapped in <code>op run</code>, and 1Password masks
+    secrets in the streams it relays — which it can only do by replacing them with
+    <strong>pipes</strong>. Measured through it, <code>stderr</code> comes back as
+    <code>prw-rw----</code>. The frames, though, pass through intact: <code>op</code> forwards
+    carriage returns byte for byte.
+  </p>
+  <div class="table-wrap">
+  <table>
+    <tr><th><code>stderr</code> is…</th><th>Bar</th><th>Why</th></tr>
+    <tr><td>a terminal (character device)</td><td>✅</td><td>The simple case.</td></tr>
+    <tr><td>a <strong>pipe</strong>, and the process has a controlling terminal</td><td>✅</td><td>Something <em>relays</em> our output rather than storing it, and someone is there. <code>op run</code>, <code>| tee</code>.</td></tr>
+    <tr><td>a pipe, without a controlling terminal</td><td>❌</td><td>CI, cron, background task: nobody is watching.</td></tr>
+    <tr><td>an ordinary <strong>file</strong></td><td>❌</td><td><code>2&gt; run.log</code> — that's the redirection the distinction protects: a readable log matters more than a bar nobody asked to store.</td></tr>
+  </table>
+  </div>
+  <p style="margin-bottom:0">
+    What we can know is that the output is relayed and a human is present; what we can't know is
+    what the relay does with it next. A <code>&gt; log 2&gt;&amp;1</code>
+    <em>through</em> such a relay would collect the carriage returns — that's what
+    <code>--no-progress</code> is for.
+  </p>
+</div>
+
+<h3><code>estimate</code> — project the cost without paying</h3>
+
+<pre><code>tomeshift estimate --input &lt;f.epub&gt; [--escalation-rate 0.15]</code></pre>
+
+<p>
+  Parses and segments the book, <strong>translates nothing, calls no API</strong>, and prints three
+  scenarios: NMT only, hybrid (the <code>--escalation-rate</code> fraction of segments goes to the
+  LLM), full LLM.
+</p>
+
+<figure>
+<pre><code>estimate for vol33: 4774 segments over 45 chapters, 585180 source chars, batch=50, escalation=15%
+translation memory: 391 segments already translated, 4383 left to pay for (551969 source chars)
+free tier: 500000 chars/month, 85799 billable this run
+calibration: 207 output tokens/segment measured on claude-cli/claude-sonnet-5 over 258 segments in 1 past attempt(s)
+strategy     llm_segs  llm_calls    in_tokens      nmt_usd      llm_usd    total_usd
+nmt-only            0          0            0       1.7036       0.0000       1.7036
+hybrid            716        716     18713658       1.7036      58.3643      60.0679
+full-llm         4774        112      4586530       1.7036      31.6095      33.3131</code></pre>
+<figcaption>The scenarios price the <em>remaining work</em>, not the book: the
+<code>translation memory</code> line says what the memory already serves (391 occurrences served by
+277 distinct entries — a recurring line has the same hash). Without a ledger measurement, the
+<code>calibration</code> line says <code>none yet — output tokens come from the character
+heuristic</code>.</figcaption>
+</figure>
+
+<div class="card key">
+  <span class="label">Why this command is reliable</span>
+  <p style="margin-top:0">
+    <code>estimate</code> and the run's guardrail go through the <strong>same</strong> cost model,
+    read the <strong>same</strong> free-tier counter in the ledger and apply the
+    <strong>same</strong> calibration. What <code>estimate</code> announces is what the per-book cap
+    applies. Corollary: if the LLM prices are not set in <code>.env.local</code>, the projection is
+    $0 and the cap compares nothing anymore.
+  </p>
+</div>
+
+<h4>Calibration: what past runs measured</h4>
+
+<p>
+  The per-character heuristic predicts the <em>length</em> of a translation; it doesn't predict what
+  a model spends to produce it. On chapter 97 of <code>vol33</code> it projected 16,180
+  output tokens against <strong>53,409</strong> consumed — 207 per segment instead of 63. Not a
+  margin, a factor.
+</p>
+
+<p>
+  The ledger (<code>run_attempts</code>) therefore keeps the token counters of each attempt,
+  with the <code>(llm_provider, llm_model)</code> pair that produced them. The next run — and
+  <code>estimate</code> — replace the output heuristic with that measurement. The key is the model
+  and its transport, not the book: a model's verbosity carries from one volume to the next, whereas
+  nothing in a book's characters predicts it.
+</p>
+
+<ul>
+  <li>An attempt that died before its LLM pass, or whose transport reports no usage, calibrates
+    nothing: the average only counts attempts that have both segments <em>and</em> tokens.
+    Otherwise the projection would get cheaper with every crashed run.</li>
+  <li>The average is weighted by segments: a 4,000-segment volume says more about a model than a
+    20-segment test, and averaging the two ratios would give them equal weight.</li>
+  <li>No ledger = nothing measured. <code>estimate</code> doesn't create one: it's a dry command,
+    it doesn't leave a database behind it.</li>
+</ul>
+
+<div class="card warn">
+  <span class="label">Two corrections that push the numbers up — deliberately</span>
+  <ul style="margin-bottom:0">
+    <li><strong>The CLI transport is billed as if it rewrote its prefix on every call.</strong>
+      With <code>LLM_CHAT_PROVIDER=claude-cli</code>, each invocation is a fresh session: nothing
+      <em>guarantees</em> that a prefix survives to be re-read. It's an <strong>upper bound</strong>,
+      not a description — see the two measurements below. Without it, the projection was
+      <strong>×1.9 to ×3.7</strong> too low on those same runs, always in the direction that lets a
+      budget cap pass a run. A cap that overestimates refuses work it could afford; a cap that
+      underestimates bounds nothing.</li>
+    <li><strong>The escalation pass gets no cache.</strong> The HTTP post-editor is a JSON POST to
+      an arbitrary endpoint, with no <code>cache_control</code>: its prefix is paid at full price on
+      every call — which the code comment already asserted ("paid once per segment") while the
+      arithmetic billed one write then N cheap re-reads. The <code>hybrid</code> line therefore
+      rises sharply. It's an upper bound, and the conclusion it carries is the one the project
+      repeats: <em>escalation is expensive per word</em>.</li>
+  </ul>
+</div>
+
+<h4>The projection prices what's left to do</h4>
+
+<p>
+  It consults the translation memory before pricing, and drops what it can already serve. That's
+  what makes a <strong>resume</strong> possible: a run cut off at 80% — by an exhausted quota, by
+  <kbd>Ctrl-C</kbd> — still projected the whole book and could be refused by a cap sized for what
+  remained. The cost of this read is nil at the scale of a projection: point lookups on an indexed
+  column, no provider call, so <code>estimate</code> does it too.
+</p>
+
+<p>
+  Two consequences to know:
+</p>
+
+<ul>
+  <li><strong>A draft is only reusable for the mode it's the output of.</strong> In NMT mode a
+    cached draft is the final result, so free; in literary it's an intermediate to redo, and
+    counting it as acquired would pass a run that then pays for each segment. The projection
+    therefore applies the same rule as the translation.</li>
+  <li><strong><code>estimated_cost_usd</code> in <code>report.json</code> stays the whole book
+    without reuse</strong>, and is <em>not</em> the figure the cap is applied to. That's
+    intentional: it's the only base <code>cost_savings_usd</code> can subtract from to mean "what
+    the memory saved". The two coincide on a fresh book and diverge on a resume.</li>
+  <li>The price: the projection stops being a property of the book alone. The same volume projects
+    differently depending on the machine's memory. That's by design — it speaks about <em>this
+    run</em>.</li>
+</ul>
+
+<h4>What two runs of the same chapter measured</h4>
+
+<p>
+  Same chapter (97 of <code>vol33</code>, 258 segments, 6 batches), same model
+  (<code>claude-sonnet-5</code> via <code>claude-cli</code>), same bible v3, two weeks apart:
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Run</th><th>cache write</th><th>per call</th><th>cache read</th><th>total input</th><th>output / segment</th><th>notional cost</th></tr>
+  <tr><td><code>ch97-sonnet</code> · Aug 8</td><td class="num">281,819</td><td class="num">46,970</td><td class="num">191,000</td><td class="num">472,833</td><td class="num">207</td><td class="num">$1.9153</td></tr>
+  <tr><td><code>ch97-cli</code> · Aug 23</td><td class="num">83,560</td><td class="num">13,927</td><td class="num">201,885</td><td class="num">285,457</td><td class="num">160</td><td class="num">$0.9950</td></tr>
+</table>
+</div>
+
+<p>
+  The first looks exactly like six full rewrites of the prefix. In the second, the
+  <em>reads</em> dominate: the provider's content cache clearly triggers on its own, which the
+  setup posed as its open question. Same transport, a factor of
+  <strong>3.4</strong> apart on the very term the upper bound bills.
+</p>
+
+<p>
+  Hence the takeaway: on this transport, the projection <strong>bounds</strong> a spend, it doesn't
+  predict it. On the Aug 23 run it announced $1.1373 for $0.9950 actual
+  (<strong>+14%</strong>); on the Aug 8 one the same model would have announced $1.1373 for $1.9153
+  (<strong>−41%</strong>). The error changes sign — that's the sign you hold a bound, not a law.
+  The old model, for its part, was always wrong in the same direction.
+</p>
+
+<h3><code>series-bible</code> — build the bible before translating</h3>
+
+<pre><code>tomeshift series-bible --input-dir ./books/lumen --series lumen [--samples 3] [--merge] [--dry-run] [--from-volume N]</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Flag</th><th>Default</th><th>Effect</th></tr>
+  <tr><td><code>--input-dir</code></td><td class="num">required</td><td>All the <code>.epub</code> in the folder, in publication order inferred from the filename.</td></tr>
+  <tr><td><code>--samples</code></td><td class="num">3</td><td>Documents sampled <em>per volume</em> for style, voices and forms of address. <strong>Note</strong>: they all go in <em>a single</em> call, so the input grows with the series — see the box below.</td></tr>
+  <tr><td><code>--merge</code></td><td><code>false</code></td><td>Enriches existing bibles instead of overwriting them.</td></tr>
+  <tr><td><code>--dry-run</code></td><td><code>false</code></td><td>Prints the cost projection and <strong>stops before the first call</strong>. Nothing is created — not even the bible's database.</td></tr>
+  <tr><td><code>--from-volume</code></td><td class="num">0</td><td><em>Append</em> mode: summarizes only volumes ≥ N and <strong>adds</strong> their synopses to the existing bible's STORY_SO_FAR, without regenerating the earlier ones. 0 = full build. Idempotent: a volume already present is not rewritten.</td></tr>
+</table>
+</div>
+
+<h4>The cost projection</h4>
+
+<p>
+  <code>estimate</code> prices the <em>translation</em> of a book; it can't price a bible build,
+  which is another kind of work. <code>series-bible</code> therefore carries its own projection,
+  printed systematically before the first call, and the per-book cap applies to it.
+</p>
+
+<pre><code>tomeshift series-bible --input-dir ./epub/lumen --series lumen --samples 3 --dry-run
+
+series-bible projection for lumen: 33 volumes, 1090 chapters, 1124 calls, samples=3
+stage       calls    in_tokens   out_tokens          usd
+style           1         9703        16000       0.0897
+map          1090      5111788       298660       6.6051
+reduce         33       298660        13200       0.3647
+total        1124      5420151       327860       7.0595</code></pre>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Stage</th><th>Calls</th><th>What it sends</th></tr>
+  <tr><td><code>style</code></td><td>1</td><td>The first <code>--samples</code> chapters of <strong>each</strong> volume, concatenated into a single request.</td></tr>
+  <tr><td><code>map</code></td><td>1 per non-empty chapter</td><td>The chapter's text → a ~274-token summary. <strong>This is the dominant item</strong>: 1090 chapters = 1090 calls.</td></tr>
+  <tr><td><code>reduce</code></td><td>1 per volume</td><td>The volume's summaries → a ~400-token synopsis.</td></tr>
+</table>
+</div>
+
+<div class="card warn">
+  <span class="label">The <code>--samples</code> pitfall</span>
+  <p style="margin-top:0">
+    <code>--samples</code> looks like a per-volume setting, but the style pass concatenates all the
+    samples into <strong>a single call</strong>. On 33 volumes, <code>--samples 8</code> sends
+    <strong>966,526 tokens in one request</strong> — beyond Haiku 4.5's context window
+    (200K), and absurd everywhere else. The command warns you above 200,000 tokens.
+    <code>--samples 3</code> fits in 9,703 tokens.
+  </p>
+</div>
+
+<div class="card note">
+  <span class="label">Without LLM prices set</span>
+  <p style="margin-top:0">
+    The projection still prints the <strong>tokens</strong> — that's the case with the
+    <code>claude-cli</code> setup, where there's no marginal dollar and the token is the only figure
+    that counts. It says so explicitly rather than silently showing $0.0000, and no cap applies
+    then.
+  </p>
+</div>
+
+<p>
+  Output: <strong>one bible per volume</strong> (<code>lumen@volume-01</code>,
+  <code>lumen@volume-02</code>, …) plus <code>lumen</code> = the bible of the most recent volume.
+  A bible's synopses are bounded to volumes 1..N so as not to reveal the end of a story you're
+  starting. Cost: about 1 + (chapters + 1) LLM calls per volume, <strong>once</strong>,
+  never replayed.
+</p>
+
+<div class="card warn">
+  <span class="label">Consequence to know</span>
+  <p style="margin-top:0">
+    Regenerating the bible changes the prompts' prefix, so <strong>invalidates the LLM cache once</strong>.
+    That's intentional: a one-off cost per regeneration, instead of a per-chapter cost. Already-translated
+    volumes are not re-translated automatically.
+  </p>
+</div>
+
+<h3><code>style-profile</code> — seed the bible from a single volume</h3>
+
+<pre><code>tomeshift style-profile --input &lt;f.epub&gt; --series &lt;id&gt; [--samples 3] [--merge]</code></pre>
+
+<p>
+  A single LLM call, a single volume, no synopsis. Useful for a standalone book or to fix the
+  style of an existing bible with <code>--merge</code>. <code>series-bible</code> supersedes it for
+  series work.
+</p>
+
+<h3><code>glossary-suggest</code> — extract proper nouns</h3>
+
+<pre><code>tomeshift glossary-suggest --input &lt;f.epub&gt; [--out glossary.json] [--min-count 3]</code></pre>
+
+<p>
+  Free, heuristic, <strong>no configuration required</strong> — it's the only command that
+  doesn't load the config. It produces a JSON skeleton <em>to curate by hand</em>: keep the
+  real names, write the French form, remove the noise, check <code>locked</code>. Raising
+  <code>--min-count</code> reduces noise and lets rare names slip through.
+</p>
+
+<pre><code>[
+  { <span class="cmt">"term_en"</span>: "Elena", <span class="cmt">"term_fr"</span>: "Elena", <span class="cmt">"locked"</span>: true },
+  { <span class="cmt">"term_en"</span>: "Return by Ash", <span class="cmt">"term_fr"</span>: "Retour par la Cendre", <span class="cmt">"locked"</span>: true }
+]</code></pre>
+
+<h3><code>eval</code> — measure quality</h3>
+
+<pre><code><span class="cmt"># chrF: requires a human reference from the SAME edition</span>
+tomeshift eval --candidate ./runs/&lt;id&gt;/translated.epub --reference ./ref-fr.epub
+
+<span class="cmt"># COMET-QE: reference-free, requires an active COMET service</span>
+TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \
+  tomeshift eval --segments ./runs/&lt;id&gt;/segments.jsonl</code></pre>
+
+<div class="card note">
+  <span class="label">Choosing the right metric</span>
+  <p style="margin-top:0">
+    Comparing a <em>light novel</em> translation to a <em>web novel</em> reference gives a
+    catastrophic chrF that says nothing about quality: they aren't the same texts. Without an
+    aligned reference, <strong>COMET-QE is the honest metric</strong>. The per-book average lands in
+    <code>report.json</code> (<code>avg_quality_score</code>) and <code>metrics.json</code>.
+  </p>
+</div>
+
+<h3><code>batch</code> — process a folder of books</h3>
+
+<pre><code>tomeshift batch --input-dir ./books/serie --output-dir ./runs \
+  [--glossary ./glossary.json] [--reference-dir ./refs] [--no-progress]</code></pre>
+
+<ul>
+  <li><strong>NMT mode only</strong> — no literary mode in batch.</li>
+  <li>A TM and a glossary <em>shared</em> across the books: volume 2 reuses volume 1's sentences,
+    and terminology stays consistent throughout.</li>
+  <li>A failed book doesn't stop the following ones; the first failure sets the exit code.</li>
+  <li>Artifacts go into <code>&lt;output-dir&gt;/&lt;book-id&gt;/</code>, plus an aggregated
+    <code>batch-report.json</code>.</li>
+  <li><code>--reference-dir</code>: if <code>&lt;dir&gt;/&lt;book-id&gt;.epub</code> exists, a chrF
+    is computed for that book and injected into the aggregated report. Without a reference for a
+    given book, it's silently skipped.</li>
+  <li>Each book has its own progress bar, prefixed with its <code>book_id</code> and closed by the
+    book's recap line. <code>--no-progress</code> turns them all off.</li>
+  <li><kbd>Ctrl-C</kbd> stops cleanly <em>between</em> two books.</li>
+</ul>
+
+<h2 id="flags">7. What each flag changes</h2>
+
+<p>
+  Three questions per option: what does it change in the <em>processing</em>, in the
+  <em>output</em>, and on the <em>cost</em>?
+</p>
+
+<div class="widget" id="w-flags">
+  <span class="wlabel">Explorer — click an option</span>
+  <div class="flaglist" id="flaglist"></div>
+  <div class="fgrid">
+    <div class="fcell proc"><span class="h">Processing</span><span id="f-proc"></span></div>
+    <div class="fcell out2"><span class="h">Output / artifacts</span><span id="f-out"></span></div>
+    <div class="fcell cost"><span class="h">Cost &amp; performance</span><span id="f-cost"></span></div>
+  </div>
+</div>
+
+<h2 id="env">8. The variables that change the output</h2>
+
+<p>
+  Flags decide <em>what</em> to translate; the environment decides <em>how</em>. Here are the ones
+  whose effect is visible in the produced file or in the bill.
+</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Variable (<code>TOMESHIFT_</code>)</th><th>Default</th><th>Consequence if you touch it</th></tr>
+  <tr>
+    <td><code>NMT_PROVIDER</code></td><td><code>http</code></td>
+    <td>Changes the <strong>draft quality</strong>, hence the final quality in nmt mode and the work left to the LLM in literary. Also changes the <code>engine</code> tag written in TM.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_MODEL</code> + prices</td><td class="num">—</td>
+    <td>Changes the literary quality and the cost. <strong>Without the prices, the projection is $0</strong> and the per-book cap protects nothing anymore.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_TOKEN_MULTIPLIER</code></td><td><code>1.0</code></td>
+    <td>Corrects the tokenizer density (<code>1.30</code> for <code>claude-sonnet-5</code> and the Opus 4.7 family). Without it, the projection underestimates by that much and the guardrail lets a too-expensive run pass.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_CHAT_PROVIDER=claude-cli</code></td><td><code>openai</code></td>
+    <td><span class="badge info">experimental</span> Goes through the local Claude Code CLI instead of the API: no more key, billed to the subscription seat. See the dedicated section below.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_CLI_BIN</code></td><td>empty → <code>claude</code></td>
+    <td>Executable for CLI providers. Set it if the binary isn't in the <code>PATH</code> or to pin a version.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_BATCH_SIZE</code></td><td><code>0</code> → 50</td>
+    <td>Segments per call. Higher = fewer calls, so fewer prefix repetitions; but a model that doesn't finish triggers half-batch retries. Lower for a small local model, raise for a big model.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_ESCALATE_MIN_CHARS</code></td><td><code>240</code></td>
+    <td>nmt mode only: length threshold beyond which a segment goes to the post-editor. <code>0</code> escalates everything. Directly varies the number of LLM calls.</td>
+  </tr>
+  <tr>
+    <td><code>COMET_ENDPOINT</code> + <code>ESCALATE_BELOW_SCORE</code></td><td>empty / <code>0</code></td>
+    <td>Switches escalation from "by length" to <strong>"by quality"</strong>: only drafts scored below the threshold go to the LLM. Adds the <code>translation_quality_score</code> metric.</td>
+  </tr>
+  <tr>
+    <td><code>PER_BOOK_</code> / <code>DAILY_</code> / <code>MONTHLY_BUDGET_USD</code></td><td>2 / 5 / 50</td>
+    <td>Hard caps checked <em>before</em> the first paid call → <strong>exit 7</strong>. The default of $2 deliberately refuses a literary volume on a Sonnet model (~$4–6.50).</td>
+  </tr>
+  <tr>
+    <td><code>NMT_FREE_CHARS_PER_MONTH</code></td><td><code>0</code> (500,000 auto for Google)</td>
+    <td>Only the overage is billed. The counter is the run ledger: if characters were consumed outside the pipeline this month, the projection underestimates.</td>
+  </tr>
+  <tr>
+    <td><code>TM_PATH</code></td><td><code>./tm.sqlite</code></td>
+    <td>Changing the file = starting over with no memory: everything is re-translated and re-paid. A file shared across volumes is what raises the reuse rate.</td>
+  </tr>
+  <tr>
+    <td><code>LLM_CACHE_PATH</code></td><td><code>./llm_cache.sqlite</code></td>
+    <td>Deleting it makes a re-run paid. Keeping it makes an identical re-run <strong>free and instant</strong>.</td>
+  </tr>
+  <tr>
+    <td><code>EPUBCHECK_JAR</code> / <code>EPUBCHECK_BIN</code></td><td>empty</td>
+    <td>Not set = EPUB validation <em>skipped</em> (not failed): the QA gate passes on the static checks alone. The report says so via <code>epubcheck_skipped</code>.</td>
+  </tr>
+  <tr>
+    <td><code>RUN_TIMEOUT_SECONDS</code></td><td><code>0</code></td>
+    <td>Bounds a book. Useful in batch so a stuck provider doesn't freeze the series. Exceeding it gives <strong>exit 8</strong>, and the spend already incurred is recorded anyway.</td>
+  </tr>
+  <tr>
+    <td><code>NMT_MAX_ATTEMPTS</code> / <code>NMT_RETRY_BASE_MS</code></td><td>3 / 200</td>
+    <td>Retries on transient error, with backoff. Note: <strong>each attempt consumes characters</strong> at the provider, and the counter reflects it.</td>
+  </tr>
+  <tr>
+    <td><code>LOG_LEVEL</code></td><td><code>info</code></td>
+    <td><code>debug</code> details the segment-by-segment routing in <code>logs.ndjson</code>. Payloads are never logged.</td>
+  </tr>
+  <tr>
+    <td><code>TEMPORAL_ADDRESS</code></td><td><code>localhost:7233</code></td>
+    <td>The Temporal server's gRPC frontend that the CLI and the worker dial (durable execution engine, RFC 0009). <code>just up</code> starts the local server; no credential is needed to reach it, and <code>estimate</code> never touches it.</td>
+  </tr>
+  <tr>
+    <td><code>TEMPORAL_NAMESPACE</code> / <code>TEMPORAL_TASK_QUEUE</code></td><td><code>default</code> / <code>tomeshift</code></td>
+    <td>The namespace that isolates the workflows (the dev server registers <code>default</code>) and the task queue the worker listens on and on which the CLI starts the runs.</td>
+  </tr>
+</table>
+</div>
+
+<h3>8.1 The experimental setup: Claude Code CLI instead of the API</h3>
+
+<p>
+  <code>LLM_CHAT_PROVIDER=claude-cli</code> replaces the HTTP call with a
+  <code>claude -p --output-format json</code> subprocess, authenticated by the application's
+  session. No API key, so no <code>op run</code> wrapper: the <code>Justfile</code> detects it and
+  launches directly. <code>LLM_MODEL</code> then accepts a CLI alias (<code>opus</code>,
+  <code>sonnet</code>, <code>haiku</code>) or a full model name.
+</p>
+
+<pre><code>TOMESHIFT_LLM_CHAT_PROVIDER=claude-cli
+TOMESHIFT_LLM_MODEL=opus
+TOMESHIFT_LLM_CLI_BIN=                  <span class="cmt"># empty = "claude" from the PATH</span>
+<span class="cmt"># The prices stay set: they bill nothing here, they turn the</span>
+<span class="cmt"># per-book cap into a consumed-quota indicator.</span>
+TOMESHIFT_LLM_INPUT_PER_MTOK_USD=15.00
+TOMESHIFT_LLM_OUTPUT_PER_MTOK_USD=75.00</code></pre>
+
+<div class="card key">
+  <span class="label">The measurement that makes the setup viable</span>
+  <p style="margin-top:0">
+    The adapter passes <code>--system-prompt</code>, which <strong>replaces</strong> the agent's
+    system prompt, and <code>--tools ""</code>, which disables the tooling. Without these two
+    options, every invocation drags in Claude Code's full preamble. Measured on 8 August 2026, on a
+    one-line prompt:
+  </p>
+  <div class="table-wrap">
+  <table>
+    <tr><th>Invocation</th><th class="num">Cached input tokens</th><th class="num">API equivalent</th></tr>
+    <tr><td>bare <code>claude -p</code></td><td class="num">48,870</td><td class="num">$0.2936</td></tr>
+    <tr><td>with <code>--system-prompt</code> + <code>--tools ""</code></td><td class="num">2,027</td><td class="num">$0.0126</td></tr>
+  </table>
+  </div>
+  <p style="margin-bottom:0">
+    <strong>24× less overhead per call</strong>, and a volume makes more than sixty-eight of them.
+  </p>
+</div>
+
+<div class="card warn">
+  <span class="label">What this setup makes you lose</span>
+  <ul style="margin-bottom:0">
+    <li><strong>The budget guardrail stops describing a real spend.</strong> A subscription
+      has no marginal cost. Keeping the model's published prices turns the per-book cap
+      into a <em>quota indicator</em> — it's the best substitute the pipeline can compute,
+      but it's no longer a bill.</li>
+    <li><strong><code>cache_control</code> escapes you.</strong> The Anthropic adapter marks
+      the stable prefix explicitly; here the CLI decides. The prefix stays identical
+      byte for byte between a chapter's batches, so the provider's content cache
+      <em>can</em> trigger on its own. <code>llm_cache_read_tokens</code> in
+      <code>report.json</code> is the number that tells you — the first to look at after a real run.</li>
+    <li><strong>No native structured output.</strong> The CLI has no equivalent to the API's JSON
+      schema: the schema becomes an instruction. The tolerant decoder and the half-batch
+      recovery absorb the difference, at the cost of a few more degraded batches.</li>
+    <li><code>MaxTokens</code> is ignored (the CLI doesn't expose the setting): the model's
+      limit applies.</li>
+  </ul>
+</div>
+
+<p>
+  Before launching a volume, the end-to-end check — it consumes quota, so it's
+  explicitly optional:
+</p>
+
+<pre><code>TOMESHIFT_LIVE_CLI_TEST=1 TOMESHIFT_LLM_MODEL=opus \
+  go test ./tests/integration/ -run TestLiterary_ClaudeCLI -v
+<span class="cmt"># → translates 3 segments, checks the placeholders, and prints the counters:</span>
+<span class="cmt">#   usage: input=2 output=164 cache_read=0 cache_creation=2847</span></code></pre>
+
+<h2 id="artefacts">9. Reading a run's artifacts</h2>
+
+<pre><code>runs/20260808-142312/
+├── translated.epub   <span class="cmt">← the book</span>
+├── report.json       <span class="cmt">← segments, TM hits, tokens, costs, QA block</span>
+├── segments.jsonl    <span class="cmt">← 1 line per segment (input to eval --segments)</span>
+├── metrics.json      <span class="cmt">← flat metrics, canonical names</span>
+└── logs.ndjson       <span class="cmt">← structured logs</span></code></pre>
+
+<div class="card note">
+  <span class="label">Artifacts are written even if QA fails</span>
+  <p style="margin-top:0">
+    A run that exits with <strong>exit 5</strong> still produced its EPUB and its reports:
+    that's what makes diagnosis possible. First look, in <code>report.json</code>, at the
+    <code>qa</code> block: <code>placeholder_restore_ratio</code> (threshold 0.995),
+    <code>untranslated_segments</code>, <code>missing_spine_docs</code>,
+    <code>glossary_violations</code>, <code>epubcheck_passed</code>.
+  </p>
+</div>
+
+<h4>The <code>report.json</code> fields used for calibration</h4>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Field</th><th>What it says</th></tr>
+  <tr><td><code>llm_pass_segments</code></td><td>How many segments the LLM pass <em>carried</em>, usable result or not — to be distinguished from <code>llm_segments</code>, which counts those it improved. It's the denominator that goes with the token counters: dividing a degraded batch's tokens by the segments it didn't deliver would make a model all the more "verbose" the worse it behaves.</td></tr>
+  <tr><td><code>llm_provider</code> / <code>llm_model</code></td><td>Who consumed these tokens. It's the key under which the measurement is reusable. Set in literary mode only: the HTTP post-editor is chosen by endpoint, not by model, and reports no usage to attribute.</td></tr>
+  <tr><td><code>llm_cache_creation_tokens</code></td><td>The prefix written to the cache. On <code>claude-cli</code>, dividing it by the number of calls shows whether it's rewritten every time — it's the first number to look at to understand a bill.</td></tr>
+</table>
+</div>
+
+<h4>A segment's statuses in <code>segments.jsonl</code></h4>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Status</th><th>Means</th></tr>
+  <tr><td><code>reused</code></td><td>Served by the translation memory. Zero calls, zero cost.</td></tr>
+  <tr><td><code>translated</code></td><td>NMT draft. In literary mode, it's the sign that the LLM <em>couldn't</em> refine it (degraded batch) — look for the corresponding warning in <code>logs.ndjson</code>.</td></tr>
+  <tr><td><code>post_edited</code></td><td>Rewritten by the LLM, placeholders checked. It's the nominal status in literary mode.</td></tr>
+</table>
+</div>
+
+<h4>Human review, side by side</h4>
+
+<pre><code>just compare runs/&lt;id&gt;/segments.jsonl review.html   <span class="cmt"># EN | FR table in the browser</span>
+just carve "books/vol1.epub" en-ch1.epub chapter_1.xhtml <span class="cmt"># isolate 1 chapter to iterate fast</span></code></pre>
+
+<h2 id="exit">10. Exit codes and diagnostics</h2>
+
+<div class="widget" id="w-exit">
+  <span class="wlabel">Click a code for the diagnosis</span>
+  <div class="exitgrid" id="exitgrid"></div>
+  <div class="exitbox" id="exitbox"></div>
+</div>
+
+<figure>
+<pre class="mermaid">
+flowchart TB
+    R["run"] --> F1{"valid flags?"}
+    F1 -->|"no"| E2["exit 2"]
+    F1 -->|"yes"| F2{"config loadable?<br/>bible present?"}
+    F2 -->|"no"| E2
+    F2 -->|"yes"| F3{"extract / parse /<br/>segmentation ok?"}
+    F3 -->|"no"| E3["exit 3"]
+    F3 -->|"yes"| F4{"projection under<br/>the 3 caps?"}
+    F4 -->|"no"| E7["exit 7 — zero paid call"]
+    F4 -->|"yes"| F5{"provider responds?"}
+    F5 -->|"no"| E4["exit 4"]
+    F5 -->|"yes"| F6{"recomposition ok?"}
+    F6 -->|"no"| E6["exit 6"]
+    F6 -->|"yes"| F7{"QA gate passed?"}
+    F7 -->|"no"| E5["exit 5 — artifacts written anyway"]
+    F7 -->|"yes"| OK["exit 0"]
+    R -.->|"Ctrl-C or timeout"| E8["exit 8"]
+</pre>
+<figcaption>Each code corresponds to a precise step, which makes diagnosis mechanical.</figcaption>
+</figure>
+
+<h2 id="docker">11. Docker and the <code>just</code> cheat sheet</h2>
+
+<h3>Compose: five services, three profiles</h3>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Service</th><th>Profile</th><th>Role</th></tr>
+  <tr><td><code>app</code></td><td>default</td><td>Runs the CLI. Reads <code>.env.local</code>, mounts <code>./books</code>, <code>./runs</code>, <code>./data</code>.</td></tr>
+  <tr><td><code>nmt</code></td><td>default</td><td>The built-in dev NMT, started with the app.</td></tr>
+  <tr><td><code>libretranslate</code></td><td><code>real-nmt</code></td><td>Real local EN→FR NMT.</td></tr>
+  <tr><td><code>comet</code></td><td><code>eval</code></td><td>COMET-QE service. Heavy image: deliberately outside the default profile.</td></tr>
+  <tr><td><code>temporal</code></td><td>default</td><td>Temporal dev server (RFC 0009): gRPC <code>:7233</code>, web UI <code>:8233</code>, SQLite history in the <code>temporal-data</code> volume. <code>just up</code> starts it; <code>app</code> does not depend on it yet (worker in phase 3).</td></tr>
+</table>
+</div>
+
+<pre><code>mkdir -p books runs data
+cp &lt;your-book&gt;.epub books/source.epub
+just docker-build
+just up                                        <span class="cmt"># build + run temporal + app (+ nmt), output in ./runs</span>
+docker compose logs -f app
+just down</code></pre>
+
+<div class="card warn">
+  <span class="label">What compose doesn't cover, by design</span>
+  <p style="margin-top:0">
+    Literary mode <em>works</em> via <code>app</code> (it reads <code>.env.local</code>, hence
+    the API key), but the LLM is an external API, not a hosted service: to enable it in
+    a container you must adapt the <code>app</code> service's <code>command:</code>
+    (<code>--mode literary --series … --glossary …</code>).
+  </p>
+</div>
+
+<h3><code>just</code> cheat sheet</h3>
+
+<p><code>just --list</code> shows everything, with the arguments documented. The most useful:</p>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Recipe</th><th>Does what</th></tr>
+  <tr><td><code>just preflight</code></td><td>Checks the tools and pings the NMT and Temporal endpoints (non-blocking).</td></tr>
+  <tr><td><code>just print-config-vars</code></td><td>Prints the <code>TOMESHIFT_*</code> actually resolved — the first reflex when "it's not picking up my config".</td></tr>
+  <tr><td><code>just nmt-dev</code> · <code>just libretranslate-up</code> · <code>just comet-up</code></td><td>Start the services.</td></tr>
+  <tr><td><code>just temporal-up</code> · <code>just temporal-down</code> · <code>just temporal-ui</code></td><td>Start / stop the Temporal dev server (RFC 0009); open its web UI on <code>:8233</code>. <code>just up</code> already starts it with the app.</td></tr>
+  <tr><td><code>just run &lt;in.epub&gt; [outdir]</code></td><td>NMT translation.</td></tr>
+  <tr><td><code>just literary &lt;in&gt; &lt;series&gt; [glossary] [run-id]</code></td><td>Literary translation.</td></tr>
+  <tr><td><code>just estimate &lt;in.epub&gt;</code></td><td>Cost projection.</td></tr>
+  <tr><td><code>just series-bible-cost &lt;dir&gt; &lt;series&gt; [samples]</code></td><td>Project the bible-build cost — 0 calls, no credential. The counterpart of <code>estimate</code> for this job.</td></tr>
+  <tr><td><code>just series-bible &lt;dir&gt; &lt;series&gt; [samples] [merge] [from_volume]</code></td><td>Build the series' bibles. <code>from_volume N</code> = append mode (adds only volumes ≥ N to STORY_SO_FAR). <code>samples</code> defaults to 3: see the pitfall in §6.</td></tr>
+  <tr><td><code>just bible &lt;db&gt; &lt;series&gt;</code></td><td>Display a bible in plain text — <strong>to do before a full run</strong>, an error there propagates everywhere.</td></tr>
+  <tr><td><code>just glossary-suggest &lt;in&gt; [out] [min]</code></td><td>Extract proper nouns.</td></tr>
+  <tr><td><code>just eval-ref &lt;cand&gt; &lt;ref&gt;</code> · <code>just eval-qe &lt;segments&gt;</code></td><td>chrF · COMET-QE.</td></tr>
+  <tr><td><code>just compare &lt;segments&gt; &lt;out.html&gt;</code> · <code>just carve …</code></td><td>Side-by-side review · carve out a chapter.</td></tr>
+  <tr><td><code>just check</code> · <code>just ci-local</code> · <code>just fuzz</code></td><td>fmt + lint + tests + doc audit · same with preflight · fuzzing (outside CI).</td></tr>
+  <tr><td><code>just docs-audit</code></td><td>Checks that these two illustrated documents still cover the whole CLI surface (commands, flags, variables, recipes, exit codes). Fails when a new feature hasn't been documented.</td></tr>
+</table>
+</div>
+
+<h3>Common symptoms</h3>
+
+<div class="table-wrap">
+<table>
+  <tr><th>Symptom</th><th>Probable cause</th><th>Fix</th></tr>
+  <tr><td><code>unable to build the "libretranslate" NMT provider</code></td><td><code>NMT_ENDPOINT</code> empty for an engine that requires one</td><td>Set the endpoint, or switch to <code>google</code> which provides its host.</td></tr>
+  <tr><td><code>unable to use the google NMT provider</code></td><td>Missing API key</td><td><code>NMT_API_KEY</code> + billing enabled on the GCP project.</td></tr>
+  <tr><td>exit 7 right at launch</td><td>Projection above a cap</td><td>Run <code>estimate</code>, then adjust the cap or the model. Never disable the guardrail "just to see".</td></tr>
+  <tr><td>Many <code>translated</code> segments in literary mode</td><td>Degraded LLM batches (refusal, truncation)</td><td>Look for <code>literary batch kept its draft</code> in <code>logs.ndjson</code>; lower <code>LLM_BATCH_SIZE</code>.</td></tr>
+  <tr><td>The re-run re-pays everything</td><td>Bible modified between two runs, or LLM cache deleted</td><td>Don't use <code>--update-bible</code>; keep <code>llm_cache.sqlite</code>.</td></tr>
+  <tr><td>chrF very low while the reading is good</td><td>Reference from another edition</td><td>Use COMET-QE (<code>eval --segments</code>).</td></tr>
+  <tr><td><code>epubcheck</code> never run</td><td>neither <code>EPUBCHECK_JAR</code> nor <code>EPUBCHECK_BIN</code> resolved</td><td>Set the jar path; check <code>epubcheck_skipped</code> in the report.</td></tr>
+</table>
+</div>
+
+<footer>
+  tomeshift · usage guide · code frozen at <code>953441d</code> ·
+  text supplements: <code>docs/INSTALLATION.md</code>, <code>docs/translation-guide.md</code>,
+  <code>docs/quality-evaluation.md</code>, <code>docs/improving-translations.md</code>
+</footer>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    themeVariables: {
+      background: '#151824', primaryColor: '#252840', primaryTextColor: '#e2e4f0',
+      primaryBorderColor: '#2a2d3e', lineColor: '#8b8fa8', secondaryColor: '#1a1d27',
+      tertiaryColor: '#1f2f3a', fontFamily: "'SF Mono','Fira Code',ui-monospace,monospace",
+      fontSize: '12px'
+    },
+    flowchart: { curve: 'basis', padding: 14 },
+    sequence: { actorMargin: 40, width: 150 }
+  });
+</script>
+
+<script>
+(function () {
+  'use strict';
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var P = 'TOMESHIFT_';
+
+  function pickGroup(rootId, onPick) {
+    var root = document.getElementById(rootId);
+    root.addEventListener('click', function (e) {
+      var b = e.target.closest('button');
+      if (!b) return;
+      var kids = root.querySelectorAll('button');
+      for (var i = 0; i < kids.length; i++) kids[i].className = '';
+      b.className = 'active';
+      onPick(b.getAttribute('data-v'));
+    });
+  }
+
+  /* ── Config generator ───────────────────────────────────────────── */
+  var cfg = { nmt: 'http', mode: 'nmt', llm: 'anthropic', qe: 'off' };
+  var LLM = {
+    anthropic: { base: '', model: 'claude-sonnet-5', ref: 'op://Dev/anthropic-epub-translator/credential', mult: '1.30', cacheRead: '0.30', in: '3.00', out: '15.00' },
+    openai:    { base: 'https://api.openai.com/v1', model: 'gpt-5.4', ref: 'op://Dev/openai-epub-translator/credential', mult: '1.0', cacheRead: '0', in: '2.50', out: '10.00' },
+    deepseek:  { base: 'https://api.deepseek.com', model: 'deepseek-chat', ref: 'op://Dev/deepseek-epub-translator/credential', mult: '1.0', cacheRead: '0', in: '0.27', out: '1.10' },
+    // No key: the CLI authenticates via its own session. The prices
+    // stay set — they bill nothing, they turn the per-book cap
+    // into a consumed-quota indicator.
+    'claude-cli': { base: '', model: 'opus', ref: '', mult: '1.30', cacheRead: '0.30', in: '15.00', out: '75.00' }
+  };
+  function line(k, v, comment) {
+    return '<span class="k">' + P + k + '</span>=<span class="v">' + v + '</span>' +
+      (comment ? '   <span class="c"># ' + comment + '</span>' : '') + '\n';
+  }
+  function head(t) { return '<span class="c"># ── ' + t + ' ─────────────────────</span>\n'; }
+
+  function renderCfg() {
+    var o = '<span class="c">### .env.local — non-secret, gitignored</span>\n';
+    o += head('NMT draft');
+    if (cfg.nmt === 'http') {
+      o += line('NMT_PROVIDER', 'http');
+      o += line('NMT_ENDPOINT', 'http://localhost:8081/translate', 'launch: just nmt-dev');
+    } else if (cfg.nmt === 'google') {
+      o += line('NMT_PROVIDER', 'google');
+      o += line('NMT_API_KEY', '', 'empty: injected from .env.op');
+      o += line('NMT_ENDPOINT', '', 'empty: the adapter knows the host');
+      o += line('NMT_FREE_CHARS_PER_MONTH', '500000');
+      o += line('COST_PER_1000_CHARS_USD', '0.02', '$20 / M characters');
+    } else {
+      o += line('NMT_PROVIDER', 'libretranslate');
+      o += line('NMT_ENDPOINT', 'http://localhost:5050/translate', 'just libretranslate-up');
+    }
+    o += '\n' + head('storage');
+    o += line('TM_PATH', './data/tm.sqlite', 'shared across volumes = reuse');
+    if (cfg.mode === 'literary') {
+      o += line('NARRATIVE_PATH', './data/series.sqlite');
+      o += line('LLM_CACHE_PATH', './data/llm-cache.sqlite', "don't delete: free re-runs");
+    }
+    o += '\n' + head('durable engine (Temporal, RFC 0009)');
+    o += line('TEMPORAL_ADDRESS', 'localhost:7233', 'local server: just up');
+    if (cfg.mode === 'literary') {
+      var L = LLM[cfg.llm];
+      o += '\n' + head('LLM (literary mode)');
+      o += line('LLM_CHAT_PROVIDER', cfg.llm);
+      if (L.base) o += line('LLM_BASE_URL', L.base);
+      o += line('LLM_MODEL', L.model, cfg.llm === 'claude-cli' ? 'CLI alias: opus | sonnet | haiku' : '');
+      if (cfg.llm === 'claude-cli') {
+        o += line('LLM_CLI_BIN', '', 'empty: "claude" from the PATH');
+        o += line('LLM_API_KEY', '', 'not needed: the CLI has its own session');
+      } else {
+        o += line('LLM_API_KEY', '', 'empty: injected from .env.op');
+      }
+      o += '\n' + head(cfg.llm === 'claude-cli'
+        ? 'prices — they bill nothing here, they measure quota'
+        : 'prices — without them the guardrail compares nothing');
+      o += line('LLM_INPUT_PER_MTOK_USD', L.in);
+      o += line('LLM_OUTPUT_PER_MTOK_USD', L.out);
+      o += line('LLM_CACHE_READ_PER_MTOK_USD', L.cacheRead, L.cacheRead === '0' ? 'no prompt cache' : '');
+      o += line('LLM_TOKEN_MULTIPLIER', L.mult, L.mult === '1.30' ? 'denser tokenizer' : '');
+    }
+    if (cfg.qe === 'on') {
+      o += '\n' + head('quality (COMET-QE)');
+      o += line('COMET_ENDPOINT', 'http://localhost:8000/score', 'just comet-dev');
+      o += line('ESCALATE_BELOW_SCORE', '0.80', 'escalates weak drafts');
+    }
+    o += '\n' + head('spend guardrails');
+    o += line('PER_BOOK_BUDGET_USD', cfg.mode === 'literary' ? '7.00' : '2.00',
+      cfg.mode === 'literary' ? 'a Sonnet volume ≈ $4–6.50' : '');
+    o += line('DAILY_BUDGET_USD', '5.00');
+    o += line('MONTHLY_BUDGET_USD', '50.00');
+
+    // The second file appears only if a paid provider is involved. The
+    // CLI authenticates via its own session: no secret to resolve.
+    var needsLLMSecret = cfg.mode === 'literary' && cfg.llm !== 'claude-cli';
+    var needsNMTSecret = cfg.nmt === 'google';
+    if (needsLLMSecret || needsNMTSecret) {
+      o += '\n<span class="c">### .env.op — ONLY references, committable as-is</span>\n';
+      if (needsLLMSecret) o += line('LLM_API_KEY', LLM[cfg.llm].ref);
+      if (needsNMTSecret) o += line('NMT_API_KEY', 'op://Dev/gcp-cloud-translation/credential');
+    }
+    document.getElementById('cfg-out').innerHTML = o;
+
+    var cmd, cons;
+    if (cfg.mode === 'literary') {
+      cmd = 'tomeshift series-bible --input-dir ./books/my-series --series my-series --samples 8\n' +
+            'tomeshift estimate --input ./books/my-series/volume-01.epub\n' +
+            'tomeshift run --input ./books/my-series/volume-01.epub --output-dir ./runs \\\n' +
+            '  --source-lang en --target-lang fr --mode literary \\\n' +
+            '  --series my-series@volume-01 --glossary ./glossary.json';
+      cons = '<b>Consequence:</b> each fresh segment is drafted by the NMT then <b>rewritten</b> by the LLM ' +
+        'with the bible and the glossary. The draft is never persisted to the translation memory — ' +
+        'only the refined version is, and only after placeholder validation.';
+    } else {
+      cmd = 'tomeshift run --input ./books/source.epub --output-dir ./runs \\\n' +
+            '  --source-lang en --target-lang fr';
+      cons = '<b>Consequence:</b> fast translation, zero cost locally. No LLM call as long as ' +
+        '<code>LLM_ENABLED</code> and <code>LLM_ENDPOINT</code> are not set.';
+    }
+    if (cfg.nmt === 'google') {
+      cons += ' <b>Warning:</b> the book\'s text is sent to Google; GCP billing must be ' +
+        'enabled even for the free tier.';
+    }
+    if (cfg.qe === 'on') {
+      cons += ' With COMET-QE wired in, escalation becomes <b>quality-driven</b> and no longer length-driven.';
+    }
+    if (cfg.llm === 'claude-cli' && cfg.mode === 'literary') {
+      cons += ' <b>Experimental setup:</b> each call launches a <code>claude -p</code> subprocess ' +
+        'authenticated by your subscription session — no API key, and <code>op run</code> no longer ' +
+        'wraps the recipe. In return the per-book cap no longer describes a real spend: ' +
+        'keep the published prices so it stays a quota indicator.';
+    }
+    document.getElementById('cfg-cons').innerHTML =
+      '<pre style="margin:0 0 0.7rem"><code>' + cmd + '</code></pre>' + cons;
+    document.getElementById('g-llm-group').style.display = cfg.mode === 'literary' ? '' : 'none';
+  }
+  pickGroup('g-nmt', function (v) { cfg.nmt = v; renderCfg(); });
+  pickGroup('g-mode', function (v) { cfg.mode = v; renderCfg(); });
+  pickGroup('g-llm', function (v) { cfg.llm = v; renderCfg(); });
+  pickGroup('g-qe', function (v) { cfg.qe = v; renderCfg(); });
+  document.getElementById('cfg-copy').addEventListener('click', function () {
+    var txt = document.getElementById('cfg-out').innerText;
+    navigator.clipboard.writeText(txt).then(function () {
+      var el = document.getElementById('cfg-copied');
+      el.textContent = 'copied to the clipboard';
+      setTimeout(function () { el.textContent = ''; }, 2200);
+    }, function () {
+      document.getElementById('cfg-copied').textContent = 'copy refused by the browser — select the block';
+    });
+  });
+  renderCfg();
+
+  /* ── Workflow timeline ──────────────────────────────────────────── */
+  var TL = [
+    {
+      t: 'Glossary', cost: 'free',
+      title: '1. Extract and curate the glossary',
+      cmd: 'tomeshift glossary-suggest --input "$EN" --out ./glossary.json --min-count 5',
+      body: 'Heuristic, no API call. Produces a JSON skeleton <b>to curate by hand</b>: ' +
+        'keep the real proper nouns, write the French form, check <code>locked</code>, discard the noise.' +
+        '<div class="consequence"><b>Effect on the output:</b> a locked term is masked before the call ' +
+        'and re-substituted after — neither the NMT nor the LLM can mistranslate it. A residual violation ' +
+        '<b>fails the QA gate</b>.</div>'
+    },
+    {
+      t: 'Bible', cost: '≈ $0.65 / volume, once',
+      title: '2. Build the series bible',
+      cmd: 'tomeshift series-bible --input-dir ./books/my-series --series my-series --samples 8\n' +
+           'just bible ./narrative.sqlite my-series   # re-read BEFORE translating',
+      body: 'Style, voices and forms of address are drawn from <b>all</b> the volumes; the synopses are bounded to ' +
+        'volumes 1..N. Writes <code>my-series@volume-01</code>, <code>my-series@volume-02</code>, …' +
+        '<div class="consequence"><b>Effect on the output:</b> it\'s what gives a consistent voice ' +
+        'from one chapter to the next. An error in the bible propagates to the whole volume — hence the review ' +
+        'before the first full run.</div>'
+    },
+    {
+      t: 'Estimate', cost: '0 API calls',
+      title: '3. Project the cost before paying',
+      cmd: 'tomeshift estimate --input "$EN"',
+      body: 'Parse + segment, no translation. Three scenarios: NMT only, hybrid, full LLM.' +
+        '<div class="consequence"><b>Effect:</b> none on the book. But it\'s the <b>same</b> cost model ' +
+        'as the run\'s guardrail: if the announced figure exceeds <code>PER_BOOK_BUDGET_USD</code>, the run ' +
+        'will exit with <b>exit 7</b> without making a single call.</div>'
+    },
+    {
+      t: 'Translation', cost: 'the real cost',
+      title: '4. Translate the volume',
+      cmd: 'tomeshift run --input "$EN" --output-dir ./runs \\\n' +
+           '  --source-lang en --target-lang fr \\\n' +
+           '  --mode literary --series my-series@volume-01 --glossary ./glossary.json',
+      body: 'Per chapter: TM lookup → batched draft → LLM rewrite in batches of 50 → placeholder ' +
+        'restoration → persistence.' +
+        '<div class="consequence"><b>Effect on the output:</b> output in ' +
+        '<code>runs/&lt;run-id&gt;/translated.epub</code>. Re-running the same command is <b>free and ' +
+        'instant</b> as long as the bible hasn\'t moved: LLM cache + translation memory.</div>'
+    },
+    {
+      t: 'Evaluation', cost: 'free (local service)',
+      title: '5. Measure and review',
+      cmd: 'TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \\\n' +
+           '  tomeshift eval --segments runs/&lt;id&gt;/segments.jsonl\n' +
+           'just compare runs/&lt;id&gt;/segments.jsonl review.html',
+      body: 'COMET-QE scores without a reference; <code>just compare</code> produces an EN | FR table for ' +
+        'human review.' +
+        '<div class="consequence"><b>Effect:</b> none on the book — it\'s a measurement. What you do with it: ' +
+        'complete the glossary, adjust the bible, and re-run. The TM keeps what was already good.</div>'
+    }
+  ];
+  var tl = document.getElementById('tl'), tlbody = document.getElementById('tlbody');
+  var tlIdx = 0, tlTimer = null;
+  TL.forEach(function (s, i) {
+    var d = document.createElement('div');
+    d.className = 'tlstep';
+    d.innerHTML = '<b>' + s.t + '</b><span class="cost">' + s.cost + '</span>';
+    d.addEventListener('click', function () { clearInterval(tlTimer); tlIdx = i; renderTL(); });
+    tl.appendChild(d);
+  });
+  function renderTL() {
+    for (var i = 0; i < tl.children.length; i++) {
+      tl.children[i].className = 'tlstep' + (i === tlIdx ? ' on' : (i < tlIdx ? ' done' : ''));
+    }
+    var s = TL[tlIdx];
+    tlbody.innerHTML = '<h5>' + s.title + '</h5><pre><code>' + s.cmd + '</code></pre>' + s.body;
+  }
+  document.getElementById('tl-play').addEventListener('click', function () {
+    clearInterval(tlTimer); tlIdx = 0; renderTL();
+    if (reduce) return;
+    tlTimer = setInterval(function () {
+      if (tlIdx >= TL.length - 1) { clearInterval(tlTimer); return; }
+      tlIdx++; renderTL();
+    }, 4200);
+  });
+  renderTL();
+
+  /* ── Flag explorer ──────────────────────────────────────────────── */
+  var FLAGS = [
+    { f: '--mode literary',
+      proc: 'Loads the bible (failure if absent), chapter-batched draft then LLM rewrite in batches of 50. A failed batch degrades its segments to their draft without cancelling the chapter.',
+      out: 'Segments move to <code>post_edited</code>. <code>report.json</code> gains <code>series_id</code>, <code>bible_version</code> and the token counters.',
+      cost: 'The dominant item. Reckon $4–6.50 per volume on a Sonnet model, ~$1.60 on Haiku 4.5. The default cap of $2 will therefore refuse a Sonnet run — deliberately.' },
+    { f: '--series lumen@volume-01',
+      proc: 'Targets the <em>bounded</em> bible: synopses of volumes 1 to 1 only. Without the suffix, you load the bible of the most recent volume.',
+      out: 'Changes what the model knows about the plot, hence the tone. A model aware of the ending colors the opening dialogue.',
+      cost: 'Neutral — except that the synopses\' size enters the prefix, hence the input cost of each call.' },
+    { f: '--glossary',
+      proc: 'Each locked term is replaced by <code>&lt;g id="N"/&gt;</code> before the call, re-substituted after. Applies to the NMT <em>and</em> the LLM.',
+      out: 'Guaranteed terminology. Remaining violations are counted and <b>fail the QA gate</b>.',
+      cost: 'Neutral. The protected text may be slightly shorter or longer than the source: the adapter\'s counter is authoritative.' },
+    { f: '--update-bible',
+      proc: 'The bible is updated after each chapter and rewritten to disk.',
+      out: 'The bible on disk no longer looks like the starting one: the next run doesn\'t start from the same state, so is no longer reproducible.',
+      cost: '<b>≈ ×10.</b> The cacheable prefix is rewritten once per chapter instead of once per run: $4.33 against $0.25–0.41 on a measured volume.' },
+    { f: '--run-id',
+      proc: 'No effect on the translation.',
+      out: 'Names the <code>runs/&lt;run-id&gt;/</code> folder. Reusing an existing identifier <b>overwrites</b> its artifacts.',
+      cost: 'Neutral. Useful to iterate on the same carved-out chapter (<code>just carve</code>) without accumulating folders.' },
+    { f: '--no-progress',
+      proc: 'No effect on the processing: the bar is purely decorative and is derived from the counters <code>report.json</code> already publishes. Nothing extra is measured for it.',
+      out: 'Without the flag, a line rewritten in place on <b>stderr</b> — step, gauge, segments done/total, chapter in literary mode, TM share, <b>cumulative spend</b>, elapsed time and ETA (withheld before 10%, otherwise a book full of TM hits would announce 8 s for an hour of work). It shows on a terminal, and also behind a <b>pipe</b> when the process has a controlling terminal — without which <code>op run</code>, which replaces the streams with pipes to mask secrets, would turn it off on every command that needs a key. Never in a file. stdout stays the only parseable line, before as after.',
+      cost: 'Free, and it\'s the only place where you see the bill rise live: the displayed amount comes from the same cost model as <code>actual_cost_usd</code>. The bar is repainted at most every 100 ms, so a book entirely served by the TM costs no more display than a translated book.' },
+    { f: '--resume',
+      proc: 'Logged, but doesn\'t change the flow today: resumption comes from the translation memory.',
+      out: 'No direct effect.',
+      cost: 'Restarting an interrupted run does <b>not</b> re-pay the already-translated segments — they\'re served by the TM.' },
+    { f: '--escalation-rate',
+      proc: '<code>estimate</code> only: the fraction of segments assumed escalated in the hybrid scenario.',
+      out: 'Changes one line of the printed table, nothing else.',
+      cost: 'It\'s a <em>projection</em> parameter, not a run one: the real rate depends on <code>LLM_ESCALATE_MIN_CHARS</code> or on COMET-QE.' },
+    { f: '--samples',
+      proc: 'Number of documents sampled per volume to infer style, voices and forms of address. They all go in <b>a single</b> call, so the input grows with the number of volumes.',
+      out: 'A richer bible, hence more precise style instructions in each prompt.',
+      cost: 'Triple effect: more expensive to generate, a bigger prefix re-read on each call of subsequent runs, and on a long series the single request can <b>exceed the context window</b> (966k tokens at <code>--samples 8</code> on 33 volumes). <code>--dry-run</code> says so beforehand.' },
+    { f: '--dry-run',
+      proc: '<code>series-bible</code>: measures the series, prints the projection and <b>stops before the first call</b>. No database is opened, no file created.',
+      out: 'Nothing — it\'s a measurement. The per-stage table shows where the cost goes: the <code>map</code> pass is almost all of it.',
+      cost: 'Free. It\'s the counterpart of <code>estimate</code> for the bible build, which <code>estimate</code> can\'t price.' },
+    { f: '--merge',
+      proc: 'Enriches the existing bible instead of overwriting it.',
+      out: 'Preserves manual corrections or already-profiled volumes.',
+      cost: 'Identical to a generation. In both cases the prefix changes → the LLM cache is invalidated once.' },
+    { f: '--from-volume',
+      proc: '<code>series-bible</code> append mode: summarizes only volumes ≥ N and adds their synopses to the existing bible, without redoing the earlier ones. 0 = full build.',
+      out: 'STORY_SO_FAR extended up to the last volume supplied; voices, style and earlier volumes untouched.',
+      cost: 'Pays only for volumes ≥ N (map: 1 call per chapter of those volumes), not the whole series — the point of the flag.' },
+    { f: '--reference-dir',
+      proc: '<code>batch</code>: looks for <code>&lt;dir&gt;/&lt;book-id&gt;.epub</code> after each successful book. Absent = silently skipped.',
+      out: 'Adds a per-book chrF and an average in <code>batch-report.json</code>.',
+      cost: 'Free, purely local.' },
+    { f: '--min-count',
+      proc: 'Occurrence threshold for a candidate to enter the suggested glossary.',
+      out: 'Low = lots of noise to sort. High = rare names slip through.',
+      cost: 'Free. Start at 5 on a novel, then lower it if names are missing.' }
+  ];
+  var flaglist = document.getElementById('flaglist');
+  function renderFlag(i) {
+    for (var k = 0; k < flaglist.children.length; k++) {
+      flaglist.children[k].className = (k === i ? 'active' : '');
+    }
+    document.getElementById('f-proc').innerHTML = FLAGS[i].proc;
+    document.getElementById('f-out').innerHTML = FLAGS[i].out;
+    document.getElementById('f-cost').innerHTML = FLAGS[i].cost;
+  }
+  FLAGS.forEach(function (fl, i) {
+    var b = document.createElement('button');
+    b.textContent = fl.f;
+    b.addEventListener('click', function () { renderFlag(i); });
+    flaglist.appendChild(b);
+  });
+  renderFlag(0);
+
+  /* ── Exit codes ─────────────────────────────────────────────────── */
+  var EXITS = [
+    { c: 0, n: 'Success', d: 'The book is produced and the QA gate is passed.', fix: '—' },
+    { c: 2, n: 'Invalid input or configuration', d: 'Missing or rejected flags (unsupported language, unknown mode, <code>--series</code> absent in literary), unreadable configuration, bible not found, unreadable glossary, NMT endpoint required but empty.', fix: 'Read the message: it names the faulty setting. <code>just print-config-vars</code> shows what is actually loaded.' },
+    { c: 3, n: 'Parsing or segmentation failed', d: 'Unreadable ZIP, missing or malformed OPF, unparseable XHTML.', fix: 'Check that the file is a DRM-free EPUB. EPUBs requiring OCR are not supported.' },
+    { c: 4, n: 'Provider failed', d: 'The NMT or the LLM failed after retries: service down, invalid key, unknown model — or <b>exhausted quota</b>, which is handled separately: an HTTP 429 stops the chapter immediately instead of degrading its batches to their draft.', fix: 'Test the endpoint by hand. In literary, a <b>whole chapter</b> without a single successful batch surfaces as an error; an isolated batch, no — except a 429. On exhausted quota: re-run later, the memory re-serves everything already refined and the projection only bills the rest.' },
+    { c: 5, n: 'QA gate failed', d: 'Placeholder restoration &lt; 99.5%, untranslated segments &gt; 0.5%, missing spine documents, glossary violations, or <code>epubcheck</code> failed.', fix: '<b>The artifacts exist</b>: open the <code>qa</code> block of <code>report.json</code>, then look for the <code>placeholder restore failed</code> in <code>logs.ndjson</code>.' },
+    { c: 6, n: 'Recomposition failed', d: 'Unable to rewrite the output EPUB archive.', fix: 'Check the permissions and disk space of the output directory.' },
+    { c: 7, n: 'Budget exceeded', d: 'The worst-case projection <b>of the remaining work</b> exceeds the per-book cap, or the day/month spend plus this projection exceeds the corresponding cap. <b>No paid call was made.</b> What\'s already in translation memory is not counted: a resume is no longer refused for a bill it won\'t pay.', fix: 'Run <code>estimate</code>, then: raise the cap knowingly, change the model, or check <code>LLM_TOKEN_MULTIPLIER</code>.' },
+    { c: 8, n: 'Interrupted', d: '<kbd>Ctrl-C</kbd>, SIGTERM, or exceeding <code>RUN_TIMEOUT_SECONDS</code>.', fix: 'Re-run: the translation memory re-serves what was already translated. The incurred spend was recorded in the ledger.' }
+  ];
+  var eg = document.getElementById('exitgrid'), eb = document.getElementById('exitbox');
+  function renderExit(i) {
+    for (var k = 0; k < eg.children.length; k++) eg.children[k].className = (k === i ? 'active' : '');
+    var e = EXITS[i];
+    eb.innerHTML = '<div class="code">exit ' + e.c + ' — ' + e.n + '</div>' +
+      '<p style="margin:0.5rem 0">' + e.d + '</p>' +
+      '<p style="margin:0"><span style="color:var(--muted)">What to do:</span> ' + e.fix + '</p>';
+  }
+  EXITS.forEach(function (e, i) {
+    var b = document.createElement('button');
+    b.textContent = 'exit ' + e.c;
+    b.addEventListener('click', function () { renderExit(i); });
+    eg.appendChild(b);
+  });
+  renderExit(4);
+})();
+</script>
+
+</body>
+</html>

@@ -5,8 +5,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/epub"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/segment"
 )
 
 func TestEvaluate_HappyPath(t *testing.T) {

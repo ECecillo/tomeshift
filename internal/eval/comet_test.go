@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/eval"
-	"github.com/ECecillo/ebooks-translator/internal/eval/comettest"
+	"github.com/ECecillo/tomeshift/internal/eval"
+	"github.com/ECecillo/tomeshift/internal/eval/comettest"
 )
 
 func TestCometClient_Score(t *testing.T) {

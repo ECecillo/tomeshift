@@ -239,7 +239,7 @@ Phase 3+:
 ### 9.1 V1 Local CLI (Recommended)
 - Go CLI for single-machine runs.
 - SQLite for TM.
-- Default NMT provider: one HTTP adapter (`EPUB_TRANSLATOR_NMT_PROVIDER=http`) targeting `EPUB_TRANSLATOR_NMT_ENDPOINT`.
+- Default NMT provider: one HTTP adapter (`TOMESHIFT_NMT_PROVIDER=http`) targeting `TOMESHIFT_NMT_ENDPOINT`.
 - Optional LLM API key is ignored in V1 because LLM path is disabled by default.
 - Local container workflow supported via Docker image + `docker-compose` for reproducible host setup.
 

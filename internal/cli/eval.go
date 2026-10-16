@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// EvalCommand is the parsed contract for `epub-translator eval`, comparing a
+// EvalCommand is the parsed contract for `tomeshift eval`, comparing a
 // candidate translation against a human reference EPUB.
 type EvalCommand struct {
 	Candidate string
@@ -16,7 +16,7 @@ type EvalCommand struct {
 	Segments string
 }
 
-// ParseEvalArgs parses flags for `epub-translator eval`.
+// ParseEvalArgs parses flags for `tomeshift eval`.
 func ParseEvalArgs(args []string, stderr io.Writer) (EvalCommand, error) {
 	fs := flag.NewFlagSet("eval", flag.ContinueOnError)
 	fs.SetOutput(stderr)

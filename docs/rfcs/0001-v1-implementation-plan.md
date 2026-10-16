@@ -24,7 +24,7 @@ The architecture is defined in `docs/ARCHITECTURE.md`. This RFC defines how V1 w
 ## CLI and Run Contract
 Command:
 ```bash
-epub-translator run \
+tomeshift run \
   --input ./books/source.epub \
   --output-dir ./runs \
   --source-lang en \
@@ -93,7 +93,7 @@ Source of truth for milestone tasks:
 
 ## Fixed Decisions
 - V1 config source is env-only via `envconfig` (no runtime YAML config file).
-- V1 default NMT integration is HTTP adapter (`EPUB_TRANSLATOR_NMT_PROVIDER=http`, endpoint from env).
+- V1 default NMT integration is HTTP adapter (`TOMESHIFT_NMT_PROVIDER=http`, endpoint from env).
 - V1 test strategy includes a deterministic NMT mock server for integration tests.
 - V1 includes baseline GitHub Actions CI (`fmt`, `lint`, `test`) and a pull request template.
 - V1 includes Docker local workflow (app container).

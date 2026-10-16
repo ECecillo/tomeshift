@@ -10,10 +10,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ECecillo/ebooks-translator/internal/cli"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/eval"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/cli"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/eval"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
 )
 
 // runEval compares a candidate translation against a human reference EPUB using
@@ -68,10 +68,10 @@ func stripPlaceholderTokens(s string) string {
 
 // runEvalQE scores a run's segments (source vs target) with reference-free
 // COMET-QE. It reads segments.jsonl, strips placeholder tokens, and reports the
-// mean/min score. Requires a COMET service (EPUB_TRANSLATOR_COMET_ENDPOINT).
+// mean/min score. Requires a COMET service (TOMESHIFT_COMET_ENDPOINT).
 func runEvalQE(stdout, stderr io.Writer, cmd cli.EvalCommand, cfg config.Config) int {
 	if cfg.CometEndpoint == "" {
-		writef(stderr, "QE eval needs a COMET service: set EPUB_TRANSLATOR_COMET_ENDPOINT\n")
+		writef(stderr, "QE eval needs a COMET service: set TOMESHIFT_COMET_ENDPOINT\n")
 		return exitcode.InvalidInputConfig
 	}
 

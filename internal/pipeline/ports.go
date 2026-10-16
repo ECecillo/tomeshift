@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/ECecillo/ebooks-translator/internal/qa"
+	"github.com/ECecillo/tomeshift/internal/qa"
 )
 
 // Steps is what the control flow can ask an engine to run. There is one method

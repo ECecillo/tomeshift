@@ -11,21 +11,21 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ECecillo/ebooks-translator/internal/cli"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/epub"
-	"github.com/ECecillo/ebooks-translator/internal/eval"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
-	"github.com/ECecillo/ebooks-translator/internal/glossary"
-	"github.com/ECecillo/ebooks-translator/internal/literary"
-	"github.com/ECecillo/ebooks-translator/internal/llm"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
-	"github.com/ECecillo/ebooks-translator/internal/pipeline"
-	"github.com/ECecillo/ebooks-translator/internal/progress"
-	"github.com/ECecillo/ebooks-translator/internal/qa"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
-	"github.com/ECecillo/ebooks-translator/internal/tm"
-	"github.com/ECecillo/ebooks-translator/internal/translate"
+	"github.com/ECecillo/tomeshift/internal/cli"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/eval"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/glossary"
+	"github.com/ECecillo/tomeshift/internal/literary"
+	"github.com/ECecillo/tomeshift/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/pipeline"
+	"github.com/ECecillo/tomeshift/internal/progress"
+	"github.com/ECecillo/tomeshift/internal/qa"
+	"github.com/ECecillo/tomeshift/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/tm"
+	"github.com/ECecillo/tomeshift/internal/translate"
 )
 
 // openTranslationInputs opens the shared TM ledger and loads the optional
@@ -64,12 +64,12 @@ func newStages(
 	// provider outage instead of a missing setting.
 	if translate.RequiresEndpoint(cfg.NMTProvider) && cfg.NMTEndpoint == "" {
 		return nil, nil, fmt.Errorf(
-			"unable to build the %q NMT provider: set EPUB_TRANSLATOR_NMT_ENDPOINT, err: %w",
+			"unable to build the %q NMT provider: set TOMESHIFT_NMT_ENDPOINT, err: %w",
 			cfg.NMTProvider, translate.ErrEmptyEndpoint)
 	}
 	if translate.RequiresAPIKey(cfg.NMTProvider) && cfg.NMTAPIKey == "" {
 		return nil, nil, fmt.Errorf(
-			"unable to build the %q NMT provider: set EPUB_TRANSLATOR_NMT_API_KEY, err: %w",
+			"unable to build the %q NMT provider: set TOMESHIFT_NMT_API_KEY, err: %w",
 			cfg.NMTProvider, translate.ErrEmptyAPIKey)
 	}
 

@@ -3,8 +3,8 @@ package qa
 import (
 	"strings"
 
-	"github.com/ECecillo/ebooks-translator/internal/epub"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/segment"
 )
 
 // Definition-of-done thresholds (see docs/ARCHITECTURE.md §15).

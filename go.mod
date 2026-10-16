@@ -1,4 +1,4 @@
-module github.com/ECecillo/ebooks-translator
+module github.com/ECecillo/tomeshift
 
 go 1.26.0
 

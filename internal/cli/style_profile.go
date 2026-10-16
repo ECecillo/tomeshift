@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// StyleProfileCommand is the parsed contract for `epub-translator style-profile`.
+// StyleProfileCommand is the parsed contract for `tomeshift style-profile`.
 type StyleProfileCommand struct {
 	Input   string
 	Series  string
@@ -16,7 +16,7 @@ type StyleProfileCommand struct {
 	Merge bool
 }
 
-// ParseStyleProfileArgs parses flags for `epub-translator style-profile`.
+// ParseStyleProfileArgs parses flags for `tomeshift style-profile`.
 func ParseStyleProfileArgs(args []string, stderr io.Writer) (StyleProfileCommand, error) {
 	fs := flag.NewFlagSet("style-profile", flag.ContinueOnError)
 	fs.SetOutput(stderr)

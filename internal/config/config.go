@@ -12,14 +12,14 @@ import (
 
 	"github.com/kelseyhightower/envconfig"
 
-	"github.com/ECecillo/ebooks-translator/internal/cost"
-	"github.com/ECecillo/ebooks-translator/internal/llm"
-	"github.com/ECecillo/ebooks-translator/internal/translate"
+	"github.com/ECecillo/tomeshift/internal/cost"
+	"github.com/ECecillo/tomeshift/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/translate"
 )
 
-const envPrefix = "EPUB_TRANSLATOR"
+const envPrefix = "TOMESHIFT"
 
-// Config is the full runtime configuration, read from EPUB_TRANSLATOR_* vars.
+// Config is the full runtime configuration, read from TOMESHIFT_* vars.
 type Config struct {
 	// LogLevel controls the structured run log verbosity.
 	LogLevel string `split_words:"true" default:"info"`
@@ -118,7 +118,7 @@ type Config struct {
 	TemporalNamespace string `split_words:"true" default:"default"`
 	// TemporalTaskQueue is the queue the worker polls and the CLI starts
 	// workflows on. One queue, one activity slot, until RFC 0005 lands.
-	TemporalTaskQueue string `split_words:"true" default:"epub-translator"`
+	TemporalTaskQueue string `split_words:"true" default:"tomeshift"`
 }
 
 // Load reads the configuration from the environment.

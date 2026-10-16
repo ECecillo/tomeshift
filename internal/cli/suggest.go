@@ -6,14 +6,14 @@ import (
 	"io"
 )
 
-// SuggestCommand is the parsed contract for `epub-translator glossary-suggest`.
+// SuggestCommand is the parsed contract for `tomeshift glossary-suggest`.
 type SuggestCommand struct {
 	Input    string
 	Out      string
 	MinCount int
 }
 
-// ParseSuggestArgs parses flags for `epub-translator glossary-suggest`.
+// ParseSuggestArgs parses flags for `tomeshift glossary-suggest`.
 func ParseSuggestArgs(args []string, stderr io.Writer) (SuggestCommand, error) {
 	fs := flag.NewFlagSet("glossary-suggest", flag.ContinueOnError)
 	fs.SetOutput(stderr)

@@ -1,49 +1,86 @@
-# epub-translator
+# tomeshift
 
-Go-based EPUB EN->FR translation pipeline.
+[![ci](https://github.com/ECecillo/tomeshift/actions/workflows/ci.yml/badge.svg)](https://github.com/ECecillo/tomeshift/actions/workflows/ci.yml)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+![Go](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)
 
-## Comment ça marche (vue d'ensemble)
+**tomeshift translates EPUB books from English to French without breaking
+them, and only pays for LLM tokens where they make a difference.**
 
-L'EPUB est parsé puis segmenté (en isolant le markup inline derrière des
-placeholders). Chaque segment passe par la mémoire de traduction (réutilisation
-exacte), sinon un brouillon NMT. En mode **littéraire**, un LLM retraduit à
-partir d'un prompt construit depuis la **bible de série** (style, voix, tu/vous,
-résumés `STORY_SO_FAR`) et du glossaire ; COMET-QE peut n'escalader que les
-brouillons faibles. On restaure les placeholders, on recompose l'EPUB, on valide
-(QA + epubcheck), et on écrit les artefacts. L'évaluation (chrF / COMET-QE) se
-fait à part sur les artefacts.
+A book is parsed, split into segments with its inline markup locked behind
+placeholders, and drafted by a cheap machine-translation engine. Exact repeats
+come from a translation memory for free. Only the drafts a quality estimator
+scores as weak, or a whole book in *literary* mode, go to an LLM, with a
+per-series "bible" (style guide, character voices, tu/vous rules, volume
+summaries) so that names and voices stay consistent across volumes. The EPUB is
+then rebuilt, checked, and every run leaves a report of what it did and what it
+cost.
+
+It is a single Go binary with SQLite storage (pure Go, no CGO), a dev NMT server
+for offline runs, and an optional Python COMET-QE scoring service.
+
+## Quickstart: translate a public-domain book offline
+
+```bash
+git clone https://github.com/ECecillo/tomeshift && cd tomeshift
+go build -o bin/tomeshift ./cmd/tomeshift
+go build -o bin/nmt-devserver ./cmd/nmt-devserver
+
+mkdir -p books
+curl -L -o books/alice.epub https://www.gutenberg.org/ebooks/11.epub3.images
+
+./bin/nmt-devserver &   # dev-only dictionary EN→FR engine on :8081
+TOMESHIFT_NMT_ENDPOINT=http://localhost:8081/translate \
+  ./bin/tomeshift run --input books/alice.epub --output-dir runs \
+    --source-lang en --target-lang fr \
+    --glossary glossary.example.json --run-id alice
+# run alice completed: 797 segments, 14 tm hits, 783 nmt, output=runs/alice/translated.epub
+```
+
+Run the same command again with `--resume`: all 797 segments come from the
+translation memory and no engine is called. `runs/alice/` holds
+`translated.epub`, `report.json`, `metrics.json`, `segments.jsonl` and
+`logs.ndjson`.
+
+The dev server substitutes words from a dictionary, which is enough to exercise
+the whole pipeline but not to read the result. Real drafts come from
+[Google Cloud Translation or LibreTranslate](#real-translations-with-google-cloud-translation-recommended),
+and literary quality comes from an LLM
+([literary mode](#literary-mode-with-a-series-bible)).
+
+## How it works
 
 ```mermaid
 flowchart TD
-    EPUB["📖 EPUB source (EN)"] --> PARSE["Parse EPUB<br/>(internal/epub)"]
+    EPUB["📖 Source EPUB (EN)"] --> PARSE["Parse EPUB<br/>(internal/epub)"]
     PARSE --> SEG["Segmentation<br/>(internal/segment)<br/>placeholders &lt;x/&gt; &lt;g/&gt;"]
-    SEG --> TM{"Exact match<br/>en mémoire ?<br/>(internal/tm)"}
+    SEG --> TM{"Exact match<br/>in memory?<br/>(internal/tm)"}
 
-    TM -- "oui" --> RESTORE["Restaurer placeholders"]
-    TM -- "non" --> NMT["Brouillon NMT<br/>(internal/translate)"]
+    TM -- "yes" --> RESTORE["Restore placeholders"]
+    TM -- "no" --> NMT["NMT draft<br/>(internal/translate)"]
 
-    NMT --> MODE{"Mode ?"}
+    NMT --> MODE{"Mode?"}
     MODE -- "nmt" --> RESTORE
-    MODE -- "literary" --> PROMPT["Construire le prompt<br/>(internal/literary)"]
+    MODE -- "literary" --> PROMPT["Build the prompt<br/>(internal/literary)"]
 
-    QE -. "score faible<br/>(escalade)" .-> PROMPT
-    NMT -. "score chaque brouillon" .-> QE["COMET-QE<br/>(optionnel)"]
+    QE -. "low score<br/>(escalation)" .-> PROMPT
+    NMT -. "score each draft" .-> QE["COMET-QE<br/>(optional)"]
 
-    PROMPT --> LLM["LLM chat<br/>Anthropic / OpenAI / DeepSeek"]
+    PROMPT --> LLM["Chat LLM<br/>Anthropic / OpenAI / DeepSeek"]
     LLM --> RESTORE
 
-    RESTORE --> RECOMP["Recomposer l'EPUB<br/>(internal/epub)"]
+    RESTORE --> RECOMP["Rebuild the EPUB<br/>(internal/epub)"]
     RECOMP --> QA["QA + epubcheck<br/>(internal/qa)"]
-    QA --> OUT["📦 Artefacts du run"]
+    QA --> OUT["📦 Run artifacts"]
 
-    subgraph STORES["Stores (SQLite / fichiers)"]
-        BIBLE[("Bible de série<br/>style · voix · tu-vous · STORY_SO_FAR")]
-        GLOSS[("Glossaire<br/>noms verrouillés")]
-        TMDB[("Mémoire de traduction")]
-        CACHE[("Cache LLM")]
+    subgraph STORES["Stores (SQLite / files)"]
+        BIBLE[("Series bible<br/>style · voices · tu-vous · STORY_SO_FAR")]
+        GLOSS[("Glossary<br/>locked names")]
+        TMDB[("Translation memory")]
+        CACHE[("LLM cache")]
     end
 
-    subgraph ARTIFACTS["Artefacts"]
+    subgraph ARTIFACTS["Artifacts"]
         A1["translated.epub"]
         A2["report.json · metrics.json"]
         A3["segments.jsonl"]
@@ -56,27 +93,70 @@ flowchart TD
     CACHE --> LLM
     OUT --> A1 & A2 & A3
 
-    A1 -. "chrF (avec réf.)" .-> EVAL["eval"]
-    A3 -. "COMET-QE (sans réf.)" .-> EVAL
+    A1 -. "chrF (with reference)" .-> EVAL["eval"]
+    A3 -. "COMET-QE (reference-free)" .-> EVAL
 ```
+
+## Design decisions
+
+- **Markup never reaches a translation engine.** Inline tags become numbered
+  placeholder tokens before translation and are restored afterwards. QA reports
+  the restore ratio for every run, and the tokenize/restore round trip is fuzzed
+  (`FuzzTokenizeRestore`).
+- **Never pay twice for the same sentence.** Segments are keyed by the SHA-256
+  of their normalized text. Exact hits skip translation, LLM completions are
+  cached, and `--resume` on a finished book makes no provider call (covered by
+  `TestRun_ResumeIsIdempotent`).
+- **Budgets are enforced before spending.** `estimate` projects the cost of a
+  book. Daily, monthly and per-book caps are checked against the work that is
+  *left* after translation-memory hits, and every attempt is written to an
+  append-only spend ledger.
+- **Fail loudly instead of degrading silently.** Retries use bounded backoff and
+  stop when the context is cancelled. An HTTP 429 becomes `ErrRateLimited` and
+  stops the chapter instead of shipping raw drafts as if they were final. A
+  truncated LLM batch is retried as two smaller batches. SIGINT/SIGTERM and a
+  per-book timeout shut a run down cleanly.
+- **Stable prompts.** A series bible is an input that stays frozen during a run,
+  one per volume, so the model never sees the end of a story while translating
+  its beginning. The prompt prefix stays byte-identical, so the provider's
+  prompt cache and the local LLM cache make re-runs free.
+- **Concurrency where it is measured to matter.** Books and chapters are
+  processed sequentially on purpose: the decision is to measure before adding
+  parallelism (chapter-level parallelism for the LLM pass is the next
+  candidate). Shared state is already safe for concurrent use: the series-bible
+  store uses optimistic concurrency (a version column with compare-and-swap
+  updates), and tests exercise it with concurrent writers.
+- **Observable runs.** Structured JSON logs (zap) carry `run_id` and `book_id`,
+  and `metrics.json` follows a fixed contract (`docs/ARCHITECTURE.md` §10).
+
+## Project status
+
+- The NMT pipeline (parse → segment → TM → draft → QA → rebuild) and literary
+  mode with series bibles are implemented and tested: 299 tests, 2 fuzz
+  targets, race detector in CI.
+- In progress on branch `refactor/to-temporal` (RFC 0009): the pipeline stages
+  are decoupled behind ports, ahead of an optional Temporal execution engine.
+- Planned: a service mode with queue workers and PostgreSQL
+  (`docs/milestones/M4-production-hardening.md`).
 
 ## Documentation
 
-| Doc | Pour quoi |
+| Doc | What for |
 |---|---|
-| **[docs/comprendre-le-projet.html](docs/comprendre-le-projet.html)** | 🎬 le projet illustré : concepts, logique, diagrammes, exemples animés, carte du code, comment étendre |
-| **[docs/utilisation.html](docs/utilisation.html)** | 🎬 le mode d'emploi illustré : setup, services, chaque commande et flag avec sa conséquence, codes de sortie |
-| **[docs/INSTALLATION.md](docs/INSTALLATION.md)** | télécharger, installer, configurer, build, services (NMT, COMET) — natif & Docker |
-| **[docs/guide-traduction.md](docs/guide-traduction.md)** | traduire un livre pas à pas (modes NMT & littéraire) |
-| **[docs/evaluation-qualite.md](docs/evaluation-qualite.md)** | mesurer la qualité (chrF, COMET-QE) et relire **ligne par ligne** |
-| **[docs/ameliorer-traduction.md](docs/ameliorer-traduction.md)** | améliorer la traduction (glossaire, bible, garde-fous de style) |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | architecture & contraintes (source de vérité) |
-| [docs/rfc-0007-google-translate.html](docs/rfc-0007-google-translate.html) | RFC 0007 illustrée — brouillon Google, garde-fou par tokens, contexte LLM (diagrammes) |
+| **[docs/understanding-the-project.html](docs/understanding-the-project.html)** | The project, illustrated: concepts, data flow, diagrams, animated examples, code map, how to extend it |
+| **[docs/usage.html](docs/usage.html)** | Illustrated user manual: setup, services, every command and flag with its effect, exit codes |
+| **[docs/INSTALLATION.md](docs/INSTALLATION.md)** | Install, configure, build and run the services (NMT, COMET), native or Docker |
+| **[docs/translation-guide.md](docs/translation-guide.md)** | Translate a book step by step (NMT and literary modes) |
+| **[docs/quality-evaluation.md](docs/quality-evaluation.md)** | Measure quality (chrF, COMET-QE) and review line by line |
+| **[docs/improving-translations.md](docs/improving-translations.md)** | Improve a translation: glossary, bible, style guardrails |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Architecture and constraints (source of truth) |
+| [docs/rfcs/](docs/rfcs/) | Design decisions, one RFC each |
+| [docs/rfc-0007-google-translate.html](docs/rfc-0007-google-translate.html) | RFC 0007, illustrated: Google draft, token-based cost guard, LLM context |
 
-> Nouveau venu : commence par les deux documents illustrés
-> (**comprendre-le-projet** → **utilisation**), puis **INSTALLATION** →
-> **guide-traduction** → **evaluation-qualite** pour le détail en texte. Le reste
-> de ce README est une référence rapide.
+> New here? Start with the two illustrated documents
+> (**understanding-the-project** → **usage**), then **INSTALLATION** →
+> **translation-guide** → **quality-evaluation** for the details in text. The
+> rest of this README is a quick reference.
 
 ## Prerequisites
 The toolchain is declared in [`mise.toml`](mise.toml) — Go, Java (temurin 21, for
@@ -98,10 +178,11 @@ brew install mise 1password-cli
    ```
 3. Edit `.env.local` with your NMT endpoint and **non-secret** settings. Keep it
    to `KEY=VALUE` lines.
-4. Leave the API keys empty there: they live in a 1Password vault, referenced by
-   the committed [`.env.op`](.env.op) and injected per command by `op run`. The
-   recipes that call a provider are wrapped; `estimate`, `glossary-suggest` and
-   `eval-ref` are not, so they never ask for a credential.
+4. Leave the API keys empty there. Either export them in your shell, or keep
+   them in a 1Password vault referenced by the committed [`.env.op`](.env.op)
+   and injected per command by `op run`. The recipes that call a provider are
+   wrapped; `estimate`, `glossary-suggest` and `eval-ref` are not, so they never
+   ask for a credential.
 5. `just preflight` checks all of the above at once.
 
 ## Run
@@ -114,7 +195,7 @@ just run ./books/source.epub ./runs
 Build the bible first, from every volume of the series. This is a job of its
 own, run once per published volume rather than once per translation:
 ```bash
-epub-translator series-bible --input-dir ./books/my-series --series my-series --samples 8
+tomeshift series-bible --input-dir ./books/my-series --series my-series --samples 8
 ```
 It seeds style, character voices and address rules from **all** volumes, then
 writes one synopsis per volume via map-reduce (one summary per chapter, then one
@@ -125,7 +206,7 @@ bare `my-series` ID is the newest volume's bible.
 
 Then run the sequential literary pipeline against the frozen bible:
 ```bash
-epub-translator run \
+tomeshift run \
   --input ./books/my-series/volume-01.epub \
   --output-dir ./runs \
   --source-lang en \
@@ -136,10 +217,10 @@ epub-translator run \
 
 Literary mode still uses NMT/translation memory for drafts, then calls the
 configured chat model with the persisted bible, glossary, and adjacent chapter
-context. Configure `EPUB_TRANSLATOR_NARRATIVE_PATH`,
-`EPUB_TRANSLATOR_LLM_CHAT_PROVIDER` (`anthropic` | `openai` | `deepseek`),
-`EPUB_TRANSLATOR_LLM_BASE_URL`, `EPUB_TRANSLATOR_LLM_MODEL`, and
-`EPUB_TRANSLATOR_LLM_API_KEY`.
+context. Configure `TOMESHIFT_NARRATIVE_PATH`,
+`TOMESHIFT_LLM_CHAT_PROVIDER` (`anthropic` | `openai` | `deepseek`),
+`TOMESHIFT_LLM_BASE_URL`, `TOMESHIFT_LLM_MODEL`, and
+`TOMESHIFT_LLM_API_KEY`.
 
 The bible is an **input** to a run, never an output: every chapter sees the same
 bible, so prompts (and the Anthropic prompt cache on the system prefix) stay
@@ -161,8 +242,8 @@ the bible/style prefix; cache read/creation tokens are reported in `report.json`
 and `metrics.json` (`translation_llm_cache_read_tokens`, etc.).
 
 ### Self-hosted local NMT (no external service)
-The default `EPUB_TRANSLATOR_NMT_ENDPOINT` points at a bundled local NMT dev
-server so the pipeline runs end-to-end with no external dependency. Start it in
+`.env.example` points `TOMESHIFT_NMT_ENDPOINT` at a bundled local NMT dev
+server, so the pipeline runs end-to-end with no external dependency. Start it in
 another terminal:
 ```bash
 just nmt-dev        # serves the dev NMT on :8081 (dictionary EN→FR)
@@ -208,8 +289,8 @@ Use **Python 3.12** and pin **`huggingface-hub<1.0`** (required by `transformers
 A plain `pip`/`venv` works too, but only on a supported Python.
 Enable it:
 ```bash
-EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score
-EPUB_TRANSLATOR_ESCALATE_BELOW_SCORE=0.80   # escalate drafts scoring below this
+TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score
+TOMESHIFT_ESCALATE_BELOW_SCORE=0.80   # escalate drafts scoring below this
 ```
 The per-book average score lands in `report.json` (`avg_quality_score`) and
 `metrics.json` (`translation_quality_score`).
@@ -218,18 +299,18 @@ To score an **already-translated** run reference-free (no human reference needed
 — ideal when your only reference is a different edition, e.g. web-novel vs light
 novel), point `eval` at its `segments.jsonl` with a COMET service running:
 ```bash
-EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
-  epub-translator eval --segments runs/<run-id>/segments.jsonl
+TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \
+  tomeshift eval --segments runs/<run-id>/segments.jsonl
 # → COMET-QE avg = 0.xx (min ... over N segments); writes qe-eval-report.json
 ```
 
 ### Real translations with Google Cloud Translation (recommended)
 The best draft quality, and free at roughly one volume per month:
 ```bash
-EPUB_TRANSLATOR_NMT_PROVIDER=google
-EPUB_TRANSLATOR_NMT_API_KEY=<Cloud Translation API key>
-EPUB_TRANSLATOR_NMT_FREE_CHARS_PER_MONTH=500000
-EPUB_TRANSLATOR_COST_PER_1000_CHARS_USD=0.02          # 20 $ / M characters
+TOMESHIFT_NMT_PROVIDER=google
+TOMESHIFT_NMT_API_KEY=<Cloud Translation API key>
+TOMESHIFT_NMT_FREE_CHARS_PER_MONTH=500000
+TOMESHIFT_COST_PER_1000_CHARS_USD=0.02          # 20 $ / M characters
 ```
 This targets Cloud Translation **v2 (Basic)**, which authenticates with an API
 key — no service account to plumb through Docker and CI, and it supplies the
@@ -249,8 +330,8 @@ docker run -ti -p 5000:5000 libretranslate/libretranslate --load-only en,fr
 ```
 Then point the app at it:
 ```bash
-EPUB_TRANSLATOR_NMT_PROVIDER=libretranslate
-EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:5000/translate
+TOMESHIFT_NMT_PROVIDER=libretranslate
+TOMESHIFT_NMT_ENDPOINT=http://localhost:5000/translate
 ```
 The adapter sends `format=html`, so inline placeholder tokens survive
 translation. Heavier engines (OPUS-MT, NLLB-200) can be used behind the same
@@ -284,7 +365,7 @@ What happens:
   - `./runs` -> `/app/runs`
   - `./data` -> `/app/data`
 - The container executes:
-  - `epub-translator run --input /app/books/source.epub --output-dir /app/runs --source-lang en --target-lang fr`
+  - `tomeshift run --input /app/books/source.epub --output-dir /app/runs --source-lang en --target-lang fr`
 
 View logs:
 ```bash
@@ -312,17 +393,24 @@ just ci-local
 just check
 ```
 
-`just fuzz` runs all local fuzz tests across packages and is intentionally not included in CI to keep pipeline runtime predictable.
-
-## CI and PR Workflow
-- GitHub Actions workflow: `.github/workflows/ci.yml`
-- Pull request template: `.github/pull_request_template.md`
-- CI runs format check, lint, and tests automatically once `go.mod` exists.
+CI runs `gofmt`, golangci-lint, build, vet, the tests with the race detector
+and a 15-second smoke run of both fuzz targets. `just fuzz` runs the full local
+fuzz suite.
 
 ## Notes
-- **End-to-end translation guide (FR): [`docs/guide-traduction.md`](docs/guide-traduction.md)** — setup, LLM providers, literary mode, series bible, cost, eval.
 - Runtime config is env-only via `github.com/kelseyhightower/envconfig`.
 - `Justfile` recipes source `.env.local` before running commands.
-- Architecture decisions live in `docs/ARCHITECTURE.md`.
-- Milestone plans live in `docs/milestones/`.
-- RFCs live in `docs/rfcs/`.
+- Architecture decisions live in `docs/ARCHITECTURE.md`, milestone plans in
+  `docs/milestones/`, RFCs in `docs/rfcs/`.
+
+## Contributing
+
+Issues and pull requests are welcome. Run `just check` (format, lint, tests,
+docs audit) before opening a PR. Do not commit copyrighted books or their
+translations: `books/`, `epub/`, `runs/` and `data/` are git-ignored for that
+reason.
+
+## License
+
+Apache License 2.0, see [LICENSE](LICENSE) and [NOTICE](NOTICE).
+

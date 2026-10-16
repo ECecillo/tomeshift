@@ -1,8 +1,8 @@
 package commandexec
 
 import (
-	"github.com/ECecillo/ebooks-translator/internal/pipeline"
-	"github.com/ECecillo/ebooks-translator/internal/progress"
+	"github.com/ECecillo/tomeshift/internal/pipeline"
+	"github.com/ECecillo/tomeshift/internal/progress"
 )
 
 // barReporter adapts the flow's absolute Progress snapshots onto the terminal

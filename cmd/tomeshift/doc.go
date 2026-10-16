@@ -1,4 +1,4 @@
-// Package main wires the epub-translator CLI process entrypoint.
+// Package main wires the tomeshift CLI process entrypoint.
 //
 // It is bootstrap only: read the configuration from the environment, hand
 // dispatch to internal/commandexec, exit with the code it returns. The typed

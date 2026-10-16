@@ -1,0 +1,14 @@
+[
+  {"term_en": "Alice", "term_fr": "Alice", "locked": true},
+  {"term_en": "White Rabbit", "term_fr": "Lapin Blanc", "locked": true},
+  {"term_en": "Cheshire Cat", "term_fr": "Chat du Cheshire", "locked": true},
+  {"term_en": "Mad Hatter", "term_fr": "Chapelier fou", "locked": true},
+  {"term_en": "March Hare", "term_fr": "Lièvre de Mars", "locked": true},
+  {"term_en": "Dormouse", "term_fr": "Loir", "locked": true},
+  {"term_en": "Queen of Hearts", "term_fr": "Reine de Cœur", "locked": true},
+  {"term_en": "Mock Turtle", "term_fr": "Fausse-Tortue", "locked": true},
+  {"term_en": "Gryphon", "term_fr": "Griffon", "locked": true},
+  {"term_en": "Caterpillar", "term_fr": "Chenille", "locked": true},
+  {"term_en": "Dinah", "term_fr": "Dinah", "locked": true},
+  {"term_en": "Wonderland", "term_fr": "Pays des merveilles", "locked": true}
+]

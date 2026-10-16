@@ -24,7 +24,7 @@ func TestMergeBibles_PreservesBaseAndAddsIncoming(t *testing.T) {
 		SeriesID:   "lumen",
 		StyleGuide: "Should not clobber base.",
 		Characters: []CharacterVoice{
-			{Name: "Kai", SampleFR: []string{"Mince."}},    // enrich existing
+			{Name: "Kai", SampleFR: []string{"Mince."}},        // enrich existing
 			{Name: "Mira", Register: "poli", Notes: "dévouée"}, // new
 		},
 		Address: []AddressRule{

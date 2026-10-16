@@ -1,9 +1,9 @@
-# EPUB Translator
+# tomeshift
 
-EPUB Translator is a Go CLI pipeline that translates DRM-free EPUB files from English to French while preserving EPUB structure and formatting.
+tomeshift is a Go CLI pipeline that translates DRM-free EPUB files from English to French while preserving EPUB structure and formatting.
 
 The application is built as a **Go CLI project** with:
-- CLI entrypoint (`epub-translator`)
+- CLI entrypoint (`tomeshift`)
 - env-backed typed configuration (`github.com/kelseyhightower/envconfig`)
 - translation pipeline path for V1 (`TM exact match -> HTTP NMT adapter -> EPUB rebuild`)
 - local workflow orchestration via `just`
@@ -29,15 +29,15 @@ The application is built as a **Go CLI project** with:
 ```
 ├── AGENTS.md                         - canonical agent instructions
 ├── cmd/
-│   └── epub-translator/              - CLI entrypoint (`main.go`)
+│   └── tomeshift/              - CLI entrypoint (`main.go`)
 ├── internal/                         - implementation packages (config, epub, segment, tm, translate, qa)
 ├── tests/
 │   └── integration/                  - integration tests and fixtures
 ├── docs/
 │   ├── ARCHITECTURE.md               - architecture and constraints (source of truth)
 │   ├── DEPENDENCIES.md               - dependency policy
-│   ├── comprendre-le-projet.html     - illustrated architecture & contributor guide
-│   ├── utilisation.html              - illustrated usage & command reference
+│   ├── understanding-the-project.html     - illustrated architecture & contributor guide
+│   ├── usage.html              - illustrated usage & command reference
 │   ├── milestones/                   - milestone plans and delivery sequencing
 │   └── rfcs/                         - implementation/infrastructure proposals
 ├── scripts/
@@ -187,7 +187,7 @@ Before committing:
   - Fix: `env -u GOROOT /usr/local/go/bin/go test ./...`
 
 - **Missing env config**:
-  - Symptom: config load errors for `EPUB_TRANSLATOR_*` variables.
+  - Symptom: config load errors for `TOMESHIFT_*` variables.
   - Fix: copy `.env.example` to `.env.local`, source it, and rerun commands.
 
 - **Local container workflow issues**:
@@ -206,18 +206,18 @@ Before committing:
 Two illustrated HTML documents are the entry point for anyone discovering or
 extending this project. They are part of the feature, not a follow-up:
 
-- `docs/comprendre-le-projet.html` — how the pipeline works and how to extend it
+- `docs/understanding-the-project.html` — how the pipeline works and how to extend it
   (concepts, Mermaid diagrams, animated walkthroughs, package map, invariants).
-- `docs/utilisation.html` — how to run it (setup, services, every command and
+- `docs/usage.html` — how to run it (setup, services, every command and
   flag with its consequence on processing/output/cost, exit codes).
 
 ## When you ship something, update them in the same change
 
-| You added / changed | Update in `comprendre-le-projet.html` | Update in `utilisation.html` |
+| You added / changed | Update in `understanding-the-project.html` | Update in `usage.html` |
 |---|---|---|
 | A CLI command | §11 package map if a new package appears | §6 command reference, §5 workflow if it belongs in the standard path |
 | A flag | only if it changes the pipeline's logic | §6 flag table **and** the `FLAGS` array in the flag explorer (processing / output / cost) |
-| An `EPUB_TRANSLATOR_*` variable | only if it changes routing or cost logic | §8 variables table, and the config generator's `renderCfg()` if it belongs in a recommended setup |
+| An `TOMESHIFT_*` variable | only if it changes routing or cost logic | §8 variables table, and the config generator's `renderCfg()` if it belongs in a recommended setup |
 | An NMT or LLM provider | §12 recipe 1 or 2 if the contract changed | §4 services table, §2 config generator, and §3 if it needs a credential |
 | A service needing an account or an API key | — | §3 credential setup: the service table, how to obtain the key, the 1Password item |
 | A pipeline stage or translation mode | §1 pipeline widget, the relevant flowchart, §12 recipe 3 | §6 `--mode` values |
@@ -249,3 +249,5 @@ At the end of every development session, update `docs/journal.html` with a new `
 - The immediate next step
 
 The journal is the source of truth for resuming work across sessions. Do not duplicate milestone details already in `docs/milestones/` — the journal adds the temporal dimension (when, in what order).
+
+`docs/journal.html` is git-ignored: it is a personal working log and is never committed. Create it locally if it does not exist. Never copy book text into it, and never `git add -f` it.
