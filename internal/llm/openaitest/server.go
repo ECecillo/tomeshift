@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	"github.com/ECecillo/ebooks-translator/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/llm"
 )
 
 type requestBody struct {

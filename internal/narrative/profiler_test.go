@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/llm"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/narrative"
 )
 
 type stubChat struct {

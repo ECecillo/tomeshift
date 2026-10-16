@@ -14,7 +14,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/llm"
 )
 
 // fakeCLI writes an executable standing in for `claude`, printing body on

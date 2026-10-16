@@ -8,7 +8,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/pipeline"
+	"github.com/ECecillo/tomeshift/internal/pipeline"
 )
 
 func TestNewBatchSummary(t *testing.T) {

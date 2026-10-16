@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"unicode/utf8"
 
-	"github.com/ECecillo/ebooks-translator/internal/cli"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/cost"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/cli"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/cost"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/narrative"
 )
 
 // volumeSource is one EPUB of a series, in publication order.
@@ -345,7 +345,7 @@ func projectSeriesBible(
 	}
 
 	if cfg.PerBookBudgetUSD > 0 && projection.EstimatedUSD > cfg.PerBookBudgetUSD {
-		writef(stderr, "unable to start series-bible (estimated $%.4f > EPUB_TRANSLATOR_PER_BOOK_BUDGET_USD $%.4f over %d volumes): %v\n",
+		writef(stderr, "unable to start series-bible (estimated $%.4f > TOMESHIFT_PER_BOOK_BUDGET_USD $%.4f over %d volumes): %v\n",
 			projection.EstimatedUSD, cfg.PerBookBudgetUSD, projection.Volumes, cost.ErrBudgetExceeded)
 		return exitcode.BudgetExceeded
 	}

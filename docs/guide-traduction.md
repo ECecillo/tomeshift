@@ -26,11 +26,11 @@ just preflight                    # vérifie go, java, lint, etc.
 
 Le binaire :
 ```bash
-go build -o ./bin/epub-translator ./cmd/epub-translator
+go build -o ./bin/tomeshift ./cmd/tomeshift
 # ou: just run <input.epub> <output-dir>
 ```
 
-Variables d'environnement (préfixe `EPUB_TRANSLATOR_`). Les recettes `just`
+Variables d'environnement (préfixe `TOMESHIFT_`). Les recettes `just`
 sourcent `.env.local`. **Ne mettez jamais une clé API en clair dans le dépôt** :
 `.env.local` est gitignoré ; pour plus de sûreté, mettez les clés dans un fichier
 hors dépôt et sourcez-le.
@@ -58,7 +58,7 @@ Toujours nécessaire (même en mode littéraire, pour le brouillon de repli).
 EN→FR, préserve les placeholders. Pour valider la chaîne, pas pour la qualité.
 ```bash
 just nmt-dev      # écoute sur :8081
-# .env.local : EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:8081/translate
+# .env.local : TOMESHIFT_NMT_ENDPOINT=http://localhost:8081/translate
 ```
 
 **Option B — Google Cloud Translation v2 (recommandé)** : c'est le maillon
@@ -66,10 +66,10 @@ faible de la chaîne qui change ici. Le brouillon Argos était la plus mauvaise
 étape du pipeline, et le remplacer coûte 0 $ au rythme d'un volume par mois.
 ```bash
 # .env.local (NMT_ENDPOINT peut rester vide : l'adaptateur connaît l'hôte) :
-#   EPUB_TRANSLATOR_NMT_PROVIDER=google
-#   EPUB_TRANSLATOR_NMT_API_KEY=<clé API>
-#   EPUB_TRANSLATOR_NMT_FREE_CHARS_PER_MONTH=500000
-#   EPUB_TRANSLATOR_COST_PER_1000_CHARS_USD=0.02
+#   TOMESHIFT_NMT_PROVIDER=google
+#   TOMESHIFT_NMT_API_KEY=<clé API>
+#   TOMESHIFT_NMT_FREE_CHARS_PER_MONTH=500000
+#   TOMESHIFT_COST_PER_1000_CHARS_USD=0.02
 ```
 Les segments d'un chapitre partent groupés (jusqu'à 128 textes ou 5000
 caractères par requête) : le brouillon d'un volume passe d'environ 14 minutes à
@@ -80,8 +80,8 @@ d'environnement (`NMT_PROVIDER=libretranslate`).
 ```bash
 docker compose --profile real-nmt up -d libretranslate    # 1er lancement: télécharge le modèle
 # .env.local :
-#   EPUB_TRANSLATOR_NMT_PROVIDER=libretranslate
-#   EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:5050/translate
+#   TOMESHIFT_NMT_PROVIDER=libretranslate
+#   TOMESHIFT_NMT_ENDPOINT=http://localhost:5050/translate
 ```
 
 ---
@@ -99,21 +99,21 @@ a son propre adaptateur. Choix par config :
 
 ```bash
 # .env.local (exemple Anthropic) :
-EPUB_TRANSLATOR_LLM_CHAT_PROVIDER=anthropic
-EPUB_TRANSLATOR_LLM_MODEL=claude-sonnet-5
-EPUB_TRANSLATOR_LLM_API_KEY=sk-ant-...
+TOMESHIFT_LLM_CHAT_PROVIDER=anthropic
+TOMESHIFT_LLM_MODEL=claude-sonnet-5
+TOMESHIFT_LLM_API_KEY=sk-ant-...
 
 # Tarifs, pour que le garde-fou budgétaire ait quelque chose à comparer.
 # Tarif standard Sonnet 5 (le tarif d'introduction 2 $/10 $ court jusqu'au
 # 31/08/2026 ; calibrez le plafond sur le tarif d'après, sinon il se mettra à
 # refuser des runs un mois plus tard sans raison visible).
-EPUB_TRANSLATOR_LLM_INPUT_PER_MTOK_USD=3.00
-EPUB_TRANSLATOR_LLM_OUTPUT_PER_MTOK_USD=15.00
-EPUB_TRANSLATOR_LLM_CACHE_READ_PER_MTOK_USD=0.30
+TOMESHIFT_LLM_INPUT_PER_MTOK_USD=3.00
+TOMESHIFT_LLM_OUTPUT_PER_MTOK_USD=15.00
+TOMESHIFT_LLM_CACHE_READ_PER_MTOK_USD=0.30
 # Sonnet 5 utilise le tokenizer de la famille Opus 4.7 : ~30 % de tokens en plus
 # pour le même texte, à tarif affiché identique. Sans ce facteur la projection
 # sous-estime d'autant.
-EPUB_TRANSLATOR_LLM_TOKEN_MULTIPLIER=1.30
+TOMESHIFT_LLM_TOKEN_MULTIPLIER=1.30
 ```
 
 > La réflexion adaptative est **désactivée explicitement** dans l'adaptateur
@@ -139,7 +139,7 @@ EN="books/.../Volume 01.epub"
 #     sont UN synopsis par tome, produit en map-reduce (1 résumé par chapitre,
 #     puis 1 réduction). Coût : ~0,10 $ (échantillonnage) + ~0,55 $ par tome,
 #     UNE fois, jamais rejoué.
-epub-translator series-bible --input-dir ./books/lumen --series $SERIES --samples 8
+tomeshift series-bible --input-dir ./books/lumen --series $SERIES --samples 8
 #   → écrit lumen@volume-01, lumen@volume-02, … (résumés des tomes 1..N
 #     seulement, pour ne pas donner la fin d'une histoire qu'on commence)
 #     + lumen = la bible du tome le plus récent.
@@ -148,18 +148,18 @@ epub-translator series-bible --input-dir ./books/lumen --series $SERIES --sample
 just bible ./narrative.sqlite $SERIES
 
 # (c) Glossaire des noms propres (gratuit, heuristique) → squelette JSON à curer
-epub-translator glossary-suggest --input "$EN" --out ./glossary.json --min-count 5
+tomeshift glossary-suggest --input "$EN" --out ./glossary.json --min-count 5
 #   éditer ./glossary.json : garder les vrais noms, term_fr correct, retirer le bruit
 
 # (d) Estimer le coût AVANT de payer (dry-run, zéro appel API)
 #   Même modèle de coût que le garde-fou du run : ce que `estimate` annonce est
 #   ce que le plafond par livre applique. Renseigner les tarifs LLM ci-dessus,
 #   sinon la projection vaut 0 $ et le plafond ne compare rien.
-epub-translator estimate --input "$EN"
+tomeshift estimate --input "$EN"
 
 # (e) Traduire (bible figée → prompts stables + re-runs gratuits via cache).
 #     Viser la bible scopée du tome traduit.
-epub-translator run --input "$EN" --output-dir ./runs \
+tomeshift run --input "$EN" --output-dir ./runs \
   --source-lang en --target-lang fr \
   --mode literary --series $SERIES@volume-01 --glossary ./glossary.json
 ```
@@ -182,14 +182,14 @@ tome 1.
 
 ```bash
 # Un nouveau tome est publié → regénérer, une fois, depuis le répertoire complet
-epub-translator series-bible --input-dir ./books/lumen --series lumen --samples 8
+tomeshift series-bible --input-dir ./books/lumen --series lumen --samples 8
 
 # Traduire le tome 2 avec la bible bornée aux tomes 1 et 2
-epub-translator run --input vol2.epub --output-dir ./runs \
+tomeshift run --input vol2.epub --output-dir ./runs \
   --mode literary --series lumen@volume-02 --glossary ./glossary.json
 
 # Compléter le glossaire avec les nouveaux noms du tome 2 :
-epub-translator glossary-suggest --input vol2.epub --out glossary-vol2.json
+tomeshift glossary-suggest --input vol2.epub --out glossary-vol2.json
 ```
 
 Regénérer change le préfixe, donc invalide `llm_cache.sqlite` **une fois** — coût
@@ -227,14 +227,14 @@ reproductible.
 - **chrF (avec référence)** — nécessite une **vraie référence FR de la même
   édition** (attention : web-novel ≠ light-novel donnent des scores trompeurs) :
   ```bash
-  epub-translator eval --candidate ./runs/<id>/translated.epub --reference ref-fr.epub
+  tomeshift eval --candidate ./runs/<id>/translated.epub --reference ref-fr.epub
   ```
 - **COMET-QE (sans référence)** — la bonne métrique quand on n'a pas de référence
   alignée. Nécessite un service COMET (CometKiwi via FastAPI — lancer avec `uv`,
   Python 3.12, `huggingface-hub<1.0` ; recette dans le README) :
   ```bash
-  EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
-    epub-translator eval --segments ./runs/<id>/segments.jsonl
+  TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \
+    tomeshift eval --segments ./runs/<id>/segments.jsonl
   # → COMET-QE avg = 0.xx ; écrit qe-eval-report.json
   ```
   En mode `run`, COMET-QE peut aussi scorer chaque brouillon et escalader les plus
@@ -257,7 +257,7 @@ reproductible.
 ## 9. Traiter plusieurs livres d'un coup
 
 ```bash
-epub-translator batch --input-dir ./books/serie --output-dir ./runs \
+tomeshift batch --input-dir ./books/serie --output-dir ./runs \
   --glossary ./glossary.json [--reference-dir ./refs]
 # TM + glossaire partagés entre les livres ; rapport agrégé (+ chrF si --reference-dir)
 ```

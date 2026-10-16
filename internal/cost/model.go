@@ -1,6 +1,6 @@
 package cost
 
-import "github.com/ECecillo/ebooks-translator/internal/segment"
+import "github.com/ECecillo/tomeshift/internal/segment"
 
 // Model describes what a run is charged for: the NMT draft, priced per segment
 // and per character with a monthly free allowance, and the LLM pass, priced by

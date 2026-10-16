@@ -1,6 +1,6 @@
 package translate
 
-// Provider identifiers accepted by NewProvider / the EPUB_TRANSLATOR_NMT_PROVIDER
+// Provider identifiers accepted by NewProvider / the TOMESHIFT_NMT_PROVIDER
 // config.
 const (
 	ProviderHTTP           = "http"           // our own {text,source_lang,target_lang} dev contract

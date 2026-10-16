@@ -12,15 +12,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/ECecillo/ebooks-translator/internal/cli"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/cost"
-	"github.com/ECecillo/ebooks-translator/internal/epub"
-	"github.com/ECecillo/ebooks-translator/internal/eval"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
-	"github.com/ECecillo/ebooks-translator/internal/llm"
-	"github.com/ECecillo/ebooks-translator/internal/pipeline"
-	"github.com/ECecillo/ebooks-translator/internal/tm"
+	"github.com/ECecillo/tomeshift/internal/cli"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/cost"
+	"github.com/ECecillo/tomeshift/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/eval"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/pipeline"
+	"github.com/ECecillo/tomeshift/internal/tm"
 )
 
 // ConfigLoader loads runtime configuration for command execution. It is

@@ -9,9 +9,9 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/commandexec"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/commandexec"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
 )
 
 func runEvalCmd(t *testing.T, candidate, reference string) (string, string, int) {

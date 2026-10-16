@@ -6,12 +6,12 @@ import (
 	"io"
 	"os"
 
-	"github.com/ECecillo/ebooks-translator/internal/cli"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/epub"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
-	"github.com/ECecillo/ebooks-translator/internal/glossary"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/cli"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/epub"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/glossary"
+	"github.com/ECecillo/tomeshift/internal/narrative"
 )
 
 // runStyleProfile seeds or refreshes a series bible from an EPUB sample set.

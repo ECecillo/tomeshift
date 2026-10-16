@@ -9,11 +9,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/commandexec"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
-	"github.com/ECecillo/ebooks-translator/internal/pipeline"
-	"github.com/ECecillo/ebooks-translator/internal/translate/nmttest"
+	"github.com/ECecillo/tomeshift/internal/commandexec"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/pipeline"
+	"github.com/ECecillo/tomeshift/internal/translate/nmttest"
 )
 
 func TestBatch_SharedTMAcrossBooks(t *testing.T) {

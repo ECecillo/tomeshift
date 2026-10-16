@@ -47,7 +47,7 @@ type RunCommand struct {
 	NoProgress bool
 }
 
-// ParseRunArgs parses and validates flags for `epub-translator run`, producing a
+// ParseRunArgs parses and validates flags for `tomeshift run`, producing a
 // normalized RunCommand that downstream execution uses as the run contract.
 func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
@@ -107,11 +107,11 @@ func ParseRunArgs(args []string, stderr io.Writer) (RunCommand, error) {
 // command surface and required run flags.
 func PrintRootUsage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "Usage:")
-	_, _ = fmt.Fprintln(w, "  epub-translator run --input <file.epub> --output-dir <dir> --source-lang en --target-lang fr [--mode nmt|literary] [--series <id>] [--glossary <file>] [--run-id <id>] [--resume] [--no-progress]")
-	_, _ = fmt.Fprintln(w, "  epub-translator estimate --input <file.epub> [--escalation-rate 0.15]")
-	_, _ = fmt.Fprintln(w, "  epub-translator batch --input-dir <dir> --output-dir <dir> [--glossary <file>] [--no-progress]")
-	_, _ = fmt.Fprintln(w, "  epub-translator eval --candidate <out.epub> --reference <human-fr.epub>")
-	_, _ = fmt.Fprintln(w, "  epub-translator glossary-suggest --input <file.epub> [--min-count 3] [--out glossary.json]")
-	_, _ = fmt.Fprintln(w, "  epub-translator style-profile --input <file.epub> --series <id> [--samples 3]")
-	_, _ = fmt.Fprintln(w, "  epub-translator series-bible --input-dir <dir> --series <id> [--samples 3] [--merge]")
+	_, _ = fmt.Fprintln(w, "  tomeshift run --input <file.epub> --output-dir <dir> --source-lang en --target-lang fr [--mode nmt|literary] [--series <id>] [--glossary <file>] [--run-id <id>] [--resume] [--no-progress]")
+	_, _ = fmt.Fprintln(w, "  tomeshift estimate --input <file.epub> [--escalation-rate 0.15]")
+	_, _ = fmt.Fprintln(w, "  tomeshift batch --input-dir <dir> --output-dir <dir> [--glossary <file>] [--no-progress]")
+	_, _ = fmt.Fprintln(w, "  tomeshift eval --candidate <out.epub> --reference <human-fr.epub>")
+	_, _ = fmt.Fprintln(w, "  tomeshift glossary-suggest --input <file.epub> [--min-count 3] [--out glossary.json]")
+	_, _ = fmt.Fprintln(w, "  tomeshift style-profile --input <file.epub> --series <id> [--samples 3]")
+	_, _ = fmt.Fprintln(w, "  tomeshift series-bible --input-dir <dir> --series <id> [--samples 3] [--merge]")
 }

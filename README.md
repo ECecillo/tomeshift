@@ -1,4 +1,4 @@
-# epub-translator
+# tomeshift
 
 Go-based EPUB EN->FR translation pipeline.
 
@@ -114,7 +114,7 @@ just run ./books/source.epub ./runs
 Build the bible first, from every volume of the series. This is a job of its
 own, run once per published volume rather than once per translation:
 ```bash
-epub-translator series-bible --input-dir ./books/my-series --series my-series --samples 8
+tomeshift series-bible --input-dir ./books/my-series --series my-series --samples 8
 ```
 It seeds style, character voices and address rules from **all** volumes, then
 writes one synopsis per volume via map-reduce (one summary per chapter, then one
@@ -125,7 +125,7 @@ bare `my-series` ID is the newest volume's bible.
 
 Then run the sequential literary pipeline against the frozen bible:
 ```bash
-epub-translator run \
+tomeshift run \
   --input ./books/my-series/volume-01.epub \
   --output-dir ./runs \
   --source-lang en \
@@ -136,10 +136,10 @@ epub-translator run \
 
 Literary mode still uses NMT/translation memory for drafts, then calls the
 configured chat model with the persisted bible, glossary, and adjacent chapter
-context. Configure `EPUB_TRANSLATOR_NARRATIVE_PATH`,
-`EPUB_TRANSLATOR_LLM_CHAT_PROVIDER` (`anthropic` | `openai` | `deepseek`),
-`EPUB_TRANSLATOR_LLM_BASE_URL`, `EPUB_TRANSLATOR_LLM_MODEL`, and
-`EPUB_TRANSLATOR_LLM_API_KEY`.
+context. Configure `TOMESHIFT_NARRATIVE_PATH`,
+`TOMESHIFT_LLM_CHAT_PROVIDER` (`anthropic` | `openai` | `deepseek`),
+`TOMESHIFT_LLM_BASE_URL`, `TOMESHIFT_LLM_MODEL`, and
+`TOMESHIFT_LLM_API_KEY`.
 
 The bible is an **input** to a run, never an output: every chapter sees the same
 bible, so prompts (and the Anthropic prompt cache on the system prefix) stay
@@ -161,7 +161,7 @@ the bible/style prefix; cache read/creation tokens are reported in `report.json`
 and `metrics.json` (`translation_llm_cache_read_tokens`, etc.).
 
 ### Self-hosted local NMT (no external service)
-The default `EPUB_TRANSLATOR_NMT_ENDPOINT` points at a bundled local NMT dev
+The default `TOMESHIFT_NMT_ENDPOINT` points at a bundled local NMT dev
 server so the pipeline runs end-to-end with no external dependency. Start it in
 another terminal:
 ```bash
@@ -208,8 +208,8 @@ Use **Python 3.12** and pin **`huggingface-hub<1.0`** (required by `transformers
 A plain `pip`/`venv` works too, but only on a supported Python.
 Enable it:
 ```bash
-EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score
-EPUB_TRANSLATOR_ESCALATE_BELOW_SCORE=0.80   # escalate drafts scoring below this
+TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score
+TOMESHIFT_ESCALATE_BELOW_SCORE=0.80   # escalate drafts scoring below this
 ```
 The per-book average score lands in `report.json` (`avg_quality_score`) and
 `metrics.json` (`translation_quality_score`).
@@ -218,18 +218,18 @@ To score an **already-translated** run reference-free (no human reference needed
 — ideal when your only reference is a different edition, e.g. web-novel vs light
 novel), point `eval` at its `segments.jsonl` with a COMET service running:
 ```bash
-EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
-  epub-translator eval --segments runs/<run-id>/segments.jsonl
+TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \
+  tomeshift eval --segments runs/<run-id>/segments.jsonl
 # → COMET-QE avg = 0.xx (min ... over N segments); writes qe-eval-report.json
 ```
 
 ### Real translations with Google Cloud Translation (recommended)
 The best draft quality, and free at roughly one volume per month:
 ```bash
-EPUB_TRANSLATOR_NMT_PROVIDER=google
-EPUB_TRANSLATOR_NMT_API_KEY=<Cloud Translation API key>
-EPUB_TRANSLATOR_NMT_FREE_CHARS_PER_MONTH=500000
-EPUB_TRANSLATOR_COST_PER_1000_CHARS_USD=0.02          # 20 $ / M characters
+TOMESHIFT_NMT_PROVIDER=google
+TOMESHIFT_NMT_API_KEY=<Cloud Translation API key>
+TOMESHIFT_NMT_FREE_CHARS_PER_MONTH=500000
+TOMESHIFT_COST_PER_1000_CHARS_USD=0.02          # 20 $ / M characters
 ```
 This targets Cloud Translation **v2 (Basic)**, which authenticates with an API
 key — no service account to plumb through Docker and CI, and it supplies the
@@ -249,8 +249,8 @@ docker run -ti -p 5000:5000 libretranslate/libretranslate --load-only en,fr
 ```
 Then point the app at it:
 ```bash
-EPUB_TRANSLATOR_NMT_PROVIDER=libretranslate
-EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:5000/translate
+TOMESHIFT_NMT_PROVIDER=libretranslate
+TOMESHIFT_NMT_ENDPOINT=http://localhost:5000/translate
 ```
 The adapter sends `format=html`, so inline placeholder tokens survive
 translation. Heavier engines (OPUS-MT, NLLB-200) can be used behind the same
@@ -281,7 +281,7 @@ What happens:
   - `./runs` -> `/app/runs`
   - `./data` -> `/app/data`
 - The container executes:
-  - `epub-translator run --input /app/books/source.epub --output-dir /app/runs --source-lang en --target-lang fr`
+  - `tomeshift run --input /app/books/source.epub --output-dir /app/runs --source-lang en --target-lang fr`
 
 View logs:
 ```bash

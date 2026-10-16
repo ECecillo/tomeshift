@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/cost"
+	"github.com/ECecillo/tomeshift/internal/cost"
 )
 
 func rates() cost.TokenRates {

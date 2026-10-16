@@ -6,12 +6,12 @@ import (
 
 	"go.uber.org/zap"
 
-	"github.com/ECecillo/ebooks-translator/internal/cost"
-	"github.com/ECecillo/ebooks-translator/internal/literary"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
-	"github.com/ECecillo/ebooks-translator/internal/tm"
-	"github.com/ECecillo/ebooks-translator/internal/translate"
+	"github.com/ECecillo/tomeshift/internal/cost"
+	"github.com/ECecillo/tomeshift/internal/literary"
+	"github.com/ECecillo/tomeshift/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/tm"
+	"github.com/ECecillo/tomeshift/internal/translate"
 )
 
 // costFn prices what the run has consumed at the instant it is called. It is

@@ -9,7 +9,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/narrative"
 )
 
 func newStore(t *testing.T) *narrative.SQLiteStore {

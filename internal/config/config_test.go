@@ -104,7 +104,7 @@ func TestCostModel_ReadsThePrefixTransportFromTheChatProvider(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			// It is deliberately not an EPUB_TRANSLATOR_* variable: an operator
+			// It is deliberately not an TOMESHIFT_* variable: an operator
 			// choosing a chat provider should not also have to know how that
 			// transport handles a prompt cache.
 			cfg := Config{LLMChatProvider: tt.provider}

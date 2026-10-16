@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// SeriesBibleCommand is the parsed contract for `epub-translator series-bible`,
+// SeriesBibleCommand is the parsed contract for `tomeshift series-bible`,
 // the pre-translation job that builds a frozen bible from every volume of a
 // series. Translation runs consume its output and never write to it.
 type SeriesBibleCommand struct {
@@ -30,7 +30,7 @@ type SeriesBibleCommand struct {
 	DryRun bool
 }
 
-// ParseSeriesBibleArgs parses flags for `epub-translator series-bible`.
+// ParseSeriesBibleArgs parses flags for `tomeshift series-bible`.
 func ParseSeriesBibleArgs(args []string, stderr io.Writer) (SeriesBibleCommand, error) {
 	fs := flag.NewFlagSet("series-bible", flag.ContinueOnError)
 	fs.SetOutput(stderr)

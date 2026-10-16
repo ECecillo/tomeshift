@@ -1,4 +1,4 @@
-"""Reference-free COMET-QE scoring service for epub-translator.
+"""Reference-free COMET-QE scoring service for tomeshift.
 
 Exposes a single endpoint matching the contract the Go `eval`/`run` commands
 expect:

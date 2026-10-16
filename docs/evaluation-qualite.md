@@ -19,8 +19,8 @@ même édition** que la source traduite (sinon le score est trompeur :
 web-novel ≠ light-novel).
 
 ```bash
-env EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:8081/translate \
-  ./bin/epub-translator eval \
+env TOMESHIFT_NMT_ENDPOINT=http://localhost:8081/translate \
+  ./bin/tomeshift eval \
     --candidate ./runs/<run-id>/translated.epub \
     --reference ./chemin/reference-fr.epub
 # → chrF = 0.71 (candidate N chars vs reference M chars)
@@ -51,9 +51,9 @@ persté dans un volume ; voir [`INSTALLATION.md`](INSTALLATION.md#6-optionnel-se
 
 **b. Scorer un run** :
 ```bash
-env EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
-    EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:8081/translate \
-  ./bin/epub-translator eval --segments ./runs/<run-id>/segments.jsonl
+env TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \
+    TOMESHIFT_NMT_ENDPOINT=http://localhost:8081/translate \
+  ./bin/tomeshift eval --segments ./runs/<run-id>/segments.jsonl
 # → COMET-QE avg = 0.11 (min -0.49 over 67 segments) ; écrit qe-eval-report.json
 ```
 
@@ -98,8 +98,8 @@ chapitre (titres dans les `<h1>`/`<h2>`).
 ### b. Traduire le mini-chapitre
 
 ```bash
-env EPUB_TRANSLATOR_NARRATIVE_PATH=./data/<serie>-series.sqlite \
-  ./bin/epub-translator run \
+env TOMESHIFT_NARRATIVE_PATH=./data/<serie>-series.sqlite \
+  ./bin/tomeshift run \
     --input books/serie/en-ch1.epub --output-dir ./runs --run-id ch1 \
     --source-lang en --target-lang fr \
     --mode literary --series <serie> --glossary ./data/<serie>-glossary.json

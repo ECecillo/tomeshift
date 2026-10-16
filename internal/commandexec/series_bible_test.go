@@ -7,7 +7,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/narrative"
 )
 
 func TestDiscoverVolumesSortsByPublicationNumber(t *testing.T) {

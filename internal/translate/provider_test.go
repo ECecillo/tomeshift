@@ -5,7 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/translate"
+	"github.com/ECecillo/tomeshift/internal/translate"
 )
 
 func TestRequiresEndpoint(t *testing.T) {

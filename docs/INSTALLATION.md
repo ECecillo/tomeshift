@@ -36,8 +36,8 @@ brew install mise 1password-cli     # les deux seuls prérequis manuels (macOS)
 ## 2. Récupérer le projet
 
 ```bash
-git clone <url-du-dépôt> epub-translator
-cd epub-translator
+git clone <url-du-dépôt> tomeshift
+cd tomeshift
 mise trust        # mise n'exécute pas la config d'un dépôt sans accord explicite
 mise install      # go, java, just, golangci-lint, rg, python, uv
 ```
@@ -99,7 +99,7 @@ processus lancé, pour sa durée de vie — ni dans un fichier, ni dans ton shel
 > le disque », pas « un humain a approuvé ce run précis ». Pour la seconde,
 > règle le verrouillage automatique de l'app de façon agressive.
 
-Édite `.env.local`. Variables clés (préfixe `EPUB_TRANSLATOR_`) :
+Édite `.env.local`. Variables clés (préfixe `TOMESHIFT_`) :
 
 | Variable | Rôle | Exemple |
 |---|---|---|
@@ -131,7 +131,7 @@ processus lancé, pour sa durée de vie — ni dans un fichier, ni dans ton shel
 
 ```bash
 just preflight          # config, chaîne d'outils (mise), session 1Password, santé NMT
-go build -o ./bin/epub-translator ./cmd/epub-translator
+go build -o ./bin/tomeshift ./cmd/tomeshift
 just check              # gofmt -s + golangci-lint + go test ./... + audit doc
 ```
 
@@ -155,10 +155,10 @@ just nmt-dev            # dictionnaire EN→FR sur :8081
 **B. Google Cloud Translation v2** (recommandé — meilleure qualité de brouillon) :
 ```bash
 # .env.local (NMT_ENDPOINT peut rester vide : l'adaptateur connaît l'hôte) :
-#   EPUB_TRANSLATOR_NMT_PROVIDER=google
-#   EPUB_TRANSLATOR_NMT_API_KEY=<clé API Cloud Translation>
-#   EPUB_TRANSLATOR_NMT_FREE_CHARS_PER_MONTH=500000
-#   EPUB_TRANSLATOR_COST_PER_1000_CHARS_USD=0.02        # 20 $ / M caractères
+#   TOMESHIFT_NMT_PROVIDER=google
+#   TOMESHIFT_NMT_API_KEY=<clé API Cloud Translation>
+#   TOMESHIFT_NMT_FREE_CHARS_PER_MONTH=500000
+#   TOMESHIFT_COST_PER_1000_CHARS_USD=0.02        # 20 $ / M caractères
 ```
 Le projet GCP doit avoir la facturation activée, **même pour le palier
 gratuit**. Ce palier vaut 500 000 caractères par mois, partagé entre Basic et
@@ -173,8 +173,8 @@ l'appel Anthropic déjà en place, mais Argos était local : le changement est r
 ```bash
 docker compose --profile real-nmt up -d libretranslate   # 1er lancement: télécharge le modèle
 # .env.local :
-#   EPUB_TRANSLATOR_NMT_PROVIDER=libretranslate
-#   EPUB_TRANSLATOR_NMT_ENDPOINT=http://localhost:5050/translate
+#   TOMESHIFT_NMT_PROVIDER=libretranslate
+#   TOMESHIFT_NMT_ENDPOINT=http://localhost:5050/translate
 ```
 
 **D. Tout en Docker** (`app` + `nmt`) — voir [§ Docker](#7-docker) plus bas.
@@ -202,7 +202,7 @@ un volume nommé) :
 ```bash
 docker compose --profile eval up -d comet     # 1er boot: build + téléchargement du modèle (long)
 docker compose --profile eval logs -f comet    # attendre "Application startup complete"
-# puis pointer l'éval sur :  EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score
+# puis pointer l'éval sur :  TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score
 ```
 
 > Deux voies, au choix : `uv` (rapide à itérer, rien à builder) ou Docker

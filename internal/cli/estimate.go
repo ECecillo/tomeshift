@@ -6,7 +6,7 @@ import (
 	"io"
 )
 
-// EstimateCommand is the parsed contract for `epub-translator estimate`, a
+// EstimateCommand is the parsed contract for `tomeshift estimate`, a
 // dry-run that projects translation cost without translating.
 type EstimateCommand struct {
 	// Input is the source EPUB path provided by --input.
@@ -19,7 +19,7 @@ type EstimateCommand struct {
 	EscalationRate float64
 }
 
-// ParseEstimateArgs parses flags for `epub-translator estimate`.
+// ParseEstimateArgs parses flags for `tomeshift estimate`.
 func ParseEstimateArgs(args []string, stderr io.Writer) (EstimateCommand, error) {
 	fs := flag.NewFlagSet("estimate", flag.ContinueOnError)
 	fs.SetOutput(stderr)

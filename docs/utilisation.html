@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>epub-translator — mode d'emploi</title>
+<title>tomeshift — mode d'emploi</title>
 <style>
   :root {
     --bg: #0f1117;
@@ -132,10 +132,10 @@
 <body>
 
 <header>
-  <h1>epub-translator — mode d'emploi<br/><span style="color:var(--muted);font-size:0.75em">installer, configurer, lancer, et savoir ce que chaque commande change</span></h1>
+  <h1>tomeshift — mode d'emploi<br/><span style="color:var(--muted);font-size:0.75em">installer, configurer, lancer, et savoir ce que chaque commande change</span></h1>
   <div class="meta">
     Guide opérationnel · 8 août 2026 ·
-    code figé sur <a href="https://github.com/ECecillo/ebooks-translator/tree/953441dc1b7a4fca3231daf39e00d99753abc8cf"><code>953441d</code></a><br/>
+    code figé sur <a href="https://github.com/ECecillo/tomeshift/tree/953441dc1b7a4fca3231daf39e00d99753abc8cf"><code>953441d</code></a><br/>
     Pour comprendre <em>comment ça marche à l'intérieur</em> : <a href="comprendre-le-projet.html">comprendre-le-projet.html</a>
     · Références texte : <code>docs/INSTALLATION.md</code>, <code>docs/guide-traduction.md</code>
   </div>
@@ -169,13 +169,13 @@
 brew install mise 1password-cli
 
 <span class="cmt"># Récupérer et préparer le projet</span>
-git clone git@github.com:ECecillo/ebooks-translator.git epub-translator
-cd epub-translator
+git clone git@github.com:ECecillo/tomeshift.git tomeshift
+cd tomeshift
 mise trust                        <span class="cmt"># mise n'exécute pas la config d'un dépôt sans accord</span>
 mise install                      <span class="cmt"># go, java, just, golangci-lint, rg, python, uv</span>
 cp .env.example .env.local        <span class="cmt"># config NON SECRÈTE, gitignorée</span>
 just preflight                    <span class="cmt"># config + outils + session 1Password + santé NMT</span>
-go build -o ./bin/epub-translator ./cmd/epub-translator</code></pre>
+go build -o ./bin/tomeshift ./cmd/tomeshift</code></pre>
 
 <div class="table-wrap">
 <table>
@@ -229,8 +229,8 @@ go build -o ./bin/epub-translator ./cmd/epub-translator</code></pre>
 </div>
 
 <pre><code><span class="cmt"># .env.op — committable tel quel, ce ne sont que des pointeurs</span>
-EPUB_TRANSLATOR_LLM_API_KEY=op://Dev/anthropic-epub-translator/credential
-EPUB_TRANSLATOR_NMT_API_KEY=op://Dev/gcp-cloud-translation/credential</code></pre>
+TOMESHIFT_LLM_API_KEY=op://Dev/anthropic-epub-translator/credential
+TOMESHIFT_NMT_API_KEY=op://Dev/gcp-cloud-translation/credential</code></pre>
 
 <p>
   Les recettes qui appellent un fournisseur sont enveloppées dans
@@ -249,7 +249,7 @@ flowchart LR
     REF --> RUN["op run --env-file=.env.op --"]
     OP -->|"déverrouillage biométrique"| RUN
     LOC --> PROC
-    RUN --> PROC["Processus epub-translator<br/>clé en mémoire, durée de vie du run"]
+    RUN --> PROC["Processus tomeshift<br/>clé en mémoire, durée de vie du run"]
     PROC --> END["fin du run :<br/>le secret disparaît"]
     LOC -.->|"jamais"| SEC["clé en clair sur disque"]
 </pre>
@@ -272,7 +272,7 @@ que dans le processus lancé.</figcaption>
 
 <p>
   Toute la configuration passe par des variables d'environnement préfixées
-  <code>EPUB_TRANSLATOR_</code>, chargées dans une struct typée au démarrage. Les recettes
+  <code>TOMESHIFT_</code>, chargées dans une struct typée au démarrage. Les recettes
   <code>just</code> sourcent <code>.env.local</code> automatiquement ; si vous appelez le binaire
   directement, sourcez-le vous-même (<code>set -a; source .env.local; set +a</code>).
 </p>
@@ -434,7 +434,7 @@ op vault list          <span class="cmt"># les coffres du compte courant</span>
 <span class="cmt"># 4. Créer les éléments. --account est explicite ici : les commandes ci-dessous</span>
 <span class="cmt">#    tournent dans TON shell, qui ne source pas .env.local.</span>
 op item create --account my.1password.eu --category="API Credential" \
-  --vault=Personal --title="anthropic-epub-translator" \
+  --vault=Personal --title="anthropic-tomeshift" \
   credential="sk-ant-…"
 
 op item create --account my.1password.eu --category="API Credential" \
@@ -489,7 +489,7 @@ op read --account my.1password.eu "op://Personal/gcp-cloud-translation/credentia
 flowchart TB
     subgraph SETUP["Une fois"]
       GCP["Console GCP<br/>facturation + API + clé restreinte"] --> I1["Élément 1Password<br/>gcp-cloud-translation"]
-      ANT["console.anthropic.com<br/>API key"] --> I2["Élément 1Password<br/>anthropic-epub-translator"]
+      ANT["console.anthropic.com<br/>API key"] --> I2["Élément 1Password<br/>anthropic-tomeshift"]
       I1 --> REF[".env.op<br/>2 références op://<br/>versionné"]
       I2 --> REF
     end
@@ -609,7 +609,7 @@ consomment sans les modifier.</figcaption>
 
 <h3><code>run</code> — traduire un livre</h3>
 
-<pre><code>epub-translator run --input &lt;f.epub&gt; --output-dir &lt;dir&gt; --source-lang en --target-lang fr \
+<pre><code>tomeshift run --input &lt;f.epub&gt; --output-dir &lt;dir&gt; --source-lang en --target-lang fr \
   [--mode nmt|literary] [--series &lt;id&gt;] [--glossary &lt;f.json&gt;] [--run-id &lt;id&gt;] \
   [--update-bible] [--resume] [--no-progress]</code></pre>
 
@@ -692,7 +692,7 @@ en secondes là où un vrai fournisseur en mettrait des minutes.</figcaption>
 
 <h3><code>estimate</code> — projeter le coût sans payer</h3>
 
-<pre><code>epub-translator estimate --input &lt;f.epub&gt; [--escalation-rate 0.15]</code></pre>
+<pre><code>tomeshift estimate --input &lt;f.epub&gt; [--escalation-rate 0.15]</code></pre>
 
 <p>
   Parse et segmente le livre, <strong>ne traduit rien, n'appelle aucune API</strong>, et imprime trois
@@ -835,7 +835,7 @@ heuristic</code>.</figcaption>
 
 <h3><code>series-bible</code> — construire la bible avant de traduire</h3>
 
-<pre><code>epub-translator series-bible --input-dir ./books/lumen --series lumen [--samples 3] [--merge] [--dry-run]</code></pre>
+<pre><code>tomeshift series-bible --input-dir ./books/lumen --series lumen [--samples 3] [--merge] [--dry-run]</code></pre>
 
 <div class="table-wrap">
 <table>
@@ -855,7 +855,7 @@ heuristic</code>.</figcaption>
   imprimée systématiquement avant le premier appel, et le plafond par livre s'y applique.
 </p>
 
-<pre><code>epub-translator series-bible --input-dir ./epub/lumen --series lumen --samples 3 --dry-run
+<pre><code>tomeshift series-bible --input-dir ./epub/lumen --series lumen --samples 3 --dry-run
 
 series-bible projection for lumen: 33 volumes, 1090 chapters, 1124 calls, samples=3
 stage       calls    in_tokens   out_tokens          usd
@@ -913,7 +913,7 @@ total        1124      5420151       327860       7.0595</code></pre>
 
 <h3><code>style-profile</code> — amorcer la bible depuis un seul tome</h3>
 
-<pre><code>epub-translator style-profile --input &lt;f.epub&gt; --series &lt;id&gt; [--samples 3] [--merge]</code></pre>
+<pre><code>tomeshift style-profile --input &lt;f.epub&gt; --series &lt;id&gt; [--samples 3] [--merge]</code></pre>
 
 <p>
   Un seul appel LLM, un seul tome, pas de synopsis. Utile pour un livre isolé ou pour corriger le
@@ -923,7 +923,7 @@ total        1124      5420151       327860       7.0595</code></pre>
 
 <h3><code>glossary-suggest</code> — extraire les noms propres</h3>
 
-<pre><code>epub-translator glossary-suggest --input &lt;f.epub&gt; [--out glossary.json] [--min-count 3]</code></pre>
+<pre><code>tomeshift glossary-suggest --input &lt;f.epub&gt; [--out glossary.json] [--min-count 3]</code></pre>
 
 <p>
   Gratuit, heuristique, <strong>aucune configuration requise</strong> — c'est la seule commande qui
@@ -940,11 +940,11 @@ total        1124      5420151       327860       7.0595</code></pre>
 <h3><code>eval</code> — mesurer la qualité</h3>
 
 <pre><code><span class="cmt"># chrF : nécessite une référence humaine de la MÊME édition</span>
-epub-translator eval --candidate ./runs/&lt;id&gt;/translated.epub --reference ./ref-fr.epub
+tomeshift eval --candidate ./runs/&lt;id&gt;/translated.epub --reference ./ref-fr.epub
 
 <span class="cmt"># COMET-QE : sans référence, nécessite un service COMET actif</span>
-EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
-  epub-translator eval --segments ./runs/&lt;id&gt;/segments.jsonl</code></pre>
+TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \
+  tomeshift eval --segments ./runs/&lt;id&gt;/segments.jsonl</code></pre>
 
 <div class="card note">
   <span class="label">Choisir la bonne métrique</span>
@@ -958,7 +958,7 @@ EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
 
 <h3><code>batch</code> — traiter un dossier de livres</h3>
 
-<pre><code>epub-translator batch --input-dir ./books/serie --output-dir ./runs \
+<pre><code>tomeshift batch --input-dir ./books/serie --output-dir ./runs \
   [--glossary ./glossary.json] [--reference-dir ./refs] [--no-progress]</code></pre>
 
 <ul>
@@ -1002,7 +1002,7 @@ EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
 
 <div class="table-wrap">
 <table>
-  <tr><th>Variable (<code>EPUB_TRANSLATOR_</code>)</th><th>Défaut</th><th>Conséquence si vous y touchez</th></tr>
+  <tr><th>Variable (<code>TOMESHIFT_</code>)</th><th>Défaut</th><th>Conséquence si vous y touchez</th></tr>
   <tr>
     <td><code>NMT_PROVIDER</code></td><td><code>http</code></td>
     <td>Change la <strong>qualité du brouillon</strong>, donc la qualité finale en mode nmt et le travail restant au LLM en littéraire. Change aussi le tag <code>engine</code> écrit en TM.</td>
@@ -1080,13 +1080,13 @@ EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \
   <code>sonnet</code>, <code>haiku</code>) ou un nom de modèle complet.
 </p>
 
-<pre><code>EPUB_TRANSLATOR_LLM_CHAT_PROVIDER=claude-cli
-EPUB_TRANSLATOR_LLM_MODEL=opus
-EPUB_TRANSLATOR_LLM_CLI_BIN=                  <span class="cmt"># vide = "claude" depuis le PATH</span>
+<pre><code>TOMESHIFT_LLM_CHAT_PROVIDER=claude-cli
+TOMESHIFT_LLM_MODEL=opus
+TOMESHIFT_LLM_CLI_BIN=                  <span class="cmt"># vide = "claude" depuis le PATH</span>
 <span class="cmt"># Les tarifs restent renseignés : ils ne facturent rien ici, ils font du</span>
 <span class="cmt"># plafond par livre un indicateur de quota consommé.</span>
-EPUB_TRANSLATOR_LLM_INPUT_PER_MTOK_USD=15.00
-EPUB_TRANSLATOR_LLM_OUTPUT_PER_MTOK_USD=75.00</code></pre>
+TOMESHIFT_LLM_INPUT_PER_MTOK_USD=15.00
+TOMESHIFT_LLM_OUTPUT_PER_MTOK_USD=75.00</code></pre>
 
 <div class="card key">
   <span class="label">La mesure qui rend le montage viable</span>
@@ -1133,7 +1133,7 @@ EPUB_TRANSLATOR_LLM_OUTPUT_PER_MTOK_USD=75.00</code></pre>
   explicitement optionnelle :
 </p>
 
-<pre><code>EPUB_TRANSLATOR_LIVE_CLI_TEST=1 EPUB_TRANSLATOR_LLM_MODEL=opus \
+<pre><code>TOMESHIFT_LIVE_CLI_TEST=1 TOMESHIFT_LLM_MODEL=opus \
   go test ./tests/integration/ -run TestLiterary_ClaudeCLI -v
 <span class="cmt"># → traduit 3 segments, vérifie les placeholders, et affiche les compteurs :</span>
 <span class="cmt">#   usage: input=2 output=164 cache_read=0 cache_creation=2847</span></code></pre>
@@ -1255,7 +1255,7 @@ just down</code></pre>
 <table>
   <tr><th>Recette</th><th>Fait quoi</th></tr>
   <tr><td><code>just preflight</code></td><td>Vérifie les outils et pingue l'endpoint NMT (non bloquant).</td></tr>
-  <tr><td><code>just print-config-vars</code></td><td>Affiche les <code>EPUB_TRANSLATOR_*</code> réellement résolus — le premier réflexe quand « ça ne prend pas ma config ».</td></tr>
+  <tr><td><code>just print-config-vars</code></td><td>Affiche les <code>TOMESHIFT_*</code> réellement résolus — le premier réflexe quand « ça ne prend pas ma config ».</td></tr>
   <tr><td><code>just nmt-dev</code> · <code>just libretranslate-up</code> · <code>just comet-up</code></td><td>Démarrer les services.</td></tr>
   <tr><td><code>just run &lt;in.epub&gt; [outdir]</code></td><td>Traduction NMT.</td></tr>
   <tr><td><code>just literary &lt;in&gt; &lt;série&gt; [glossaire] [run-id]</code></td><td>Traduction littéraire.</td></tr>
@@ -1287,7 +1287,7 @@ just down</code></pre>
 </div>
 
 <footer>
-  epub-translator · mode d'emploi · code figé sur <code>953441d</code> ·
+  tomeshift · mode d'emploi · code figé sur <code>953441d</code> ·
   compléments texte : <code>docs/INSTALLATION.md</code>, <code>docs/guide-traduction.md</code>,
   <code>docs/evaluation-qualite.md</code>, <code>docs/ameliorer-traduction.md</code>
 </footer>
@@ -1312,7 +1312,7 @@ just down</code></pre>
 (function () {
   'use strict';
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var P = 'EPUB_TRANSLATOR_';
+  var P = 'TOMESHIFT_';
 
   function pickGroup(rootId, onPick) {
     var root = document.getElementById(rootId);
@@ -1409,16 +1409,16 @@ just down</code></pre>
 
     var cmd, cons;
     if (cfg.mode === 'literary') {
-      cmd = 'epub-translator series-bible --input-dir ./books/ma-serie --series ma-serie --samples 8\n' +
-            'epub-translator estimate --input ./books/ma-serie/volume-01.epub\n' +
-            'epub-translator run --input ./books/ma-serie/volume-01.epub --output-dir ./runs \\\n' +
+      cmd = 'tomeshift series-bible --input-dir ./books/ma-serie --series ma-serie --samples 8\n' +
+            'tomeshift estimate --input ./books/ma-serie/volume-01.epub\n' +
+            'tomeshift run --input ./books/ma-serie/volume-01.epub --output-dir ./runs \\\n' +
             '  --source-lang en --target-lang fr --mode literary \\\n' +
             '  --series ma-serie@volume-01 --glossary ./glossary.json';
       cons = '<b>Conséquence :</b> chaque segment frais est brouillonné par le NMT puis <b>réécrit</b> par le LLM ' +
         'avec la bible et le glossaire. Le brouillon n\'est jamais persisté en mémoire de traduction — ' +
         'seule la version raffinée l\'est, et seulement après validation des placeholders.';
     } else {
-      cmd = 'epub-translator run --input ./books/source.epub --output-dir ./runs \\\n' +
+      cmd = 'tomeshift run --input ./books/source.epub --output-dir ./runs \\\n' +
             '  --source-lang en --target-lang fr';
       cons = '<b>Conséquence :</b> traduction rapide, coût nul en local. Aucun appel LLM tant que ' +
         '<code>LLM_ENABLED</code> et <code>LLM_ENDPOINT</code> ne sont pas renseignés.';
@@ -1461,7 +1461,7 @@ just down</code></pre>
     {
       t: 'Glossaire', cost: 'gratuit',
       title: '1. Extraire et curer le glossaire',
-      cmd: 'epub-translator glossary-suggest --input "$EN" --out ./glossary.json --min-count 5',
+      cmd: 'tomeshift glossary-suggest --input "$EN" --out ./glossary.json --min-count 5',
       body: 'Heuristique, aucun appel API. Produit un squelette JSON <b>à curer à la main</b> : ' +
         'garder les vrais noms propres, écrire la forme française, cocher <code>locked</code>, jeter le bruit.' +
         '<div class="consequence"><b>Effet sur le rendu :</b> un terme verrouillé est masqué avant l\'appel ' +
@@ -1471,7 +1471,7 @@ just down</code></pre>
     {
       t: 'Bible', cost: '≈ 0,65 $ / tome, une fois',
       title: '2. Construire la bible de série',
-      cmd: 'epub-translator series-bible --input-dir ./books/ma-serie --series ma-serie --samples 8\n' +
+      cmd: 'tomeshift series-bible --input-dir ./books/ma-serie --series ma-serie --samples 8\n' +
            'just bible ./narrative.sqlite ma-serie   # relire AVANT de traduire',
       body: 'Style, voix et vouvoiement sont tirés de <b>tous</b> les tomes ; les synopsis sont bornés aux ' +
         'tomes 1..N. Écrit <code>ma-serie@volume-01</code>, <code>ma-serie@volume-02</code>, …' +
@@ -1482,7 +1482,7 @@ just down</code></pre>
     {
       t: 'Estimation', cost: '0 appel API',
       title: '3. Projeter le coût avant de payer',
-      cmd: 'epub-translator estimate --input "$EN"',
+      cmd: 'tomeshift estimate --input "$EN"',
       body: 'Parse + segmente, ne traduit pas. Trois scénarios : NMT seul, hybride, LLM complet.' +
         '<div class="consequence"><b>Effet :</b> aucun sur le livre. Mais c\'est le <b>même</b> modèle de coût ' +
         'que le garde-fou du run : si le chiffre annoncé dépasse <code>PER_BOOK_BUDGET_USD</code>, le run ' +
@@ -1491,7 +1491,7 @@ just down</code></pre>
     {
       t: 'Traduction', cost: 'le vrai coût',
       title: '4. Traduire le tome',
-      cmd: 'epub-translator run --input "$EN" --output-dir ./runs \\\n' +
+      cmd: 'tomeshift run --input "$EN" --output-dir ./runs \\\n' +
            '  --source-lang en --target-lang fr \\\n' +
            '  --mode literary --series ma-serie@volume-01 --glossary ./glossary.json',
       body: 'Par chapitre : lookup TM → brouillon groupé → réécriture LLM par lots de 50 → restauration ' +
@@ -1503,8 +1503,8 @@ just down</code></pre>
     {
       t: 'Évaluation', cost: 'gratuit (service local)',
       title: '5. Mesurer et relire',
-      cmd: 'EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score \\\n' +
-           '  epub-translator eval --segments runs/&lt;id&gt;/segments.jsonl\n' +
+      cmd: 'TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \\\n' +
+           '  tomeshift eval --segments runs/&lt;id&gt;/segments.jsonl\n' +
            'just compare runs/&lt;id&gt;/segments.jsonl relecture.html',
       body: 'COMET-QE note sans référence ; <code>just compare</code> produit un tableau EN | FR pour la ' +
         'relecture humaine.' +

@@ -12,11 +12,11 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/commandexec"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
-	"github.com/ECecillo/ebooks-translator/internal/pipeline"
-	"github.com/ECecillo/ebooks-translator/internal/translate/nmttest"
+	"github.com/ECecillo/tomeshift/internal/commandexec"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/pipeline"
+	"github.com/ECecillo/tomeshift/internal/translate/nmttest"
 )
 
 // fixtures maps a fixture name to its XHTML chapter bodies (in spine order).
@@ -351,7 +351,7 @@ func TestRun_MissingNMTEndpointFailsBeforeTranslating(t *testing.T) {
 
 	// The setting is named, and nothing was extracted or parsed first.
 	require.Equal(t, exitcode.InvalidInputConfig, code)
-	require.Contains(t, stderr.String(), "EPUB_TRANSLATOR_NMT_ENDPOINT")
+	require.Contains(t, stderr.String(), "TOMESHIFT_NMT_ENDPOINT")
 }
 
 func TestRun_MissingNMTAPIKeyFailsBeforeTranslating(t *testing.T) {
@@ -370,7 +370,7 @@ func TestRun_MissingNMTAPIKeyFailsBeforeTranslating(t *testing.T) {
 
 	// Same treatment as the endpoint: named setting, before any provider call.
 	require.Equal(t, exitcode.InvalidInputConfig, code)
-	require.Contains(t, stderr.String(), "EPUB_TRANSLATOR_NMT_API_KEY")
+	require.Contains(t, stderr.String(), "TOMESHIFT_NMT_API_KEY")
 }
 
 // TestEstimate_NeedsNoNMTCredentials pins the reason the key check moved out of

@@ -100,7 +100,7 @@ avant de relancer.
 
 Toujours estimer avant de payer :
 ```bash
-./bin/epub-translator estimate --input vol1.epub      # 0 appel API
+./bin/tomeshift estimate --input vol1.epub      # 0 appel API
 ```
 
 ---
@@ -114,14 +114,14 @@ ces résumés en un synopsis par tome. Ces synopsis alimentent la section
 
 ```bash
 # Une fois, pour toute la série
-./bin/epub-translator series-bible --input-dir ./books/lumen --series lumen --samples 8
+./bin/tomeshift series-bible --input-dir ./books/lumen --series lumen --samples 8
 
 # Tome 1 — bible bornée au tome 1
-./bin/epub-translator run --input vol1.epub --output-dir ./runs \
+./bin/tomeshift run --input vol1.epub --output-dir ./runs \
   --mode literary --series lumen@volume-01 --glossary ./data/lumen-glossary.json
 
 # Tome 2 — bible bornée aux tomes 1 et 2
-./bin/epub-translator run --input vol2.epub --output-dir ./runs \
+./bin/tomeshift run --input vol2.epub --output-dir ./runs \
   --mode literary --series lumen@volume-02 --glossary ./data/lumen-glossary.json
 ```
 

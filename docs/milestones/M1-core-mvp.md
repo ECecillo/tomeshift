@@ -25,7 +25,7 @@ Deliver a reliable end-to-end CLI pipeline that translates EPUB EN->FR with vali
 - Service mode and queue workers.
 
 ## What We Will Implement
-- CLI command `epub-translator run` with stdlib `flag` in V1.
+- CLI command `tomeshift run` with stdlib `flag` in V1.
 - Typed config package using `github.com/kelseyhightower/envconfig` with defaults/required tags.
 - `internal/epub` for extraction, manifest/spine parsing, and recomposition.
 - `internal/segment` for paragraph extraction, normalization, and hashing.

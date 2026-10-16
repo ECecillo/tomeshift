@@ -1,12 +1,12 @@
 services:
   # Local-only self-hosted NMT. Lets the full pipeline run end-to-end with no
   # external translation service. Swap for a real engine in production by
-  # pointing EPUB_TRANSLATOR_NMT_ENDPOINT elsewhere.
+  # pointing TOMESHIFT_NMT_ENDPOINT elsewhere.
   nmt:
     build:
       context: .
       dockerfile: Dockerfile.nmt
-    image: epub-translator-nmt:local
+    image: tomeshift-nmt:local
     environment:
       - NMT_DEVSERVER_ADDR=:8081
     expose:
@@ -40,13 +40,13 @@ services:
   # Reference-free COMET-QE scoring service for quality evaluation. Heavy ML
   # stack, so it's behind the "eval" profile: `docker compose --profile eval up comet`.
   # First boot downloads the model (~2.3 GB) into the persisted comet-cache volume.
-  # Point the app/host at it via EPUB_TRANSLATOR_COMET_ENDPOINT=http://localhost:8000/score
+  # Point the app/host at it via TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score
   # (or http://comet:8000/score from inside the compose network).
   comet:
     build:
       context: .
       dockerfile: Dockerfile.comet
-    image: epub-translator-comet:local
+    image: tomeshift-comet:local
     profiles: ["eval"]
     ports:
       - "8000:8000"
@@ -64,23 +64,23 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: epub-translator:local
+    image: tomeshift:local
     env_file:
       - .env.local
     environment:
       # Override the endpoint to the in-network dev NMT so `just up` is
       # self-contained regardless of .env.local. For real translations, switch
       # to the libretranslate service (see README) by setting:
-      #   EPUB_TRANSLATOR_NMT_PROVIDER=libretranslate
-      #   EPUB_TRANSLATOR_NMT_ENDPOINT=http://libretranslate:5000/translate
-      - EPUB_TRANSLATOR_NMT_ENDPOINT=http://nmt:8081/translate
+      #   TOMESHIFT_NMT_PROVIDER=libretranslate
+      #   TOMESHIFT_NMT_ENDPOINT=http://libretranslate:5000/translate
+      - TOMESHIFT_NMT_ENDPOINT=http://nmt:8081/translate
       # Secrets are not in .env.local anymore, and env_file is read from disk by
       # Compose — so a `op run -- docker compose up` would inject nothing
       # without these. Interpolation resolves them from Compose's own
       # environment, which is exactly what `op run` provides. They default to
       # empty so a run with no secrets (dev NMT, no LLM) still starts.
-      - EPUB_TRANSLATOR_LLM_API_KEY=${EPUB_TRANSLATOR_LLM_API_KEY:-}
-      - EPUB_TRANSLATOR_NMT_API_KEY=${EPUB_TRANSLATOR_NMT_API_KEY:-}
+      - TOMESHIFT_LLM_API_KEY=${TOMESHIFT_LLM_API_KEY:-}
+      - TOMESHIFT_NMT_API_KEY=${TOMESHIFT_NMT_API_KEY:-}
     depends_on:
       nmt:
         condition: service_healthy

@@ -5,6 +5,6 @@
 //
 // It is NOT a production translation engine: it performs dictionary-based,
 // word-level EN→FR substitution and passes unknown words and placeholder tokens
-// through unchanged. In production the same EPUB_TRANSLATOR_NMT_ENDPOINT should
+// through unchanged. In production the same TOMESHIFT_NMT_ENDPOINT should
 // point at a real engine (e.g. LibreTranslate / OPUS-MT) honoring this contract.
 package main

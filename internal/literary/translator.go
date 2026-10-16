@@ -11,10 +11,10 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/ECecillo/ebooks-translator/internal/glossary"
-	"github.com/ECecillo/ebooks-translator/internal/llm"
-	"github.com/ECecillo/ebooks-translator/internal/narrative"
-	"github.com/ECecillo/ebooks-translator/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/glossary"
+	"github.com/ECecillo/tomeshift/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/narrative"
+	"github.com/ECecillo/tomeshift/internal/segment"
 )
 
 // defaultMaxTokens must comfortably fit a batch's JSON output.

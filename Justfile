@@ -1,6 +1,6 @@
 set shell := ["bash", "-cu"]
 
-# Default env file sourced by recipes that need EPUB_TRANSLATOR_* variables.
+# Default env file sourced by recipes that need TOMESHIFT_* variables.
 # Non-secret only: secrets live in a 1Password vault and are injected per
 # command via `op run` (see secret_refs below).
 env_file := ".env.local"
@@ -23,8 +23,8 @@ secret_refs := ".env.op"
 op_guard := '''
 runner=()
 need_secret=0
-if [ "${EPUB_TRANSLATOR_NMT_PROVIDER:-}" = "google" ]; then need_secret=1; fi
-if [ "${uses_llm:-0}" = "1" ] && [ "${EPUB_TRANSLATOR_LLM_CHAT_PROVIDER:-}" != "claude-cli" ]; then
+if [ "${TOMESHIFT_NMT_PROVIDER:-}" = "google" ]; then need_secret=1; fi
+if [ "${uses_llm:-0}" = "1" ] && [ "${TOMESHIFT_LLM_CHAT_PROVIDER:-}" != "claude-cli" ]; then
   need_secret=1
 fi
 if [ "$need_secret" = "1" ]; then runner=(op run --env-file=.env.op --); fi
@@ -95,8 +95,8 @@ preflight:
       fi
     fi
 
-    if [ -n "${EPUB_TRANSLATOR_NMT_ENDPOINT:-}" ] && command -v curl >/dev/null; then
-      curl -fsS --max-time 2 "${EPUB_TRANSLATOR_NMT_ENDPOINT%/}/health" >/dev/null 2>&1 && \
+    if [ -n "${TOMESHIFT_NMT_ENDPOINT:-}" ] && command -v curl >/dev/null; then
+      curl -fsS --max-time 2 "${TOMESHIFT_NMT_ENDPOINT%/}/health" >/dev/null 2>&1 && \
         echo "nmt endpoint health: ok" || \
         echo "nmt endpoint health: unavailable (non-blocking)"
     else
@@ -105,20 +105,20 @@ preflight:
 
     exit $fail
 
-# Build the CLI binary to ./bin/epub-translator.
+# Build the CLI binary to ./bin/tomeshift.
 build:
-    go build -o ./bin/epub-translator ./cmd/epub-translator
+    go build -o ./bin/tomeshift ./cmd/tomeshift
 
 # Print which env file will be sourced.
 show-env:
     @echo "env file: {{env_file}}"
 
-# Show the resolved EPUB_TRANSLATOR_* variables.
+# Show the resolved TOMESHIFT_* variables.
 print-config-vars:
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
-    env | rg '^EPUB_TRANSLATOR_' || true
+    env | rg '^TOMESHIFT_' || true
 
 # ── Translation services ──────────────────────────────────────────────────────
 
@@ -155,7 +155,7 @@ run input output_dir="./runs":
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
     {{op_guard}}
-    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator run \
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/tomeshift run \
       --input "{{input}}" --output-dir "{{output_dir}}" \
       --source-lang en --target-lang fr
 
@@ -172,7 +172,7 @@ literary input series glossary="" run_id="":
     if [ -n "{{run_id}}" ]; then args+=(--run-id "{{run_id}}"); fi
     uses_llm=1
     {{op_guard}}
-    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/tomeshift "${args[@]}"
 
 # Project the LLM cost of a book before paying (0 API calls). Arg: input EPUB.
 # Deliberately NOT wrapped in `op run`: it makes no provider call, so it must
@@ -181,7 +181,7 @@ estimate input:
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
-    go run ./cmd/epub-translator estimate --input "{{input}}"
+    go run ./cmd/tomeshift estimate --input "{{input}}"
 
 # Translate every EPUB in a directory (shared TM + glossary). Args: input dir,
 # optional glossary, optional reference dir (enables chrF in the aggregate report).
@@ -194,7 +194,7 @@ batch input_dir glossary="" reference_dir="":
     if [ -n "{{glossary}}" ]; then args+=(--glossary "{{glossary}}"); fi
     if [ -n "{{reference_dir}}" ]; then args+=(--reference-dir "{{reference_dir}}"); fi
     {{op_guard}}
-    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/tomeshift "${args[@]}"
 
 # ── Series bible & glossary ───────────────────────────────────────────────────
 
@@ -210,7 +210,7 @@ seed-bible input series samples="8" merge="":
     if [ "{{merge}}" = "merge" ]; then args+=(--merge); fi
     uses_llm=1
     {{op_guard}}
-    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/tomeshift "${args[@]}"
 
 # Build the series bible BEFORE translating, from every volume in a directory
 # (RFC 0008). Style/voices/address are seeded from all volumes; summaries are one
@@ -234,7 +234,7 @@ series-bible input_dir series samples="3" merge="":
     if [ "{{merge}}" = "merge" ]; then args+=(--merge); fi
     uses_llm=1
     {{op_guard}}
-    "${runner[@]+"${runner[@]}"}" go run ./cmd/epub-translator "${args[@]}"
+    "${runner[@]+"${runner[@]}"}" go run ./cmd/tomeshift "${args[@]}"
 
 # Project the cost of a bible build before paying (0 API calls, no credential).
 # `estimate` prices translating a book and cannot price this; the bible build is
@@ -244,7 +244,7 @@ series-bible-cost input_dir series samples="3":
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
-    go run ./cmd/epub-translator series-bible \
+    go run ./cmd/tomeshift series-bible \
       --input-dir "{{input_dir}}" --series "{{series}}" \
       --samples "{{samples}}" --dry-run
 
@@ -272,7 +272,7 @@ glossary-suggest input out="glossary.json" min_count="5":
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
-    go run ./cmd/epub-translator glossary-suggest \
+    go run ./cmd/tomeshift glossary-suggest \
       --input "{{input}}" --out "{{out}}" --min-count "{{min_count}}"
 
 # ── Evaluation & review ───────────────────────────────────────────────────────
@@ -282,7 +282,7 @@ eval-ref candidate reference:
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
-    go run ./cmd/epub-translator eval --candidate "{{candidate}}" --reference "{{reference}}"
+    go run ./cmd/tomeshift eval --candidate "{{candidate}}" --reference "{{reference}}"
 
 # COMET-QE (reference-free) on a run's segments.jsonl — needs a COMET service up
 # (just comet-dev / comet-up). Arg: path to segments.jsonl.
@@ -290,7 +290,7 @@ eval-qe segments:
     #!/usr/bin/env bash
     set -euo pipefail
     set -a; source "{{env_file}}"; set +a
-    go run ./cmd/epub-translator eval --segments "{{segments}}"
+    go run ./cmd/tomeshift eval --segments "{{segments}}"
 
 # Carve a single chapter out of an EPUB. Args: src, out, then one+ href substrings.
 #   just carve "books/vol1.epub" en-ch1.epub chapter_1.xhtml
@@ -306,7 +306,7 @@ compare segments out:
 
 # Build app container image.
 docker-build:
-    docker build -t epub-translator:local .
+    docker build -t tomeshift:local .
 
 # Run the containerized NMT workflow (app + nmt).
 # Wrapped in `op run` when a secret is needed, so Compose can interpolate the
@@ -358,7 +358,7 @@ fuzz fuzz_time="10s":
     fi
 
 # Check that the illustrated HTML docs still cover the code's user-facing
-# surface: every command, flag, EPUB_TRANSLATOR_* variable, recipe and exit
+# surface: every command, flag, TOMESHIFT_* variable, recipe and exit
 # code must be mentioned in docs/utilisation.html or
 # docs/comprendre-le-projet.html. Fails when a feature shipped without the docs
 # being reopened. See AGENTS.md § Living Documentation.

@@ -18,7 +18,7 @@
 *.sqlite-wal
 
 # Built binaries
-/epub-translator
+/tomeshift
 /nmt-devserver
 /bin/
 

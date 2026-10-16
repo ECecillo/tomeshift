@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/translate"
-	"github.com/ECecillo/ebooks-translator/internal/translate/nmttest"
+	"github.com/ECecillo/tomeshift/internal/translate"
+	"github.com/ECecillo/tomeshift/internal/translate/nmttest"
 )
 
 func TestHTTPTranslator_Translate(t *testing.T) {

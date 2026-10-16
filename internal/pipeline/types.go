@@ -3,7 +3,7 @@ package pipeline
 import (
 	"time"
 
-	"github.com/ECecillo/ebooks-translator/internal/qa"
+	"github.com/ECecillo/tomeshift/internal/qa"
 )
 
 const (

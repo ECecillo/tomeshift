@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/ECecillo/ebooks-translator/internal/commandexec"
-	"github.com/ECecillo/ebooks-translator/internal/config"
-	"github.com/ECecillo/ebooks-translator/internal/eval/comettest"
-	"github.com/ECecillo/ebooks-translator/internal/exitcode"
+	"github.com/ECecillo/tomeshift/internal/commandexec"
+	"github.com/ECecillo/tomeshift/internal/config"
+	"github.com/ECecillo/tomeshift/internal/eval/comettest"
+	"github.com/ECecillo/tomeshift/internal/exitcode"
 )
 
 func TestEval_QEMode(t *testing.T) {

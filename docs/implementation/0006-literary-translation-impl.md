@@ -16,7 +16,7 @@ for review rather than inventing an alternative.
 ## 0. Ground rules (read before any code)
 
 **House conventions (match existing code exactly):**
-- Module path: `github.com/ECecillo/ebooks-translator`. Go 1.26.
+- Module path: `github.com/ECecillo/tomeshift`. Go 1.26.
 - One package per directory; every package has a `doc.go` and, where it returns
   domain errors, an `errors.go` with sentinel `var Err... = errors.New(...)`.
 - Wrap errors as `fmt.Errorf("unable to <context>, err: %w", err)`.
@@ -41,7 +41,7 @@ for review rather than inventing an alternative.
   `internal/segment/placeholder.go` (+ `_test.go`).
 - SQLite store style: `internal/tm/store.go`.
 - CLI flag parsing + command dispatch: `internal/cli/*.go`,
-  `internal/commandexec/execute.go`, `cmd/epub-translator/{config,main}.go`.
+  `internal/commandexec/execute.go`, `cmd/tomeshift/{config,main}.go`.
 
 **Global definition of done:** all phases green, `golangci-lint` 0 issues,
 integration test exercises literary mode end-to-end against mocks, no live API
@@ -191,7 +191,7 @@ versioning monotonic; series-scoped; no glossary duplication; SQLite single-conn
   **offline**. Assert: seed produces a populated bible; update appends a summary
   and logs an address change when the canned response indicates one; malformed
   JSON → wrapped error (no panic).
-- CLI: `epub-translator style-profile --input <epub> --series <id> [--samples N]`
+- CLI: `tomeshift style-profile --input <epub> --series <id> [--samples N]`
   → writes/updates the bible; prints a summary. Mirror `glossary-suggest` wiring.
 
 **DoD/Commit:** `feat(narrative): style-profile seeding + bible-update pass`.
@@ -256,12 +256,12 @@ carry-over, bible-update stage, provider/model config, `--mode literary`.
 
 **Files:** `internal/pipeline/orchestrator.go` (add a literary path or a
 `LiteraryOrchestrator`), `internal/pipeline/types.go` (RunConfig: `Mode`,
-`SeriesID`), `cmd/epub-translator/config.go` + `main.go` +
+`SeriesID`), `cmd/tomeshift/config.go` + `main.go` +
 `internal/commandexec/execute.go` (LLM provider/base-URL/key/model env +
 `--mode` flag), `internal/cli/flags.go`.
 
 **Design:**
-- New env (mirror existing): `EPUB_TRANSLATOR_LLM_CHAT_PROVIDER`
+- New env (mirror existing): `TOMESHIFT_LLM_CHAT_PROVIDER`
   (`anthropic|openai`), `..._LLM_BASE_URL`, `..._LLM_MODEL`, reuse `..._LLM_API_KEY`.
   Add a chat-client factory in `internal/llm` (`NewChatClient(provider,baseURL,key)`),
   mirroring `translate.NewProvider`.
@@ -315,7 +315,7 @@ escalation reuses existing seam; report surfaces fidelity metrics; offline tests
 **Goal:** a repeatable way to translate one chapter across providers and compare
 — the decision tool, run by a human with real keys.
 
-**Files:** `cmd/epub-translator` `bakeoff` subcommand (or a documented `just`
+**Files:** `cmd/tomeshift` `bakeoff` subcommand (or a documented `just`
 recipe) that runs `literary.TranslateChapter` for N configured
 provider/model combos on the same chapter + bible, writing each output + the
 judge score to `runs/bakeoff/<model>/`. README section documenting accounts

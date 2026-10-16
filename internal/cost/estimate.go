@@ -1,7 +1,7 @@
 package cost
 
 import (
-	"github.com/ECecillo/ebooks-translator/internal/segment"
+	"github.com/ECecillo/tomeshift/internal/segment"
 )
 
 // Tokenisation heuristics. Deliberately coarse and stated in one place: for an

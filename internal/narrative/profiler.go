@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ECecillo/ebooks-translator/internal/llm"
+	"github.com/ECecillo/tomeshift/internal/llm"
 )
 
 // defaultProfilerMaxTokens must fit a full series bible (style guide + many

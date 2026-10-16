@@ -34,7 +34,7 @@ from xml.etree import ElementTree as ET
 # pour l'anglais, et une valeur plus basse pour le français (accents, élisions).
 CHARS_PER_TOKEN_EN = 4.0
 CHARS_PER_TOKEN_FR = 3.5
-# Expansion FR/EN en sortie, alignée sur EPUB_TRANSLATOR_LLM_OUTPUT_EXPANSION.
+# Expansion FR/EN en sortie, alignée sur TOMESHIFT_LLM_OUTPUT_EXPANSION.
 FR_EXPANSION = 1.15
 # Surcoût JSON par segment dans la charge utile et dans la réponse (clés,
 # guillemets, échappements), mesuré sur le schéma de internal/literary.
@@ -159,7 +159,7 @@ def prefix_chars(bible_db: str | None, series_id: str, glossary_path: str | None
 def segments_per_chapter(chapter_chars: list[int], total_segments: int, total_chars: int) -> list[int]:
     """Répartit total_segments sur les chapitres, au prorata de leur longueur.
 
-    total_segments et total_chars viennent de `epub-translator estimate`, qui
+    total_segments et total_chars viennent de `tomeshift estimate`, qui
     applique la vraie segmentation. On ne fait ici que la distribution.
     """
     chars_per_segment = total_chars / total_segments
@@ -286,7 +286,7 @@ def nmt_cost(total_chars: int, per_mtok_chars_usd: float, free_chars_remaining: 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--epub", required=True, help="EPUB source à projeter")
-    parser.add_argument("--segments", type=int, required=True, help="total de segments (cf. epub-translator estimate)")
+    parser.add_argument("--segments", type=int, required=True, help="total de segments (cf. tomeshift estimate)")
     parser.add_argument("--chars", type=int, required=True, help="total de caractères source (idem)")
     parser.add_argument("--bible", help="SQLite de la bible narrative")
     parser.add_argument("--series-id", default="", help="series_id dans la bible")

@@ -115,7 +115,7 @@ func (c *CLIChatClient) Chat(ctx context.Context, req ChatRequest) (ChatResponse
 
 	// A working directory of its own, so the CLI's project-file discovery
 	// cannot fold this repository's CLAUDE.md into a literary translation.
-	dir, err := os.MkdirTemp("", "epub-translator-cli-")
+	dir, err := os.MkdirTemp("", "tomeshift-cli-")
 	if err != nil {
 		return ChatResponse{}, fmt.Errorf("unable to create cli working dir, err: %w", err)
 	}
