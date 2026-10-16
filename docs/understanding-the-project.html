@@ -158,7 +158,7 @@
   <h1>tomeshift — understanding the project<br/><span style="color:var(--muted);font-size:0.75em">architecture, concepts, and logic, illustrated</span></h1>
   <div class="meta">
     Educational document &amp; contributor documentation · 8 August 2026<br/>
-    Referenced code pinned at <a href="https://github.com/ECecillo/tomeshift/tree/953441dc1b7a4fca3231daf39e00d99753abc8cf"><code>953441d</code></a>
+    Referenced code pinned at <a href="https://github.com/ECecillo/tomeshift/tree/621724fb2e8190d7358c64bcc77b80eff823c93a"><code>953441d</code></a>
     · Architecture source of truth: <code>docs/ARCHITECTURE.md</code>
     · To <em>use</em> the tool: <a href="usage.html">usage.html</a>
   </div>
@@ -232,9 +232,9 @@ flowchart LR
     L --> M["EPUB FR + artifacts"]
 </pre>
 <figcaption>Overview. The entry point is
-<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/cmd/tomeshift/main.go#L10-L14"><code>cmd/tomeshift/main.go</code></a>,
+<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/cmd/tomeshift/main.go#L10-L14"><code>cmd/tomeshift/main.go</code></a>,
 the loop is
-<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/orchestrator.go#L81-L281"><code>Orchestrator.Run</code></a>.</figcaption>
+<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/pipeline/orchestrator.go#L81-L281"><code>Orchestrator.Run</code></a>.</figcaption>
 </figure>
 
 <div class="card key">
@@ -244,7 +244,7 @@ the loop is
     segmentation, budget guardrail, recomposition, QA, ledger, artifacts: identical. Only
     <em>how cost is projected</em> and <em>how translation happens</em> differ — which is
     exactly what the
-    <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/mode.go#L27-L52"><code>translationMode</code></a>
+    <a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/pipeline/mode.go#L27-L52"><code>translationMode</code></a>
     interface abstracts (4 methods: <code>Init</code>, <code>Project</code>, <code>Translate</code>, <code>Cost</code>).
     Adding a third mode means implementing this interface, not touching the pipeline.
   </p>
@@ -350,7 +350,7 @@ rewrites those nodes in place.</figcaption>
   <span class="label">A detail that matters</span>
   <p style="margin-top:0">
     <code>Segment.Node</code> is a <em>pointer</em> into the parsed tree
-    (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/segment/segmenter.go#L51-L61">segmenter.go:51</a>).
+    (<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/segment/segmenter.go#L51-L61">segmenter.go:51</a>).
     Restoring a translation means mutating the tree; recomposing means re-serializing the mutated tree
     into a new ZIP. There is never any string "re-gluing", so never any misalignment between what was
     translated and what is written.
@@ -359,7 +359,7 @@ rewrites those nodes in place.</figcaption>
     Translated tags: <code>p</code>, <code>h1</code>…<code>h6</code>. Tags ignored
     entirely: <code>head</code>, <code>script</code>, <code>style</code>, <code>code</code>,
     <code>pre</code>
-    (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/epub/xhtml.go#L12-L20">xhtml.go:12</a>).
+    (<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/epub/xhtml.go#L12-L20">xhtml.go:12</a>).
   </p>
 </div>
 
@@ -373,7 +373,7 @@ rewrites those nodes in place.</figcaption>
 
 <p>
   Two distinct treatments, depending on the child node encountered
-  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/segment/placeholder.go#L37-L113">placeholder.go:37</a>):
+  (<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/segment/placeholder.go#L37-L113">placeholder.go:37</a>):
 </p>
 
 <ul>
@@ -406,7 +406,7 @@ rewrites those nodes in place.</figcaption>
 </p>
 
 <p>
-  <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/segment/placeholder.go#L229-L287"><code>validateTokens</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/segment/placeholder.go#L229-L287"><code>validateTokens</code></a>
   therefore runs a full <em>preflight</em> — presence, uniqueness, opening/closing pairing — <strong>before
   touching the node</strong>. On failure, the node keeps its source markup: the segment degrades to
   "untranslated", QA counts it, and the run continues. Never any broken markup in the output.
@@ -434,7 +434,7 @@ flowchart TB
   Before being stored or looked up, a segment is <strong>normalized</strong>: multiple spaces
   collapsed, non-breaking spaces replaced, typographic apostrophes and quotes folded to their
   ASCII equivalent, em dashes → single dash, <code>…</code> → <code>...</code>
-  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/segment/normalizer.go#L8-L25">normalizer.go:8</a>).
+  (<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/segment/normalizer.go#L8-L25">normalizer.go:8</a>).
 </p>
 
 <pre><code>« He said,  “Wait.” »          →  He said, "Wait."      → sha256 → 3f9c…
@@ -454,7 +454,7 @@ flowchart TB
     A TM entry carries an <code>engine</code> tag: <code>nmt-google</code>,
     <code>nmt-libretranslate</code>, <code>literary</code>, <code>llm-postedit</code>. In literary
     mode, <strong>a draft is never a hit</strong>
-    (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/orchestrator.go#L734-L749"><code>lookupTranslation</code></a>
+    (<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/pipeline/orchestrator.go#L734-L749"><code>lookupTranslation</code></a>
     rejects <code>nmt-*</code> engines). Without this rule, a draft written by an old run
     would be served back as a finished translation and that segment would <em>never again</em> be refined.
     Literary mode, moreover, only persists what the LLM produced — and only
@@ -493,7 +493,7 @@ flowchart TB
 </pre>
 <figcaption><code>nmt</code> mode. Escalation can never degrade the output: on failure we
 fall back to the draft — but the call is still billed, and counted as such
-(<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/orchestrator.go#L644-L676">orchestrator.go:560</a>).</figcaption>
+(<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/pipeline/orchestrator.go#L644-L676">orchestrator.go:560</a>).</figcaption>
 </figure>
 
 <div class="widget" id="w-sim">
@@ -551,14 +551,14 @@ sequenceDiagram
     P->>TM: persists ONLY the refined segments
 </pre>
 <figcaption>A chapter in literary mode
-(<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/pipeline/mode.go#L200-L298">mode.go:178</a>).</figcaption>
+(<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/pipeline/mode.go#L200-L298">mode.go:178</a>).</figcaption>
 </figure>
 
 <h3>The prompt: one frozen part, one volatile part</h3>
 
 <p>
   Each LLM call is made of two messages
-  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/literary/prompt.go#L22-L113">prompt.go:22</a>):
+  (<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/literary/prompt.go#L22-L113">prompt.go:22</a>):
 </p>
 
 <div class="table-wrap">
@@ -594,7 +594,7 @@ sequenceDiagram
   A batch starts with 50 segments. If the response omits some (a small model that stops, truncated
   JSON), the code does not retry identically: it <strong>splits the missing segments into two halves</strong>
   and starts over, recursively, down to a single segment
-  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/literary/translator.go#L291-L359">translator.go:243</a>).
+  (<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/literary/translator.go#L291-L359">translator.go:243</a>).
   Whatever is left unanswered keeps its NMT draft.
 </p>
 
@@ -629,7 +629,7 @@ Only <em>unusable</em> responses are repaired by splitting.</figcaption>
   <p style="margin-top:0">
     A model that knows a character's true nature colors their dialogue from volume 1. The
     bounding is encoded in the identifier itself —
-    <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/narrative/types.go#L59-L67"><code>ScopedSeriesID</code></a>
+    <a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/narrative/types.go#L59-L67"><code>ScopedSeriesID</code></a>
     produces <code>lumen@volume-01</code> — so neither the database schema nor the run flags had
     to change.
   </p>
@@ -711,7 +711,7 @@ flowchart LR
   <p style="margin-top:0">
     <strong>There is only one cost model.</strong> <code>estimate</code> and the run guardrail
     both go through
-    <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/cost/model.go#L119-L128"><code>Model.Project</code></a>.
+    <a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/cost/model.go#L119-L128"><code>Model.Project</code></a>.
     What <code>estimate</code> announces is therefore exactly what the per-book cap applies —
     they cannot diverge.
   </p>
@@ -864,7 +864,7 @@ with neither projection nor cap — and the biggest: one call per chapter across
 <p>
   What makes the projection correct is counting the <strong>calls</strong> and not only the
   segments: each call repeats the prefix. This is why
-  <a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/cost/model.go#L36-L77"><code>LLMPass</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/cost/model.go#L36-L77"><code>LLMPass</code></a>
   separates <code>Segments</code>, <code>Chars</code>, <code>Calls</code>, <code>PrefixChars</code>,
   and details the shape <em>per chapter</em> rather than on average: a long chapter has both a
   bigger prefix and more calls to re-read it, and the average crushes precisely that
@@ -908,7 +908,7 @@ would skew the next run's projection.</figcaption>
 
 <p>
   The quality gate combines static thresholds and an external validator
-  (<a href="https://github.com/ECecillo/tomeshift/blob/953441dc1b7a4fca3231daf39e00d99753abc8cf/internal/qa/checks.go#L11-L41">checks.go:11</a>):
+  (<a href="https://github.com/ECecillo/tomeshift/blob/621724fb2e8190d7358c64bcc77b80eff823c93a/internal/qa/checks.go#L11-L41">checks.go:11</a>):
 </p>
 
 <div class="table-wrap">
