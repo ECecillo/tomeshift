@@ -5,6 +5,12 @@
 /books/
 /epub/
 
+# Personal working files kept out of the public repo: the per-series glossary
+# (glossary.example.json is the tracked template) and the private dev journal
+# that AGENTS.md asks agents to maintain.
+/glossary.json
+/docs/journal.html
+
 # Side-by-side review pages built by `just compare` from a run's segments.jsonl.
 # They embed the book's source text and its translation, so they belong with the
 # books: never committed. Only the illustrated docs under docs/ are tracked.

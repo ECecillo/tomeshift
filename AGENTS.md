@@ -36,8 +36,8 @@ The application is built as a **Go CLI project** with:
 ├── docs/
 │   ├── ARCHITECTURE.md               - architecture and constraints (source of truth)
 │   ├── DEPENDENCIES.md               - dependency policy
-│   ├── comprendre-le-projet.html     - illustrated architecture & contributor guide
-│   ├── utilisation.html              - illustrated usage & command reference
+│   ├── understanding-the-project.html     - illustrated architecture & contributor guide
+│   ├── usage.html              - illustrated usage & command reference
 │   ├── milestones/                   - milestone plans and delivery sequencing
 │   └── rfcs/                         - implementation/infrastructure proposals
 ├── scripts/
@@ -206,14 +206,14 @@ Before committing:
 Two illustrated HTML documents are the entry point for anyone discovering or
 extending this project. They are part of the feature, not a follow-up:
 
-- `docs/comprendre-le-projet.html` — how the pipeline works and how to extend it
+- `docs/understanding-the-project.html` — how the pipeline works and how to extend it
   (concepts, Mermaid diagrams, animated walkthroughs, package map, invariants).
-- `docs/utilisation.html` — how to run it (setup, services, every command and
+- `docs/usage.html` — how to run it (setup, services, every command and
   flag with its consequence on processing/output/cost, exit codes).
 
 ## When you ship something, update them in the same change
 
-| You added / changed | Update in `comprendre-le-projet.html` | Update in `utilisation.html` |
+| You added / changed | Update in `understanding-the-project.html` | Update in `usage.html` |
 |---|---|---|
 | A CLI command | §11 package map if a new package appears | §6 command reference, §5 workflow if it belongs in the standard path |
 | A flag | only if it changes the pipeline's logic | §6 flag table **and** the `FLAGS` array in the flag explorer (processing / output / cost) |
@@ -249,3 +249,5 @@ At the end of every development session, update `docs/journal.html` with a new `
 - The immediate next step
 
 The journal is the source of truth for resuming work across sessions. Do not duplicate milestone details already in `docs/milestones/` — the journal adds the temporal dimension (when, in what order).
+
+`docs/journal.html` is git-ignored: it is a personal working log and is never committed. Create it locally if it does not exist. Never copy book text into it, and never `git add -f` it.
