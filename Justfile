@@ -359,8 +359,8 @@ fuzz fuzz_time="10s":
 
 # Check that the illustrated HTML docs still cover the code's user-facing
 # surface: every command, flag, TOMESHIFT_* variable, recipe and exit
-# code must be mentioned in docs/utilisation.html or
-# docs/comprendre-le-projet.html. Fails when a feature shipped without the docs
+# code must be mentioned in docs/usage.html or
+# docs/understanding-the-project.html. Fails when a feature shipped without the docs
 # being reopened. See AGENTS.md § Living Documentation.
 docs-audit:
     python3 scripts/docs_audit.py

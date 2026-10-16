@@ -26,8 +26,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 # The documents under audit. A new element must appear in at least one of them.
 DOCS = [
-    ROOT / "docs" / "utilisation.html",
-    ROOT / "docs" / "comprendre-le-projet.html",
+    ROOT / "docs" / "usage.html",
+    ROOT / "docs" / "understanding-the-project.html",
 ]
 
 # Elements deliberately left out of the illustrated docs, with the reason.

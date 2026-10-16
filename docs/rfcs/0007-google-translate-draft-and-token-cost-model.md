@@ -292,7 +292,7 @@ The two concerns are distinct, and only the second is a context problem:
    `Protect`/`Apply` per segment; drop the draft `TM.Save` on the literary path.
 6. `internal/segment/placeholder.go`: pre-flight token validation in `Restore`;
    correct the now-true comment at the call site.
-7. Config, `.env.example`, `docs/INSTALLATION.md`, `docs/guide-traduction.md`.
+7. Config, `.env.example`, `docs/INSTALLATION.md`, `docs/translation-guide.md`.
 8. **Checkpoint:** run chapter 1, record chrF and COMET-QE. This is the Google-only
    baseline.
 
@@ -322,7 +322,7 @@ The two concerns are distinct, and only the second is a context problem:
    named failure rather than letting it fall through to `decodeResponse`.
 3. `internal/cost` + config: add `LLM_TOKEN_MULTIPLIER` (default `1.0`), applied on
    top of `charsPerToken` in both the guardrail and `estimate`.
-4. `.env.example`, `docs/guide-traduction.md`: `claude-sonnet-5` as the documented
+4. `.env.example`, `docs/translation-guide.md`: `claude-sonnet-5` as the documented
    example, with the Sonnet 5 rates and multiplier.
 5. **Checkpoint:** re-run chapter 1 and read `usage.output_tokens`. With thinking
    disabled it should track the Sonnet 4.6 baseline within the tokenizer factor; a

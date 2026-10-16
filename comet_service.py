@@ -22,7 +22,7 @@ Run it with `uv` (pins a compatible Python + deps; see requirements-comet.txt):
 The model `wmt20-comet-qe-da` is non-gated (no HF login needed). It outputs
 z-score-like values centered near 0 (negatives are normal) — use it to *rank*
 segments and compare systems, not as an absolute 0..1 quality grade.
-See docs/evaluation-qualite.md for interpretation.
+See docs/quality-evaluation.md for interpretation.
 """
 
 from comet import download_model, load_from_checkpoint
