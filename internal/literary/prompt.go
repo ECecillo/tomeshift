@@ -52,7 +52,7 @@ func stablePrefix(bible narrative.Bible, terms []glossary.Term, chapterSource st
 		sb.WriteString("aucun")
 	} else {
 		for _, character := range bible.Characters {
-			sb.WriteString(fmt.Sprintf("- %s | registre: %s | notes: %s", character.Name, character.Register, character.Notes))
+			fmt.Fprintf(&sb, "- %s | registre: %s | notes: %s", character.Name, character.Register, character.Notes)
 			if len(character.SampleFR) > 0 {
 				sb.WriteString(" | exemples: ")
 				sb.WriteString(strings.Join(character.SampleFR, " / "))
@@ -66,10 +66,10 @@ func stablePrefix(bible narrative.Bible, terms []glossary.Term, chapterSource st
 		sb.WriteString("aucun")
 	} else {
 		for _, rule := range bible.Address {
-			sb.WriteString(fmt.Sprintf("- %s -> %s: %s", rule.From, rule.To, rule.Form))
+			fmt.Fprintf(&sb, "- %s -> %s: %s", rule.From, rule.To, rule.Form)
 			if len(rule.History) > 0 {
 				last := rule.History[len(rule.History)-1]
-				sb.WriteString(fmt.Sprintf(" (dernier %s: %s)", last.AtChapter, last.Note))
+				fmt.Fprintf(&sb, " (dernier %s: %s)", last.AtChapter, last.Note)
 			}
 			sb.WriteByte('\n')
 		}
@@ -80,7 +80,7 @@ func stablePrefix(bible narrative.Bible, terms []glossary.Term, chapterSource st
 		sb.WriteString("aucun")
 	} else {
 		for _, summary := range bible.Summaries {
-			sb.WriteString(fmt.Sprintf("- %s: %s\n", summary.Label(), summary.Summary))
+			fmt.Fprintf(&sb, "- %s: %s\n", summary.Label(), summary.Summary)
 		}
 	}
 
@@ -89,7 +89,7 @@ func stablePrefix(bible narrative.Bible, terms []glossary.Term, chapterSource st
 		sb.WriteString("aucun")
 	} else {
 		for _, term := range terms {
-			sb.WriteString(fmt.Sprintf("- %s => %s\n", term.EN, term.FR))
+			fmt.Fprintf(&sb, "- %s => %s\n", term.EN, term.FR)
 		}
 	}
 

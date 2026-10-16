@@ -212,7 +212,7 @@ func (b *Bar) line(now time.Time) string {
 		sb.WriteString(b.prefix)
 		sb.WriteString(" · ")
 	}
-	sb.WriteString(fmt.Sprintf("%-*s", stageWidth, b.stage))
+	fmt.Fprintf(&sb, "%-*s", stageWidth, b.stage)
 
 	elapsed := now.Sub(b.started)
 	if b.total <= 0 {
@@ -230,16 +230,16 @@ func (b *Bar) line(now time.Time) string {
 	sb.WriteString(" [")
 	sb.WriteString(strings.Repeat(filledCell, filled))
 	sb.WriteString(strings.Repeat(emptyCell, barCells-filled))
-	sb.WriteString(fmt.Sprintf("] %3.0f%% %d/%d seg", ratio*100, done, b.total))
+	fmt.Fprintf(&sb, "] %3.0f%% %d/%d seg", ratio*100, done, b.total)
 
 	if b.chapters > 0 && b.chapter > 0 {
-		sb.WriteString(fmt.Sprintf(" · ch %d/%d", b.chapter, b.chapters))
+		fmt.Fprintf(&sb, " · ch %d/%d", b.chapter, b.chapters)
 	}
 	if b.reused > 0 {
-		sb.WriteString(fmt.Sprintf(" · tm %.0f%%", float64(b.reused)/float64(done)*100))
+		fmt.Fprintf(&sb, " · tm %.0f%%", float64(b.reused)/float64(done)*100)
 	}
 	if b.usd > 0 {
-		sb.WriteString(fmt.Sprintf(" · $%.4f", b.usd))
+		fmt.Fprintf(&sb, " · $%.4f", b.usd)
 	}
 	sb.WriteString(" · " + humanDuration(elapsed))
 	if eta, ok := b.eta(elapsed, done, ratio); ok {
