@@ -18,7 +18,7 @@
 Literary mode already implements a two-stage pipeline: an NMT engine produces a
 draft, then an LLM refines every fresh segment with the series bible and glossary
 in context. The refinement stage is mature (RFC 0006, plus the self-healing batch
-work in `342f3bd`/`347ba2d`/`de07509`). The draft stage is not: it is served by a
+work in `3707ca8`/`889f123`/`a9dd615`). The draft stage is not: it is served by a
 self-hosted LibreTranslate/Argos instance whose output quality is the weakest link
 in the chain.
 
@@ -67,7 +67,7 @@ All figures come from the repository, not from estimates. Commands are inline in
 | Current cost per volume (`claude-sonnet-4-6`) | 4.22 $ | `scripts/cost_model.py` |
 
 The prefix share is the load-bearing number: the count of LLM *calls*, not of
-segments, drives the dominant part of input cost. `de07509` already acted on this
+segments, drives the dominant part of input cost. `a9dd615` already acted on this
 by raising `defaultBatchSize` from 10 to 50; this RFC does not revisit it.
 
 ## Goals
@@ -206,7 +206,7 @@ consequences land squarely on this pipeline:
 - Thinking tokens bill at the **output** rate (15 $/MTok).
 - `max_tokens` is a hard ceiling on thinking **plus** response text. With
   `MaxTokens: 16000` and a 50-segment JSON reply, thinking competes with the
-  answer, and a truncated reply is exactly the failure mode `342f3bd` was written
+  answer, and a truncated reply is exactly the failure mode `3707ca8` was written
   to survive — the self-healing retry would absorb it, silently, at extra cost.
 
 Mitigation: send `thinking: {"type": "disabled"}` explicitly. Whether adaptive
@@ -246,7 +246,7 @@ inherit the same error.
 
 **Behavioural risks to check in the comparison, not to assume.** Sonnet 5 follows
 instructions more literally than Sonnet 4.6. The system prompt opens with
-`RÈGLES ABSOLUES` in capitals, and `af84a62` already had to soften a rule that was
+`RÈGLES ABSOLUES` in capitals, and `ba84ade` already had to soften a rule that was
 pushing the model to translate proper nouns against the glossary. More literal
 compliance could revive that class of conflict. Response length also calibrates to
 task complexity rather than to a fixed verbosity, which for a fixed-schema JSON
@@ -280,7 +280,7 @@ The two concerns are distinct, and only the second is a context problem:
 
 ### Batch 1 — Google end to end (decisions 1, 2, 3, 4, 5)
 
-1. Rebase `google-translate-api` onto `de07509` (`defaultBatchSize` is 50 there,
+1. Rebase `google-translate-api` onto `a9dd615` (`defaultBatchSize` is 50 there,
    not 10).
 2. `internal/translate/google.go`: v2 adapter, `format=html`, API key, batch
    request bounded to `min(128, 5000 chars)`, index-aligned response mapping,
@@ -443,7 +443,7 @@ post-August figure rather than on the introductory one.
     by `scripts/cost_model.py` — at +50% output the volume goes from 5.49 $ to
     7.36 $.
 - Risk: Sonnet 5's more literal instruction following revives the proper-noun
-  conflict that `af84a62` had to soften out of the `RÈGLES ABSOLUES` block.
+  conflict that `ba84ade` had to soften out of the `RÈGLES ABSOLUES` block.
   - Mitigation: the glossary is enforced mechanically by `Protect`/`Apply`, so a
     locked term cannot regress; `glossary_violations` in the run report is the
     detector, and the batch 4 checkpoint reads it.

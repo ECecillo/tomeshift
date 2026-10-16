@@ -137,7 +137,7 @@
   <h1>RFC 0007 — Google Cloud Translation as the draft engine,<br/>and a token-based budget guardrail</h1>
   <div class="meta">
     Design document · 1<sup>st</sup> August 2026 · status <code>proposed</code><br/>
-    Referenced code frozen at <a href="https://github.com/ECecillo/tomeshift/tree/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377"><code>de07509</code></a>
+    Referenced code frozen at <a href="https://github.com/ECecillo/tomeshift/tree/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377"><code>a9dd615</code></a>
     · RFC: <code>docs/rfcs/0007-google-translate-draft-and-token-cost-model.md</code>
     · Reproducible figures: <code>scripts/cost_model.py</code>
   </div>
@@ -551,7 +551,7 @@ whole book          : ~119,245 tokens
   <span class="label">Conclusion already drawn upstream</span>
   <p style="margin-top:0">
     This analysis was <strong>already done and already fixed</strong> on <code>main</code>. Commit
-    <a href="https://github.com/ECecillo/tomeshift/commit/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377"><code>de07509</code></a>
+    <a href="https://github.com/ECecillo/tomeshift/commit/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377"><code>a9dd615</code></a>
     raises <code>defaultBatchSize</code> from 10 to 50 with this comment:
   </p>
   <blockquote style="margin-bottom:0">
@@ -639,7 +639,7 @@ whole book          : ~119,245 tokens
 </div>
 
 <p>
-  Two arguments decide for v2. <strong>Authentication</strong>: <code>NMTAPIKey</code> already exists
+  Two arguments settle it in favor of v2. <strong>Authentication</strong>: <code>NMTAPIKey</code> already exists
   in the config, so an environment variable suffices, whereas v3 imposes a service account and
   credentials to plumb through Docker and CI — for zero translation-quality gain. And the
   <strong>native glossary would not replace <code>Protect</code>/<code>Apply</code></strong>: the
@@ -733,7 +733,7 @@ flowchart TB
     <tr><td class="num">4</td><td>Stop persisting raw NMT drafts <strong>in literary mode</strong></td><td>3.1</td></tr>
     <tr><td class="num">5</td><td>Atomic <code>Restore</code>: validate all tokens before <code>detachChildren</code></td><td>3.3</td></tr>
     <tr><td class="num">6</td><td>Guardrail unified on the token model, overhead per <em>call</em></td><td>3.2, 3.4</td></tr>
-    <tr><td class="num">7</td><td>Model the free tier: NMT characters to the ledger, only the overflow is billed</td><td>3.2</td></tr>
+    <tr><td class="num">7</td><td>Model the free tier: NMT characters to the ledger, only the excess is billed</td><td>3.2</td></tr>
     <tr><td class="num">8</td><td><code>LLM_CACHE_READ_PER_MTOK_USD</code> in config (0 = no cache)</td><td>3.4</td></tr>
     <tr><td class="num">9</td><td>Prefix measured at run time from the bible; constant kept for <code>estimate</code></td><td>3.4</td></tr>
     <tr><td class="num">10</td><td>Full chapter source in the cacheable prefix</td><td>context</td></tr>
@@ -786,7 +786,7 @@ flowchart TB
 </pre>
 <figcaption>
   The silent-default trap. The truncated JSON is exactly the failure
-  <code>342f3bd</code> was written to survive: the retry would absorb it, silently,
+  <code>3707ca8</code> was written to survive: the retry would absorb it, silently,
   while paying.
 </figcaption>
 </figure>
@@ -850,7 +850,7 @@ flowchart TB
 <h4>What the comparison must verify, and cannot assume</h4>
 <p>
   Sonnet 5 follows instructions more literally than Sonnet 4.6. The system prompt
-  opens with <code>RÈGLES ABSOLUES</code> in capitals, and <code>af84a62</code> already
+  opens with <code>RÈGLES ABSOLUES</code> in capitals, and <code>ba84ade</code> already
   had to soften a rule that was pushing the model to translate proper nouns against the
   glossary. More literal compliance could revive that class of conflict —
   <code>glossary_violations</code> in the run report is the detector. Response length
@@ -1200,7 +1200,7 @@ flowchart TB
 
 <p>
   <strong>Batch 1 prerequisite:</strong> rebase <code>google-translate-api</code> onto
-  <code>de07509</code>. The branch is one commit behind, and that commit changes precisely
+  <code>a9dd615</code>. The branch is one commit behind, and that commit changes precisely
   <code>defaultBatchSize</code>.
 </p>
 
@@ -1275,8 +1275,8 @@ for r in d: print(f\"{r['chapter_id']:10s} {len(r['summary']):5d} car.\")
 print('moyenne', round(sum(len(r['summary']) for r in d)/len(d)), 'car.')"</code></pre>
 
 <h4>Verifying the gap between the branch and <code>main</code></h4>
-<pre><code>git diff --stat 347ba2d de07509
-git diff 347ba2d de07509 -- internal/literary/translator.go</code></pre>
+<pre><code>git diff --stat 889f123 a9dd615
+git diff 889f123 a9dd615 -- internal/literary/translator.go</code></pre>
 
 <div class="card note">
   <span class="label">Limits of the method</span>
@@ -1294,7 +1294,7 @@ git diff 347ba2d de07509 -- internal/literary/translator.go</code></pre>
 
 <footer>
   RFC 0007 · <code>docs/rfcs/0007-google-translate-draft-and-token-cost-model.md</code> ·
-  code frozen at <code>de07509</code> ·
+  code frozen at <code>a9dd615</code> ·
   figures reproducible via <code>scripts/cost_model.py</code>
 </footer>
 
