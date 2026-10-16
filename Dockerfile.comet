@@ -2,7 +2,7 @@
 # Heavy ML image (torch + unbabel-comet) — used only for quality evaluation,
 # behind the compose "eval" profile. The model (~2.3 GB) is downloaded on first
 # boot into HF_HOME, which is a named volume so it persists across restarts.
-FROM python:3.12-slim
+FROM python:3.14-slim
 
 # git + build toolchain: a few COMET deps may build from source on slim.
 RUN apt-get update \
