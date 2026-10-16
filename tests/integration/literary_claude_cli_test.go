@@ -72,7 +72,7 @@ func TestLiterary_ClaudeCLI_TranslatesEverySegment(t *testing.T) {
 		StyleGuide: "Français littéraire sobre, présent narratif évité, pas de calque de l'anglais.",
 	}
 
-	outcome, err := translator.TranslateChapter(
+	outcome, err := translator.TranslateBatch(
 		context.Background(), bible, "ch_0001", segs, "", strings.Join(sources, "\n"))
 	require.NoError(t, err)
 	require.Empty(t, outcome.Degraded, "no batch should have kept its draft")

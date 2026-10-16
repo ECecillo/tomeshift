@@ -573,6 +573,10 @@ back is trivial.</figcaption>
     <td>COMET-QE</td><td><code>just comet-dev</code> or <code>just comet-up</code></td><td class="num">8000</td>
     <td>Reference-free scoring. 1<sup>st</sup> launch: ~2.3 GB of model. Used for eval <em>and</em> for selective escalation during a run.</td>
   </tr>
+  <tr>
+    <td>Temporal (dev server)</td><td><code>just temporal-up</code> · <code>just up</code></td><td class="num">7233 · 8233</td>
+    <td>Durable execution engine for runs (RFC 0009). Stores workflow history in SQLite (volume <code>temporal-data</code>). gRPC on 7233; web UI on <a href="http://localhost:8233">localhost:8233</a> (<code>just temporal-ui</code>). The worker that registers the workflows arrives in phase 3 — the server alone translates nothing.</td>
+  </tr>
 </table>
 </div>
 
@@ -838,7 +842,7 @@ heuristic</code>.</figcaption>
 
 <h3><code>series-bible</code> — build the bible before translating</h3>
 
-<pre><code>tomeshift series-bible --input-dir ./books/lumen --series lumen [--samples 3] [--merge] [--dry-run]</code></pre>
+<pre><code>tomeshift series-bible --input-dir ./books/lumen --series lumen [--samples 3] [--merge] [--dry-run] [--from-volume N]</code></pre>
 
 <div class="table-wrap">
 <table>
@@ -847,6 +851,7 @@ heuristic</code>.</figcaption>
   <tr><td><code>--samples</code></td><td class="num">3</td><td>Documents sampled <em>per volume</em> for style, voices and forms of address. <strong>Note</strong>: they all go in <em>a single</em> call, so the input grows with the series — see the box below.</td></tr>
   <tr><td><code>--merge</code></td><td><code>false</code></td><td>Enriches existing bibles instead of overwriting them.</td></tr>
   <tr><td><code>--dry-run</code></td><td><code>false</code></td><td>Prints the cost projection and <strong>stops before the first call</strong>. Nothing is created — not even the bible's database.</td></tr>
+  <tr><td><code>--from-volume</code></td><td class="num">0</td><td><em>Append</em> mode: summarizes only volumes ≥ N and <strong>adds</strong> their synopses to the existing bible's STORY_SO_FAR, without regenerating the earlier ones. 0 = full build. Idempotent: a volume already present is not rewritten.</td></tr>
 </table>
 </div>
 
@@ -1070,6 +1075,14 @@ TOMESHIFT_COMET_ENDPOINT=http://localhost:8000/score \
     <td><code>LOG_LEVEL</code></td><td><code>info</code></td>
     <td><code>debug</code> details the segment-by-segment routing in <code>logs.ndjson</code>. Payloads are never logged.</td>
   </tr>
+  <tr>
+    <td><code>TEMPORAL_ADDRESS</code></td><td><code>localhost:7233</code></td>
+    <td>The Temporal server's gRPC frontend that the CLI and the worker dial (durable execution engine, RFC 0009). <code>just up</code> starts the local server; no credential is needed to reach it, and <code>estimate</code> never touches it.</td>
+  </tr>
+  <tr>
+    <td><code>TEMPORAL_NAMESPACE</code> / <code>TEMPORAL_TASK_QUEUE</code></td><td><code>default</code> / <code>tomeshift</code></td>
+    <td>The namespace that isolates the workflows (the dev server registers <code>default</code>) and the task queue the worker listens on and on which the CLI starts the runs.</td>
+  </tr>
 </table>
 </div>
 
@@ -1221,7 +1234,7 @@ flowchart TB
 
 <h2 id="docker">11. Docker and the <code>just</code> cheat sheet</h2>
 
-<h3>Compose: four services, three profiles</h3>
+<h3>Compose: five services, three profiles</h3>
 
 <div class="table-wrap">
 <table>
@@ -1230,13 +1243,14 @@ flowchart TB
   <tr><td><code>nmt</code></td><td>default</td><td>The built-in dev NMT, started with the app.</td></tr>
   <tr><td><code>libretranslate</code></td><td><code>real-nmt</code></td><td>Real local EN→FR NMT.</td></tr>
   <tr><td><code>comet</code></td><td><code>eval</code></td><td>COMET-QE service. Heavy image: deliberately outside the default profile.</td></tr>
+  <tr><td><code>temporal</code></td><td>default</td><td>Temporal dev server (RFC 0009): gRPC <code>:7233</code>, web UI <code>:8233</code>, SQLite history in the <code>temporal-data</code> volume. <code>just up</code> starts it; <code>app</code> does not depend on it yet (worker in phase 3).</td></tr>
 </table>
 </div>
 
 <pre><code>mkdir -p books runs data
 cp &lt;your-book&gt;.epub books/source.epub
 just docker-build
-just up                                        <span class="cmt"># build + run app (+ nmt), output in ./runs</span>
+just up                                        <span class="cmt"># build + run temporal + app (+ nmt), output in ./runs</span>
 docker compose logs -f app
 just down</code></pre>
 
@@ -1257,14 +1271,15 @@ just down</code></pre>
 <div class="table-wrap">
 <table>
   <tr><th>Recipe</th><th>Does what</th></tr>
-  <tr><td><code>just preflight</code></td><td>Checks the tools and pings the NMT endpoint (non-blocking).</td></tr>
+  <tr><td><code>just preflight</code></td><td>Checks the tools and pings the NMT and Temporal endpoints (non-blocking).</td></tr>
   <tr><td><code>just print-config-vars</code></td><td>Prints the <code>TOMESHIFT_*</code> actually resolved — the first reflex when "it's not picking up my config".</td></tr>
   <tr><td><code>just nmt-dev</code> · <code>just libretranslate-up</code> · <code>just comet-up</code></td><td>Start the services.</td></tr>
+  <tr><td><code>just temporal-up</code> · <code>just temporal-down</code> · <code>just temporal-ui</code></td><td>Start / stop the Temporal dev server (RFC 0009); open its web UI on <code>:8233</code>. <code>just up</code> already starts it with the app.</td></tr>
   <tr><td><code>just run &lt;in.epub&gt; [outdir]</code></td><td>NMT translation.</td></tr>
   <tr><td><code>just literary &lt;in&gt; &lt;series&gt; [glossary] [run-id]</code></td><td>Literary translation.</td></tr>
   <tr><td><code>just estimate &lt;in.epub&gt;</code></td><td>Cost projection.</td></tr>
   <tr><td><code>just series-bible-cost &lt;dir&gt; &lt;series&gt; [samples]</code></td><td>Project the bible-build cost — 0 calls, no credential. The counterpart of <code>estimate</code> for this job.</td></tr>
-  <tr><td><code>just series-bible &lt;dir&gt; &lt;series&gt; [samples] [merge]</code></td><td>Build the bibles of the whole series. <code>samples</code> defaults to 3: see the pitfall in §6.</td></tr>
+  <tr><td><code>just series-bible &lt;dir&gt; &lt;series&gt; [samples] [merge] [from_volume]</code></td><td>Build the series' bibles. <code>from_volume N</code> = append mode (adds only volumes ≥ N to STORY_SO_FAR). <code>samples</code> defaults to 3: see the pitfall in §6.</td></tr>
   <tr><td><code>just bible &lt;db&gt; &lt;series&gt;</code></td><td>Display a bible in plain text — <strong>to do before a full run</strong>, an error there propagates everywhere.</td></tr>
   <tr><td><code>just glossary-suggest &lt;in&gt; [out] [min]</code></td><td>Extract proper nouns.</td></tr>
   <tr><td><code>just eval-ref &lt;cand&gt; &lt;ref&gt;</code> · <code>just eval-qe &lt;segments&gt;</code></td><td>chrF · COMET-QE.</td></tr>
@@ -1368,6 +1383,8 @@ just down</code></pre>
       o += line('NARRATIVE_PATH', './data/series.sqlite');
       o += line('LLM_CACHE_PATH', './data/llm-cache.sqlite', "don't delete: free re-runs");
     }
+    o += '\n' + head('durable engine (Temporal, RFC 0009)');
+    o += line('TEMPORAL_ADDRESS', 'localhost:7233', 'local server: just up');
     if (cfg.mode === 'literary') {
       var L = LLM[cfg.llm];
       o += '\n' + head('LLM (literary mode)');
@@ -1587,6 +1604,10 @@ just down</code></pre>
       proc: 'Enriches the existing bible instead of overwriting it.',
       out: 'Preserves manual corrections or already-profiled volumes.',
       cost: 'Identical to a generation. In both cases the prefix changes → the LLM cache is invalidated once.' },
+    { f: '--from-volume',
+      proc: '<code>series-bible</code> append mode: summarizes only volumes ≥ N and adds their synopses to the existing bible, without redoing the earlier ones. 0 = full build.',
+      out: 'STORY_SO_FAR extended up to the last volume supplied; voices, style and earlier volumes untouched.',
+      cost: 'Pays only for volumes ≥ N (map: 1 call per chapter of those volumes), not the whole series — the point of the flag.' },
     { f: '--reference-dir',
       proc: '<code>batch</code>: looks for <code>&lt;dir&gt;/&lt;book-id&gt;.epub</code> after each successful book. Absent = silently skipped.',
       out: 'Adds a per-book chrF and an average in <code>batch-report.json</code>.',

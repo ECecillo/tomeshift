@@ -28,6 +28,11 @@ type SeriesBibleCommand struct {
 	// chapter across every volume — and it is the one job `estimate` cannot
 	// price, since `estimate` projects translating a book.
 	DryRun bool
+	// FromVolume, when > 0, switches to append mode: only volumes whose number
+	// is >= it are summarised, and their synopses are ADDED to the existing
+	// bible's STORY_SO_FAR instead of regenerating the earlier ones. 0 keeps the
+	// full-build behaviour (every volume, summaries replaced).
+	FromVolume int
 }
 
 // ParseSeriesBibleArgs parses flags for `tomeshift series-bible`.
@@ -41,6 +46,7 @@ func ParseSeriesBibleArgs(args []string, stderr io.Writer) (SeriesBibleCommand, 
 	fs.IntVar(&cmd.Samples, "samples", 3, "spine documents sampled per volume for style, voices and address rules")
 	fs.BoolVar(&cmd.Merge, "merge", false, "enrich existing bibles instead of overwriting them")
 	fs.BoolVar(&cmd.DryRun, "dry-run", false, "print the cost projection and exit without calling the provider")
+	fs.IntVar(&cmd.FromVolume, "from-volume", 0, "append mode: summarise only volumes >= N and add them to the existing bible (0 = full build)")
 
 	if err := fs.Parse(args); err != nil {
 		return SeriesBibleCommand{}, fmt.Errorf("unable to parse cli flags, err: %w", err)

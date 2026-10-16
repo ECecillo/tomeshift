@@ -60,6 +60,40 @@ services:
       retries: 40
       start_period: 600s
 
+  # Local Temporal dev server: the durable execution engine for `run`/`batch`
+  # (RFC 0009). `server start-dev` is a single-node server with an embedded
+  # SQLite history, the `default` namespace auto-registered, and the Web UI
+  # bundled in — no PostgreSQL, no Elasticsearch. Phase 2 ships the server only;
+  # the worker that registers the workflows arrives in phase 3, so `app` does
+  # not depend on it yet.
+  #
+  # Tag pinned to 1.8.3, the latest stable temporalio/temporal release
+  # (Docker Hub temporalio/temporal, pushed 2026-09-02; temporalio/cli v1.8.3).
+  temporal:
+    image: temporalio/temporal:1.8.3
+    command:
+      - server
+      - start-dev
+      - --ip
+      - 0.0.0.0
+      - --db-filename
+      - /data/temporal.db
+      - --ui-port
+      - "8233"
+    ports:
+      # gRPC frontend for workers and the CLI, and the Web UI.
+      - "7233:7233"
+      - "8233:8233"
+    volumes:
+      - temporal-data:/data
+    healthcheck:
+      # The CLI ships in the same image; ask the frontend whether the cluster
+      # is serving on the gRPC port.
+      test: ["CMD", "temporal", "operator", "cluster", "health", "--address", "localhost:7233"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
   app:
     build:
       context: .
@@ -92,3 +126,4 @@ services:
 
 volumes:
   comet-cache:
+  temporal-data:

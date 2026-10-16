@@ -46,7 +46,8 @@ func (s *stubChat) lastReq() llm.ChatRequest {
 // echoChat answers each batch with a target text for every requested segment
 // ID. maxSegments caps how many segments a single response carries, simulating
 // a small model that stops generating before finishing the batch; 0 answers the
-// whole batch.
+// whole batch. The recursive halving inside TranslateBatch is what turns a
+// short answer into a fully translated batch.
 type echoChat struct {
 	maxSegments int
 	// truncateOver cuts the response off mid-JSON when the batch holds more than
@@ -135,7 +136,7 @@ func requestedIDs(req llm.ChatRequest) ([]string, error) {
 	return ids, nil
 }
 
-func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
+func TestTranslateBatch_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	t.Parallel()
 
 	gloss, err := glossary.New([]glossary.Term{{EN: "Bilbo", FR: "Bilbon", Locked: true}})
@@ -144,7 +145,7 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	chat := newStubChat(`{"segments":[{"id":"s1","target_text":"Bonjour."}]}`)
 	tr := literary.Translator{Chat: chat, Model: "model-a", Glossary: gloss}
 
-	_, err = tr.TranslateChapter(t.Context(), bibleFixture(), "ch_0001", chapterOf(segment.Segment{
+	_, err = tr.TranslateBatch(t.Context(), bibleFixture(), "ch_0001", chapterOf(segment.Segment{
 		ID:         "s1",
 		SourceText: "Bilbo arrived.",
 		TargetText: "Bilbon arriva.",
@@ -176,7 +177,25 @@ func TestTranslator_ComposesPromptWithBibleAndGlossary(t *testing.T) {
 	require.Equal(t, "model-a", chat.lastReq().Model)
 }
 
-func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
+func TestTranslateBatch_PrevContextAndChapterSourceRideTheirOwnSlots(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(10)
+	chat := &echoChat{}
+	tr := literary.Translator{Chat: chat}
+
+	_, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
+		segs, "AVANT_LE_CHAPITRE", "SOURCE_DU_CHAPITRE_ENTIER")
+	require.NoError(t, err)
+	require.Len(t, chat.reqs, 1, "TranslateBatch sends one call; the caller decides the boundaries")
+
+	// The chapter's whole source is the cacheable prefix; the caller's preceding
+	// context travels in the volatile turn.
+	require.Contains(t, chat.reqs[0].Messages[0].Content, "SOURCE_DU_CHAPITRE_ENTIER")
+	require.Contains(t, precedingContext(t, chat.reqs[0]), "AVANT_LE_CHAPITRE")
+}
+
+func TestTranslateBatch_RoundTripPreservesPlaceholders(t *testing.T) {
 	t.Parallel()
 
 	seg := tokenizedSegment(t, "s1", `<p>A <em>bold</em> claim.</p>`)
@@ -186,7 +205,7 @@ func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
 	tr := literary.Translator{Chat: chat}
 
 	segs := chapterOf(seg)
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	_, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
 	require.Equal(t, segment.StatusPostEdited, segs[0].Status)
 
@@ -196,7 +215,7 @@ func TestTranslator_RoundTripPreservesPlaceholders(t *testing.T) {
 	require.Contains(t, rendered, "Une affirmation")
 }
 
-func TestTranslator_FallsBackWhenPlaceholderDropped(t *testing.T) {
+func TestTranslateBatch_FallsBackWhenPlaceholderDropped(t *testing.T) {
 	t.Parallel()
 
 	seg := segment.Segment{
@@ -208,13 +227,13 @@ func TestTranslator_FallsBackWhenPlaceholderDropped(t *testing.T) {
 	tr := literary.Translator{Chat: chat}
 
 	segs := chapterOf(seg)
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	_, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
 	require.Equal(t, `Brouillon <x id="1"/> sûr.`, segs[0].TargetText)
 	require.Equal(t, segment.StatusTranslated, segs[0].Status)
 }
 
-func TestTranslator_GlossaryLockedTermEnforced(t *testing.T) {
+func TestTranslateBatch_GlossaryLockedTermEnforced(t *testing.T) {
 	t.Parallel()
 
 	gloss, err := glossary.New([]glossary.Term{{EN: "Bilbo", FR: "Bilbon", Locked: true}})
@@ -228,59 +247,29 @@ func TestTranslator_GlossaryLockedTermEnforced(t *testing.T) {
 		SourceText: "Bilbo waved.",
 		TargetText: "Bilbon salua.",
 	})
-	_, err = tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	_, err = tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
-	require.Equal(t, "Bonjour Bilbon.", segs[0].TargetText)
+	// The glossary token is protected in the prompt and substituted back on the
+	// way out.
 	require.Contains(t, chat.lastReq().Messages[1].Content, `<g id=\"1\"/>`)
+	require.Equal(t, "Bonjour Bilbon.", segs[0].TargetText)
 }
 
-func TestTranslator_SplitsChapterIntoBatchesAndSumsUsage(t *testing.T) {
-	t.Parallel()
-
-	segs := numberedSegments(25)
-	chat := &echoChat{}
-	tr := literary.Translator{Chat: chat, BatchSize: 10}
-
-	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
-	require.NoError(t, err)
-
-	require.Len(t, chat.batches, 3, "25 segments at BatchSize 10 must be 3 calls")
-	require.Len(t, chat.batches[0], 10)
-	require.Len(t, chat.batches[1], 10)
-	require.Len(t, chat.batches[2], 5)
-
-	var requested []string
-	for _, batch := range chat.batches {
-		requested = append(requested, batch...)
-	}
-	require.ElementsMatch(t, segmentIDs(segs), requested, "batches must partition the chapter without overlap")
-
-	for _, seg := range segs {
-		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
-		require.Equal(t, segment.StatusPostEdited, seg.Status)
-	}
-
-	// Usage is summed over the three calls rather than taken from the last one.
-	require.Equal(t, 300, outcome.Usage.InputTokens)
-	require.Equal(t, 30, outcome.Usage.OutputTokens)
-	require.Equal(t, 3, outcome.Usage.CacheReadTokens)
-	require.Equal(t, 6, outcome.Usage.CacheCreationTokens)
-}
-
-func TestTranslator_RetriesSegmentsTheModelStoppedShortOf(t *testing.T) {
+func TestTranslateBatch_RetriesSegmentsTheModelStoppedShortOf(t *testing.T) {
 	t.Parallel()
 
 	segs := numberedSegments(8)
 	// The model answers at most 3 segments per call, as a small model that stops
-	// generating mid-output does. Without a retry the last 5 would silently keep
-	// their English draft.
+	// generating mid-output does. Without the internal halving the last 5 would
+	// silently keep their English draft.
 	chat := &echoChat{maxSegments: 3}
-	tr := literary.Translator{Chat: chat, BatchSize: len(segs)}
+	tr := literary.Translator{Chat: chat}
 
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	outcome, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
+	require.Empty(t, outcome.Degraded)
 
-	require.Greater(t, len(chat.batches), 1, "an incomplete batch must be retried on smaller batches")
+	require.Greater(t, len(chat.batches), 1, "an incomplete answer must be retried on smaller batches")
 	for _, batch := range chat.batches[1:] {
 		require.Less(t, len(batch), len(segs), "retries must be smaller than the batch that failed")
 	}
@@ -290,152 +279,16 @@ func TestTranslator_RetriesSegmentsTheModelStoppedShortOf(t *testing.T) {
 	}
 }
 
-func TestTranslator_ContextFollowsTheBatchBoundary(t *testing.T) {
-	t.Parallel()
-
-	segs := numberedSegments(20)
-	chat := &echoChat{}
-	tr := literary.Translator{Chat: chat, BatchSize: 10}
-
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
-		segs, "AVANT_LE_CHAPITRE", "SOURCE_DU_CHAPITRE_ENTIER")
-	require.NoError(t, err)
-	require.Len(t, chat.reqs, 2)
-
-	// What follows a batch no longer travels per call: the chapter's whole
-	// source sits in the cached prefix, identical for both batches.
-	for _, req := range chat.reqs {
-		require.Contains(t, req.Messages[0].Content, "SOURCE_DU_CHAPITRE_ENTIER")
-	}
-	require.Equal(t, chat.reqs[0].Messages[0].Content, chat.reqs[1].Messages[0].Content,
-		"the cacheable prefix must be byte-identical across a chapter's batches")
-
-	// The first batch opens the chapter, so it gets the caller's context.
-	require.Contains(t, precedingContext(t, chat.reqs[0]), "AVANT_LE_CHAPITRE")
-
-	// The second batch continues from the French just produced, not from the
-	// previous chapter.
-	second := precedingContext(t, chat.reqs[1])
-	require.Contains(t, second, "traduction s010", "a batch must see the translation that precedes it")
-	require.NotContains(t, second, "AVANT_LE_CHAPITRE")
-}
-
-func TestTranslator_RefusalIsANamedFailure(t *testing.T) {
-	t.Parallel()
-
-	// An HTTP 200 with empty content and stop_reason=refusal. Splitting the
-	// batch will not change the model's mind, so it must fail loudly rather
-	// than look like a malformed reply and trigger the halving retry.
-	chat := &stubChat{replies: []llm.ChatResponse{{StopReason: llm.StopReasonRefusal}}}
-	tr := literary.Translator{Chat: chat, BatchSize: 10}
-
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
-		numberedSegments(20), "", "source")
-
-	require.ErrorIs(t, err, literary.ErrProviderRefusal)
-	require.Len(t, chat.reqs, 2, "a refusal must fail its batch outright, not split it")
-}
-
-func TestTranslator_TruncationOnASingleSegmentIsNamed(t *testing.T) {
-	t.Parallel()
-
-	// One segment, cut off mid-JSON with stop_reason=max_tokens. There is
-	// nothing left to split, so the segment keeps its draft — but the reason is
-	// reported instead of silently reading as a decode failure.
-	chat := &stubChat{replies: []llm.ChatResponse{{
-		Text:       `{"segments":[{"id":"s001","target_`,
-		StopReason: llm.StopReasonMaxTokens,
-	}}}
-	tr := literary.Translator{Chat: chat}
-
-	segs := chapterOf(segment.Segment{ID: "s001", SourceText: "Claim.", TargetText: "brouillon"})
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "source")
-
-	require.ErrorIs(t, err, literary.ErrIncompleteResponse)
-	require.Equal(t, "brouillon", segs[0].TargetText,
-		"a chapter where nothing was translated leaves its drafts untouched")
-}
-
-func TestTranslator_DegradedBatchesAreReported(t *testing.T) {
-	t.Parallel()
-
-	segs := numberedSegments(20)
-	// One of two batches fails; the other succeeds, so the chapter is not an
-	// error. The reason must still reach the caller — collecting the named
-	// refusal and truncation errors and then dropping them would be the same
-	// silence they were added to end.
-	chat := &echoChat{errOnCall: 2}
-	tr := literary.Translator{Chat: chat, BatchSize: 10}
-
-	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "src")
-
-	require.NoError(t, err)
-	require.Len(t, outcome.Degraded, 1)
-	require.ErrorContains(t, outcome.Degraded[0], "provider unavailable")
-}
-
-func TestTranslator_ChapterSurvivesOneFailedBatch(t *testing.T) {
-	t.Parallel()
-
-	segs := numberedSegments(20)
-	// The second of two batches fails outright, as a transport error would.
-	chat := &echoChat{errOnCall: 2}
-	tr := literary.Translator{Chat: chat, BatchSize: 10}
-
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
-	require.NoError(t, err, "one bad batch must not discard the batch that succeeded")
-
-	for _, seg := range segs[:10] {
-		require.Equal(t, "traduction "+seg.ID, seg.TargetText)
-		require.Equal(t, segment.StatusPostEdited, seg.Status)
-	}
-	for _, seg := range segs[10:] {
-		// Same degradation as a segment the model simply did not answer: the
-		// draft survives and the status tells the caller it was not post-edited.
-		require.Equal(t, "Claim "+seg.ID, seg.TargetText)
-		require.Equal(t, segment.StatusTranslated, seg.Status)
-	}
-}
-
-func TestTranslator_FailedChapterStillReportsWhatItConsumed(t *testing.T) {
-	t.Parallel()
-
-	// Every batch refused, so the chapter is an error — but a refusal is a
-	// billable response. Returning zero usage with the error would let the run
-	// be priced as if the calls never happened.
-	chat := &stubChat{replies: []llm.ChatResponse{{
-		StopReason: llm.StopReasonRefusal, InputTokens: 900, OutputTokens: 0,
-	}}}
-	tr := literary.Translator{Chat: chat, BatchSize: 10}
-
-	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001",
-		numberedSegments(20), "", "source")
-
-	require.Error(t, err)
-	require.Positive(t, outcome.Usage.InputTokens, "billable tokens must survive the error")
-}
-
-func TestTranslator_ErrorsWhenNoBatchProducesAnything(t *testing.T) {
-	t.Parallel()
-
-	chat := &echoChat{errOnCall: 1}
-	tr := literary.Translator{Chat: chat, BatchSize: 10}
-
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", numberedSegments(5), "", "")
-	require.ErrorContains(t, err, "provider unavailable",
-		"a chapter that produced nothing must fail loudly, not return English")
-}
-
-func TestTranslator_RetriesUnparseableResponseOnSmallerBatches(t *testing.T) {
+func TestTranslateBatch_RetriesUnparseableResponseOnSmallerBatches(t *testing.T) {
 	t.Parallel()
 
 	segs := numberedSegments(8)
 	// Batches over 3 segments come back cut off mid-JSON, as a model hitting its
-	// output limit does.
+	// output limit does; the halved retries parse.
 	chat := &echoChat{truncateOver: 3}
-	tr := literary.Translator{Chat: chat, BatchSize: len(segs)}
+	tr := literary.Translator{Chat: chat}
 
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	_, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
 	require.NoError(t, err)
 
 	require.Greater(t, len(chat.batches), 1, "a truncated response must be retried on smaller batches")
@@ -445,15 +298,170 @@ func TestTranslator_RetriesUnparseableResponseOnSmallerBatches(t *testing.T) {
 	}
 }
 
-func TestTranslator_NilChat(t *testing.T) {
+// TestTranslateBatch_EmptyReplyIsRetriedOnHalvedBatches pins the third case in
+// the failure taxonomy. An empty reply used to propagate as a provider error,
+// so the batch died without a retry: on a real chapter that left 100 of 258
+// segments on their raw NMT draft while the run reported success. It also proves
+// usage accumulates across the halved retries — the empty calls were billed too.
+func TestTranslateBatch_EmptyReplyIsRetriedOnHalvedBatches(t *testing.T) {
+	t.Parallel()
+
+	chat := &emptyOverChat{
+		maxSegments:  2,
+		usagePerCall: llm.ChatResponse{InputTokens: 10, OutputTokens: 7},
+	}
+	translator := &literary.Translator{Chat: chat, Model: "m"}
+
+	segs := make([]*segment.Segment, 8)
+	for i := range segs {
+		segs[i] = &segment.Segment{
+			ID:         fmt.Sprintf("ch_0001_p_%04d", i+1),
+			SourceText: fmt.Sprintf("Source %d.", i+1),
+			TargetText: "BROUILLON",
+			Status:     segment.StatusTranslated,
+		}
+	}
+
+	outcome, err := translator.TranslateBatch(
+		context.Background(), narrative.Bible{SeriesID: "s"}, "ch_0001", segs, "", "source")
+	require.NoError(t, err)
+
+	// Every segment is refined: the 8-segment batch came back empty, and the
+	// halving walked down to batches the model could answer.
+	for _, seg := range segs {
+		require.Equal(t, segment.StatusPostEdited, seg.Status, seg.ID)
+		require.NotEqual(t, "BROUILLON", seg.TargetText)
+	}
+	require.Empty(t, outcome.Degraded)
+
+	// Usage is summed over every call, empty ones included. Dropping their usage
+	// would under-report every reasoning model that runs out of budget.
+	require.Equal(t, chat.calls*10, outcome.Usage.InputTokens)
+	require.Equal(t, chat.calls*7, outcome.Usage.OutputTokens)
+	require.Greater(t, chat.calls, 1, "the first call must have been retried")
+}
+
+func TestTranslateBatch_RefusalIsDegradableAndKeepsTheDraft(t *testing.T) {
+	t.Parallel()
+
+	// An HTTP 200 with empty content and stop_reason=refusal. Splitting will not
+	// change the model's mind, so the batch keeps its drafts rather than looking
+	// like a malformed reply and triggering the halving retry. A refusal is a
+	// billable response, so its tokens must survive.
+	chat := &stubChat{replies: []llm.ChatResponse{{
+		StopReason: llm.StopReasonRefusal, InputTokens: 900,
+	}}}
+	tr := literary.Translator{Chat: chat}
+
+	segs := chapterOf(
+		segment.Segment{ID: "s1", SourceText: "A.", TargetText: "brouillon 1"},
+		segment.Segment{ID: "s2", SourceText: "B.", TargetText: "brouillon 2"},
+	)
+	outcome, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "source")
+	require.NoError(t, err, "a degradable failure does not fail the run")
+	require.Len(t, chat.reqs, 1, "a refusal must fail its batch outright, not split it")
+
+	require.Len(t, outcome.Degraded, 1)
+	require.True(t, literary.IsDegradable(outcome.Degraded[0]))
+	require.ErrorIs(t, outcome.Degraded[0], literary.ErrProviderRefusal)
+	require.Positive(t, outcome.Usage.InputTokens, "billable tokens must survive the degradation")
+
+	for _, seg := range segs {
+		require.Equal(t, "brouillon "+strings.TrimPrefix(seg.ID, "s"), seg.TargetText)
+		require.Equal(t, segment.StatusTranslated, seg.Status)
+	}
+}
+
+func TestTranslateBatch_TruncationOnASingleSegmentIsDegraded(t *testing.T) {
+	t.Parallel()
+
+	// One segment, cut off mid-JSON with stop_reason=max_tokens. There is
+	// nothing left to split, so the segment keeps its draft — but the reason is
+	// reported through Degraded instead of silently reading as a decode failure.
+	chat := &stubChat{replies: []llm.ChatResponse{{
+		Text:       `{"segments":[{"id":"s001","target_`,
+		StopReason: llm.StopReasonMaxTokens,
+	}}}
+	tr := literary.Translator{Chat: chat}
+
+	segs := chapterOf(segment.Segment{ID: "s001", SourceText: "Claim.", TargetText: "brouillon"})
+	outcome, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "source")
+	require.NoError(t, err)
+
+	require.Len(t, outcome.Degraded, 1)
+	require.True(t, literary.IsDegradable(outcome.Degraded[0]))
+	require.ErrorIs(t, outcome.Degraded[0], literary.ErrIncompleteResponse)
+	require.Equal(t, "brouillon", segs[0].TargetText,
+		"a batch where nothing was translated leaves its draft untouched")
+	require.Equal(t, segment.StatusTranslated, segs[0].Status)
+}
+
+func TestTranslateBatch_TransportErrorIsLoud(t *testing.T) {
+	t.Parallel()
+
+	// A transport error is not degradable: a smaller batch will not fix bad
+	// credentials, so the batch fails loudly rather than emitting raw drafts the
+	// pipeline does not even persist.
+	chat := &echoChat{errOnCall: 1}
+	tr := literary.Translator{Chat: chat}
+
+	_, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", numberedSegments(5), "", "")
+	require.ErrorContains(t, err, "provider unavailable",
+		"a batch that produced nothing must fail loudly, not return English")
+	require.False(t, literary.IsDegradable(err))
+}
+
+func TestTranslateBatch_RateLimitIsFatalAndReportsUsage(t *testing.T) {
+	t.Parallel()
+
+	segs := numberedSegments(10)
+	chat := &echoChat{rateLimitOnCall: 1}
+	tr := literary.Translator{Chat: chat}
+
+	outcome, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "src")
+
+	// Fatal, not degraded: a chapter that carried on would emit raw drafts the
+	// pipeline does not even persist, so there would be nothing to resume from.
+	require.ErrorIs(t, err, llm.ErrRateLimited)
+	require.False(t, literary.IsDegradable(err), "a rate limit is not degradable")
+
+	// A refused call is a billable call: the ledger has to carry it.
+	require.Equal(t, 100, outcome.Usage.InputTokens)
+	require.Equal(t, 10, outcome.Usage.OutputTokens)
+
+	// The batch is abandoned rather than written back: none reaches
+	// StatusPostEdited, and the caller fails the run.
+	for _, seg := range segs {
+		require.NotEqual(t, segment.StatusPostEdited, seg.Status)
+	}
+}
+
+func TestTranslateBatch_TailIsTheAnswersInRequestOrder(t *testing.T) {
+	t.Parallel()
+
+	// The model answers the first and third segments but never the second. The
+	// tail must read the raw answers in request order, skipping the unanswered
+	// one — exactly what the next batch is fed as its preceding context.
+	chat := newStubChat(`{"segments":[{"id":"s001","target_text":"Un"},{"id":"s003","target_text":"Trois"}]}`)
+	tr := literary.Translator{Chat: chat}
+
+	segs := numberedSegments(3)
+	outcome, err := tr.TranslateBatch(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
+	require.NoError(t, err)
+
+	require.Equal(t, "Un\nTrois", outcome.Tail)
+	require.Len(t, outcome.Degraded, 1, "the unanswered segment is reported")
+}
+
+func TestTranslateBatch_NilChat(t *testing.T) {
 	t.Parallel()
 
 	tr := literary.Translator{}
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{}, "ch_0001", chapterOf(segment.Segment{ID: "s1"}), "", "")
+	_, err := tr.TranslateBatch(t.Context(), narrative.Bible{}, "ch_0001", chapterOf(segment.Segment{ID: "s1"}), "", "")
 	require.ErrorIs(t, err, literary.ErrNilChatClient)
 }
 
-// chapterOf builds the pointer slice TranslateChapter rewrites in place.
+// chapterOf builds the pointer slice TranslateBatch rewrites in place.
 func chapterOf(segs ...segment.Segment) []*segment.Segment {
 	out := make([]*segment.Segment, len(segs))
 	for i := range segs {
@@ -483,14 +491,6 @@ func precedingContext(t *testing.T, req llm.ChatRequest) string {
 		"volatile message must carry the preceding context before the payload")
 
 	return content[prevStart:payloadStart]
-}
-
-func segmentIDs(segs []*segment.Segment) []string {
-	ids := make([]string, 0, len(segs))
-	for _, seg := range segs {
-		ids = append(ids, seg.ID)
-	}
-	return ids
 }
 
 func bibleFixture() narrative.Bible {
@@ -592,148 +592,4 @@ func (c *emptyOverChat) Chat(_ context.Context, req llm.ChatRequest) (llm.ChatRe
 	sb.WriteString(`]}`)
 	usage.Text = sb.String()
 	return usage, nil
-}
-
-// TestTranslateChapter_EmptyReplyIsRetriedOnHalvedBatches pins the third case
-// in the failure taxonomy. An empty reply used to propagate as a provider
-// error, so the batch died without a retry: on a real chapter that left 100 of
-// 258 segments on their raw NMT draft while the run reported success.
-func TestTranslateChapter_EmptyReplyIsRetriedOnHalvedBatches(t *testing.T) {
-	t.Parallel()
-
-	chat := &emptyOverChat{
-		maxSegments:  2,
-		usagePerCall: llm.ChatResponse{InputTokens: 10, OutputTokens: 7},
-	}
-	translator := &literary.Translator{Chat: chat, Model: "m", BatchSize: 8}
-
-	segs := make([]*segment.Segment, 8)
-	for i := range segs {
-		segs[i] = &segment.Segment{
-			ID:         fmt.Sprintf("ch_0001_p_%04d", i+1),
-			SourceText: fmt.Sprintf("Source %d.", i+1),
-			TargetText: "BROUILLON",
-			Status:     segment.StatusTranslated,
-		}
-	}
-
-	outcome, err := translator.TranslateChapter(
-		context.Background(), narrative.Bible{SeriesID: "s"}, "ch_0001", segs, "", "source")
-	require.NoError(t, err)
-
-	// Every segment is refined: the 8-segment batch came back empty, and the
-	// halving walked down to batches the model could answer.
-	for _, seg := range segs {
-		require.Equal(t, segment.StatusPostEdited, seg.Status, seg.ID)
-		require.NotEqual(t, "BROUILLON", seg.TargetText)
-	}
-	require.Empty(t, outcome.Degraded)
-
-	// The empty calls were billed too. Dropping their usage would under-report
-	// every reasoning model that runs out of budget.
-	require.Equal(t, chat.calls*10, outcome.Usage.InputTokens)
-	require.Equal(t, chat.calls*7, outcome.Usage.OutputTokens)
-	require.Greater(t, chat.calls, 1, "the first call must have been retried")
-}
-
-func TestTranslator_OnBatchReportsEverySegmentOnce(t *testing.T) {
-	t.Parallel()
-
-	segs := numberedSegments(25)
-	// The second batch fails outright: its segments are as finished as the
-	// others', so progress must not stall on them.
-	chat := &echoChat{errOnCall: 2}
-	var reported []int
-	var usages []literary.Usage
-	tr := literary.Translator{
-		Chat:      chat,
-		BatchSize: 10,
-		OnBatch: func(segments int, usage literary.Usage) {
-			reported = append(reported, segments)
-			usages = append(usages, usage)
-		},
-	}
-
-	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
-	require.NoError(t, err)
-
-	require.Equal(t, []int{10, 10, 5}, reported, "each batch reports its own size, failed or not")
-
-	// Each batch reports its own consumption, not the chapter's running total,
-	// and the batches add up to exactly what the chapter reports — so a caller
-	// accumulating per batch gets the same figure as one reading Outcome.Usage.
-	var sum literary.Usage
-	for _, u := range usages {
-		sum.InputTokens += u.InputTokens
-		sum.OutputTokens += u.OutputTokens
-		sum.CacheReadTokens += u.CacheReadTokens
-		sum.CacheCreationTokens += u.CacheCreationTokens
-	}
-	require.Equal(t, outcome.Usage, sum)
-	require.Equal(t, 100, usages[0].InputTokens, "the first batch's own tokens, not a cumulative total")
-}
-
-func TestTranslator_OnBatchIsOptional(t *testing.T) {
-	t.Parallel()
-
-	segs := numberedSegments(3)
-	tr := literary.Translator{Chat: &echoChat{}}
-
-	_, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "")
-	require.NoError(t, err)
-}
-
-func TestTranslator_RateLimitStopsTheChapterInsteadOfDegradingIt(t *testing.T) {
-	t.Parallel()
-
-	segs := numberedSegments(30)
-	// The first batch succeeds, the second hits the wall.
-	chat := &echoChat{rateLimitOnCall: 2}
-	var reported []int
-	tr := literary.Translator{
-		Chat:      chat,
-		BatchSize: 10,
-		OnBatch:   func(segments int, _ literary.Usage) { reported = append(reported, segments) },
-	}
-
-	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "src")
-
-	// Fatal, not degraded: every remaining batch would fail the same way, and a
-	// chapter that carried on would emit raw drafts the pipeline does not even
-	// persist — so there would be nothing to resume from.
-	require.ErrorIs(t, err, llm.ErrRateLimited)
-	require.Len(t, chat.batches, 2, "the third batch must never be attempted")
-
-	// The batch that hit the wall is still accounted for: it consumed tokens.
-	require.Equal(t, []int{10, 10}, reported)
-	require.Equal(t, 200, outcome.Usage.InputTokens)
-	require.Equal(t, 20, outcome.Usage.OutputTokens)
-
-	// The chapter is abandoned rather than written back: the segments keep what
-	// they arrived with, none reaches StatusPostEdited, and the caller fails the
-	// run. So the resume boundary is the CHAPTER, not the batch — up to one
-	// chapter's completed batches are redone on the next attempt.
-	//
-	// That is deliberate. Writing them back would not save them anyway: the
-	// pipeline persists a refined segment only after Restore accepts it, and on
-	// this path it never gets there. Buying that back would mean reordering the
-	// persist step around a failure, which is the one ordering the TM's
-	// correctness rests on.
-	for _, seg := range segs {
-		require.NotEqual(t, segment.StatusPostEdited, seg.Status)
-	}
-}
-
-func TestTranslator_RateLimitOnTheFirstBatchStillReportsItsUsage(t *testing.T) {
-	t.Parallel()
-
-	segs := numberedSegments(10)
-	chat := &echoChat{rateLimitOnCall: 1}
-	tr := literary.Translator{Chat: chat, BatchSize: 10}
-
-	outcome, err := tr.TranslateChapter(t.Context(), narrative.Bible{StyleGuide: "x"}, "ch_0001", segs, "", "src")
-
-	require.ErrorIs(t, err, llm.ErrRateLimited)
-	// A refused call is a billable call: the ledger has to carry it.
-	require.Equal(t, 100, outcome.Usage.InputTokens)
 }
