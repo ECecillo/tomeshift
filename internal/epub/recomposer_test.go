@@ -39,7 +39,7 @@ func TestEPUBRecomposer_RoundTrip(t *testing.T) {
 
 	require.NotEmpty(t, zr.File)
 	require.Equal(t, "mimetype", zr.File[0].Name)
-	require.Equal(t, uint16(zip.Store), zr.File[0].Method)
+	require.Equal(t, zip.Store, zr.File[0].Method)
 
 	// Re-extract and re-parse: the translation must survive the round trip.
 	reExtracted, err := ZipExtractor{}.Extract(ctx, outPath)
