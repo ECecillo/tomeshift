@@ -137,7 +137,7 @@
   <h1>RFC 0007 — Google Cloud Translation as the draft engine,<br/>and a token-based budget guardrail</h1>
   <div class="meta">
     Design document · 1<sup>st</sup> August 2026 · status <code>proposed</code><br/>
-    Referenced code frozen at <a href="https://github.com/ECecillo/tomeshift/tree/de07509374c6c4622b55a305f2c23b338d36fdca"><code>de07509</code></a>
+    Referenced code frozen at <a href="https://github.com/ECecillo/tomeshift/tree/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377"><code>de07509</code></a>
     · RFC: <code>docs/rfcs/0007-google-translate-draft-and-token-cost-model.md</code>
     · Reproducible figures: <code>scripts/cost_model.py</code>
   </div>
@@ -220,9 +220,9 @@ flowchart TB
 </pre>
 <figcaption>
   The current pipeline. Source:
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L188-L311"><code>orchestrator.go:188-311</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L188-L311"><code>orchestrator.go:188-311</code></a>
   (<code>runLiterary</code>) and
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L370-L481"><code>orchestrator.go:370-481</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L370-L481"><code>orchestrator.go:370-481</code></a>
   (<code>translateLiteraryChapters</code>).
 </figcaption>
 </figure>
@@ -267,9 +267,9 @@ flowchart LR
     style S fill:#252840,stroke:#c084fc,color:#e2e4f0
 </pre>
 <figcaption>
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L36-L110"><code>placeholder.go:36-110</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/segment/placeholder.go#L36-L110"><code>placeholder.go:36-110</code></a>
   (<code>Tokenize</code>) and
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L146-L204"><code>placeholder.go:146-204</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/segment/placeholder.go#L146-L204"><code>placeholder.go:146-204</code></a>
   (<code>Restore</code>).
 </figcaption>
 </figure>
@@ -294,9 +294,9 @@ flowchart LR
 var placeholderTokenPattern = regexp.MustCompile(`&lt;x id="(\d+)"\s*/?&gt;(?:\s*&lt;/x&gt;)?`)</code></pre>
 
 <p style="color:var(--muted);font-size:0.82rem">
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L23-L25">placeholder.go:23-25</a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/segment/placeholder.go#L23-L25">placeholder.go:23-25</a>
   — and the choice of <code>format=html</code> on the adapter side:
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/translate/libretranslate.go#L14-L17">libretranslate.go:14-17</a>.
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/translate/libretranslate.go#L14-L17">libretranslate.go:14-17</a>.
 </p>
 
 <h3>2.3 What the LLM actually receives on each call</h3>
@@ -328,9 +328,9 @@ flowchart TB
 </pre>
 <figcaption>
   Prompt composition:
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/literary/prompt.go#L29-L82"><code>prompt.go:29-82</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/literary/prompt.go#L29-L82"><code>prompt.go:29-82</code></a>
   (<code>stablePrefix</code>) and
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/literary/prompt.go#L84-L93"><code>prompt.go:84-93</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/literary/prompt.go#L84-L93"><code>prompt.go:84-93</code></a>
   (<code>volatilePrompt</code>).
 </figcaption>
 </figure>
@@ -339,7 +339,7 @@ flowchart TB
   That's all. <strong>The LLM sees neither the whole chapter nor the other chapters.</strong> The
   <code>CONTEXTE_PRECEDENT</code> of batch <em>i</em> is the French translation the model has just
   produced itself at batch <em>i-1</em>
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/literary/translator.go#L123-L129">translator.go:123-129</a>) —
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/literary/translator.go#L123-L129">translator.go:123-129</a>) —
   this chaining forces a chapter's batches to be sequential, and it is what carries local register
   continuity. The <em>chapters</em>, by contrast, are independent: <code>adjacentChapterText</code>
   reads only the neighbours' source.
@@ -366,10 +366,10 @@ literary|148</code></pre>
 <p>
   Nine <code>nmt-http</code> entries are anecdotal; it is the rule that matters. The raw NMT draft
   <em>is</em> persisted
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L772-L784">orchestrator.go:772-784</a>),
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L772-L784">orchestrator.go:772-784</a>),
   and in literary mode a hit triggers a <code>continue</code> before the segment enters
   <code>fresh</code>
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L400-L419">orchestrator.go:400-419</a>):
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L400-L419">orchestrator.go:400-419</a>):
 </p>
 
 <figure>
@@ -412,7 +412,7 @@ sequenceDiagram
   The projection is a strict pre-flight, and it is well done: worst case with no TM reuse, before
   any provider call, plus sliding day/month caps that fail <em>closed</em> — a ledger read error
   aborts the run rather than letting it through
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L313-L350">orchestrator.go:313-350</a>).
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L313-L350">orchestrator.go:313-350</a>).
 </p>
 
 <p>But there are <strong>two cost models</strong>, and the run does not use the right one:</p>
@@ -423,7 +423,7 @@ sequenceDiagram
   <tbody>
     <tr><td>Used by</td><td><strong>the run guardrail</strong></td><td>the <code>estimate</code> command only</td></tr>
     <tr><td>Shape</td><td>flat: $/segment, $/1000 chars</td><td>per token: input, output, overhead</td></tr>
-    <tr><td>Source</td><td><a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cost/model.go">model.go</a></td><td><a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cost/estimate.go">estimate.go</a></td></tr>
+    <tr><td>Source</td><td><a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/cost/model.go">model.go</a></td><td><a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/cost/estimate.go">estimate.go</a></td></tr>
   </tbody>
 </table>
 </div>
@@ -436,7 +436,7 @@ sequenceDiagram
 
 <p>
   In literary mode, line
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L232">orchestrator.go:232</a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L232">orchestrator.go:232</a>
   therefore computes <code>projection += 4269 × 0 = 0 $</code>. Added to the local NMT at 0 $, the
   projection is zero on both sides — <strong>which is why no run has ever been blocked.</strong> The
   2 $ cap exists, it has simply never had anything to compare against.
@@ -449,7 +449,7 @@ sequenceDiagram
     prefix is <strong>~3,000 tokens</strong>.</li>
   <li>It is multiplied by the number of <em>segments</em> and not of <em>calls</em>:
     <code>in = tokensFromChars(chars) + segs*rates.PromptOverheadTokens</code>
-    (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cost/estimate.go#L67">estimate.go:67</a>).
+    (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/cost/estimate.go#L67">estimate.go:67</a>).
     With batches of 50, this over-counts by a factor of ~33.</li>
   <li>The prompt cache is not modelled, even though it removes ~90% of the prefix on the Anthropic side.</li>
 </ul>
@@ -471,7 +471,7 @@ sequenceDiagram
   "A restore failure leaves the original (source) markup in place; QA will flag the dropped
   placeholder. Do not abort the whole run."
   <br/><span style="font-style:normal">—
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L702-L707">orchestrator.go:702-707</a></span>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L702-L707">orchestrator.go:702-707</a></span>
 </blockquote>
 
 <p>That is not what the code does:</p>
@@ -495,9 +495,9 @@ sequenceDiagram
 </pre>
 <figcaption>
   <code>detachChildren</code> is called at
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L156">line 156</a>,
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/segment/placeholder.go#L156">line 156</a>,
   the error only propagates at
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/segment/placeholder.go#L199-L201">line 199-201</a>.
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/segment/placeholder.go#L199-L201">line 199-201</a>.
 </figcaption>
 </figure>
 
@@ -551,7 +551,7 @@ whole book          : ~119,245 tokens
   <span class="label">Conclusion already drawn upstream</span>
   <p style="margin-top:0">
     This analysis was <strong>already done and already fixed</strong> on <code>main</code>. Commit
-    <a href="https://github.com/ECecillo/tomeshift/commit/de07509374c6c4622b55a305f2c23b338d36fdca"><code>de07509</code></a>
+    <a href="https://github.com/ECecillo/tomeshift/commit/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377"><code>de07509</code></a>
     raises <code>defaultBatchSize</code> from 10 to 50 with this comment:
   </p>
   <blockquote style="margin-bottom:0">
@@ -644,7 +644,7 @@ whole book          : ~119,245 tokens
   credentials to plumb through Docker and CI — for zero translation-quality gain. And the
   <strong>native glossary would not replace <code>Protect</code>/<code>Apply</code></strong>: the
   latter protects the locked terms <em>both</em> on the NMT side <em>and</em> on the LLM side
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/literary/translator.go#L218">translator.go:218</a>).
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/literary/translator.go#L218">translator.go:218</a>).
   A Google glossary would cover only the NMT step, and the project would maintain two sources of
   truth for twelve terms.
 </p>
@@ -754,7 +754,7 @@ flowchart TB
 <p>
   <code>anthropicRequest</code> carries neither <code>temperature</code>, <code>top_p</code> nor
   <code>top_k</code>
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/llm/anthropic.go#L37-L43">anthropic.go:37-43</a>):
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/llm/anthropic.go#L37-L43">anthropic.go:37-43</a>):
   the removal of sampling parameters is a non-event. Messages are <code>system</code> +
   <code>user</code> only, so the assistant-prefill rejection does not apply.
   <code>output_config.format</code> already uses the current shape and not the deprecated
@@ -800,7 +800,7 @@ flowchart TB
 <p>
   <code>anthropicResponse</code> decodes <code>content</code> and <code>usage</code>,
   but not <code>stop_reason</code>
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/llm/anthropic.go#L54-L65">anthropic.go:54-65</a>).
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/llm/anthropic.go#L54-L65">anthropic.go:54-65</a>).
   Sonnet 5 ships elevated cybersecurity safeguards and can return
   <code>stop_reason: "refusal"</code> on an <strong>HTTP 200</strong> with empty or partial
   <code>content</code>. Combined with the truncation risk above, two distinct failures would both
@@ -873,7 +873,7 @@ flowchart TB
   <p style="margin-top:0">
     A placeholder integrity check right at the NMT output was considered, then dropped:
     <code>Restore</code> is called <em>per chapter</em>
-    (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L456-L465">orchestrator.go:456-465</a>),
+    (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L456-L465">orchestrator.go:456-465</a>),
     not at the end of the book. The cost of undetected damage is therefore about three LLM calls, not
     a volume. With an atomic <code>Restore</code> the fallback truly exists, which is enough.
   </p>
@@ -962,9 +962,9 @@ flowchart TB
 <p>
   <code>updateBible</code> mutates the bible <strong>in place</strong> at the end of each
   chapter, and the same pointer serves the next chapter
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L467-L475">orchestrator.go:467-475</a>,
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L467-L475">orchestrator.go:467-475</a>,
   then
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L483-L513">483-513</a>).
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L483-L513">483-513</a>).
   Since <code>stablePrefix</code> embeds <code>RESUME_DE_L_HISTOIRE</code>, the cacheable prefix
   changes with every chapter. The summaries actually stored measure 301, 1,511 and 1,067 characters,
   i.e. <strong>274 tokens on average</strong>:
@@ -996,7 +996,7 @@ flowchart TB
     again. And the operation is not idempotent — on the first run chapter 1 sees 0 summaries,
     on the second it sees 68.</li>
   <li><strong><code>Version</code> does not move.</strong>
-    <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L492"><code>updated.Version = bible.Version</code></a>:
+    <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L492"><code>updated.Version = bible.Version</code></a>:
     the content evolves, the number stays. <code>just bible</code> displays <code>v3</code> whether
     the bible contains 3 summaries or 70 — which explains the current state, the versions coming from
     <code>style-profile</code> and not from <code>--update-bible</code>.</li>
@@ -1027,9 +1027,9 @@ flowchart TB
     style F fill:#3a1f26,stroke:#f87171,color:#e2e4f0
 </pre>
 <figcaption>
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/pipeline/orchestrator.go#L605"><code>orchestrator.go:605</code></a>
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/pipeline/orchestrator.go#L605"><code>orchestrator.go:605</code></a>
   and <code>mergeSummaries</code> in
-  <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/narrative/merge.go"><code>merge.go</code></a>.
+  <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/narrative/merge.go"><code>merge.go</code></a>.
   <code>ChapterSummary</code> carries only <code>{ChapterID, Summary}</code>: the collision
   is structural.
 </figcaption>
@@ -1207,7 +1207,7 @@ flowchart TB
 <p>
   The measurement tooling already exists: <code>books/lumen/ch1/fr-ch1.epub</code> is a human
   translation of chapter 1 and <code>eval --reference</code> computes chrF against it
-  (<a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cli/eval.go#L26">eval.go:26</a>).
+  (<a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/cli/eval.go#L26">eval.go:26</a>).
   Mind the interpretation: chrF measures <em>agreement with that precise translation</em>, not
   absolute quality — hence the cross-check with COMET-QE and a three-column read.
 </p>
@@ -1284,7 +1284,7 @@ git diff 347ba2d de07509 -- internal/literary/translator.go</code></pre>
     The character→token conversions are named heuristics centralised in
     <code>scripts/cost_model.py</code> (4.0 chars/token in English, 3.5 in French, 1.15 expansion).
     They reuse <code>charsPerToken</code> from
-    <a href="https://github.com/ECecillo/tomeshift/blob/de07509374c6c4622b55a305f2c23b338d36fdca/internal/cost/estimate.go#L11">estimate.go:11</a>.
+    <a href="https://github.com/ECecillo/tomeshift/blob/a9dd615dc4dd0ad56b0cfee9fa9f6ce8ae767377/internal/cost/estimate.go#L11">estimate.go:11</a>.
     For an exact figure the provider's tokenizer is needed. Expected margin: ±20%, which changes no
     ranking in this RFC but can move a run close to a cap. The per-chapter segment distribution is a
     pro rata of text lengths, not the actual per-chapter segmentation — the total, however, comes
