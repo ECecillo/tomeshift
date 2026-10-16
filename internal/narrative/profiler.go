@@ -275,7 +275,7 @@ func seedUserPrompt(samples []string) string {
 			continue
 		}
 		sb.WriteString("\nSAMPLE ")
-		sb.WriteString(fmt.Sprint(i + 1))
+		fmt.Fprint(&sb, i+1)
 		sb.WriteString(":\n")
 		sb.WriteString(sample)
 		sb.WriteByte('\n')
@@ -333,7 +333,7 @@ func volumeSynopsisUserPrompt(volumeID string, summaries []string) string {
 	sb.WriteString(volumeID)
 	sb.WriteString("\n\nRESUMES_DES_CHAPITRES (dans l'ordre):\n")
 	for i, summary := range summaries {
-		sb.WriteString(fmt.Sprintf("\n[%d] %s\n", i+1, summary))
+		fmt.Fprintf(&sb, "\n[%d] %s\n", i+1, summary)
 	}
 	return sb.String()
 }
