@@ -513,7 +513,7 @@ flowchart LR
 
 <div class="two">
   <div class="card note">
-    <span class="label">The two ports — all the flow knows of the engine</span>
+    <span class="label">The two ports — all the flow knows about the engine</span>
 <pre><code>// Steps: one method per activity, no context —
 // the adapter owns it (workflow.Context is not
 // a context.Context).
@@ -833,7 +833,7 @@ flowchart TB
     var inflight = runIdx - 1;
     if (inflight >= 0 && !RUN[inflight].g) { runCompleted[inflight] = false; runEls[inflight].className = 'stage failed'; if (RUN[inflight].paid) { /* the provider may have answered: the completion cache absorbs the retry */ } }
     log('bad', 'worker dead — SIGKILL. The history, though, is in Temporal.');
-    log('warn', 'ActivityTaskTimedOut  ' + RUN[inflight].n + ' (heartbeat) → will be re-run');
+    if (inflight >= 0) log('warn', 'ActivityTaskTimedOut  ' + RUN[inflight].n + ' (heartbeat) → will be re-run');
     $('run-kill').disabled = true;
     setTimeout(function () {
       log('sys', 'worker restarted — WorkflowTaskScheduled → replaying the history…');
@@ -844,7 +844,7 @@ flowchart TB
         // once the replay catches up with the first non-completed step, slow down to normal pace
         if (runIdx >= RUN.length || (!RUN[runIdx].g && !runCompleted[runIdx])) {
           clearInterval(fast); clearInterval(runTimer); runTimer = setInterval(runTick, 650);
-          log('sys', 'replay done — resuming at ' + RUN[runIdx].n);
+          log('sys', runIdx < RUN.length ? 'replay done — resuming at ' + RUN[runIdx].n : 'replay done — the workflow had already completed');
         }
       }, 50);
     }, reduce ? 0 : 1400);
