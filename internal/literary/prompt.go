@@ -22,7 +22,7 @@ NATUREL :
 - Pour une remarque méta du narrateur (« further explanation is omitted... »), allège : « mais n'entrons pas dans les détails, cela nous éloignerait du sujet. »
 - Garde un temps de récit cohérent ; n'introduis pas un futur isolé au milieu d'une narration au passé.
 
-DIALOGUE : oral, vivant, à hauteur du personnage. Préserve les allongements expressifs et onomatopées (reaaally -> vraaaiment). Ponctuation française : guillemets « ... » et tirets cadratins.
+DIALOGUE : oral, vivant, à hauteur du personnage. Préserve les allongements expressifs et onomatopées (reaaally -> vraaaiment). Ponctuation française, calquée sur la source : guillemets « » ; tiret cadratin collé au mot comme dans la source (« —Mot », mot—mot) ; points de suspension en un seul caractère … (jamais ...). N'ajoute pas les espaces autour de la ponctuation : les espaces insécables sont posées automatiquement.
 
 CONTRAINTES TECHNIQUES (absolues) :
 1. Traduis TOUT en français. Seules exceptions laissées telles quelles : les balises <x id="N"/> et <g id="N"/> et les noms propres.

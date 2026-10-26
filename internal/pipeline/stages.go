@@ -448,6 +448,13 @@ func (s *Stages) CommitChapter(ctx context.Context, in CommitInput) (CommitResul
 	for i := range units {
 		u := &units[i]
 		if u.TargetText != "" {
+			// Normalize to the project's single French typography before any
+			// consumer reads the target: glossary-violation counting, TM save,
+			// segments.jsonl persistence (via WriteChapter) and the EPUB
+			// restore then all agree on the same spacing. It runs after the
+			// glossary Apply that produced this target, so locked terms are
+			// already in place, and it is idempotent.
+			u.TargetText = segment.FrenchTypography(u.TargetText)
 			targets[u.ID] = u.TargetText
 		}
 		if s.Glossary != nil {
@@ -532,7 +539,11 @@ func (s *Stages) RecomposeBook(ctx context.Context, ref RunRef) (RecomposeResult
 		targets := make(map[string]string, len(units))
 		for i := range units {
 			if units[i].TargetText != "" {
-				targets[units[i].ID] = units[i].TargetText
+				// Normalize here too so recomposing a run committed before this
+				// pass existed still emits the canonical French typography.
+				// Idempotent, so re-normalizing freshly committed units is a
+				// no-op.
+				targets[units[i].ID] = segment.FrenchTypography(units[i].TargetText)
 			}
 		}
 		if _, err := segment.ApplyTranslations(ctx, s.Segmenter, s.placeholders(), ch.Doc, ch.ID, targets); err != nil {

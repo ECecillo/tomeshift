@@ -1106,6 +1106,7 @@ flowchart TB
   <tr><td>13</td><td>LLM tokens are accumulated in <strong>a single place</strong>: the <code>OnBatch</code> hook. <code>Outcome.Usage</code> carries the same tokens seen per chapter — adding both bills twice.</td><td>An exactly doubled cost, invisible without a reference measurement.</td></tr>
   <tr><td>14</td><td>A rate limit (<code>llm.ErrRateLimited</code>, an HTTP 429) <strong>stops</strong> the chapter, it does not degrade it — it's the only batch error that does not degrade.</td><td>The rest of the book fails batch by batch silently and comes out as an NMT draft — which literary mode does not persist, so with nothing to resume.</td></tr>
   <tr><td>15</td><td>The projection applied to the cap prices the <strong>remaining</strong> work; <code>estimated_cost_usd</code> stays the whole book with no reuse. These are two different numbers and they have two jobs.</td><td>Either a resume refused for a bill it won't pay, or <code>cost_savings_usd</code> dropping to zero exactly on the runs where memory worked the most.</td></tr>
+  <tr><td>16</td><td>French typography is normalized <strong>deterministically</strong> at commit and recompose (<code>segment.FrenchTypography</code>, after glossary <code>Apply</code>); the LLM is <strong>not</strong> the source of truth for spacing.</td><td>Spacing drifts segment by segment — mixed <code>Nom:</code>/<code>Nom :</code>, <code>...</code> vs <code>…</code>, dash spacing — and the TM, <code>segments.jsonl</code> and the EPUB disagree.</td></tr>
 </table>
 </div>
 
