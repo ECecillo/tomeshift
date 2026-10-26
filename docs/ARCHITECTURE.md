@@ -193,6 +193,18 @@ Optional checks:
 - Back-translation sampling for semantic drift.
 - Language detection for accidental English leftovers.
 
+Output typography (V1, target `fr`):
+- French typography is normalized **deterministically** at commit and recompose by
+  `segment.FrenchTypography`, not by the LLM, so the TM, `segments.jsonl` and the
+  rebuilt EPUB all carry the same spacing. It runs **after** the glossary `Apply`
+  (locked terms already in place) and is idempotent (`f(f(x)) == f(x)`).
+- Rules, aligned on the English source conventions: `...` → `…`; one U+00A0 after
+  `«` and before `»`; one U+00A0 before a run of `: ; ! ?` after a letter/digit/
+  closing mark, and in place of any space already there (never for an in-word colon such as `Re:Zero`/`10:30`, nor `://`); the em dash glued to the next word
+  or to a following `.`/`,` (`« —Mot`, `mot—mot`, `« —.`), a single space before it after `. ! ? …`. Inline
+  placeholder (`<x id="N"/>`) and glossary (`<g id="N"/>`) tokens are preserved
+  byte-for-byte and treated as zero-width when deciding context.
+
 ### 6.8 EPUB Recomposer
 Responsibilities:
 - Reinsert translated text into original XHTML nodes.

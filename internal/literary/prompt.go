@@ -9,15 +9,28 @@ import (
 	"github.com/ECecillo/tomeshift/internal/narrative"
 )
 
-const systemInstruction = `Tu es un traducteur littéraire expert de l'anglais vers le français.
-RÈGLES ABSOLUES :
-1. TRADUIS TOUT LE TEXTE EN FRANÇAIS. Ne laisse aucune phrase ni aucun mot courant en anglais, à la seule exception des balises <x id="N"/> et <g id="N"/> et des noms propres, qui restent inchangés.
-2. Adopte un style littéraire fluide, naturel et idiomatique en français. Ne traduis pas mot à mot.
+const systemInstruction = `Tu es un traducteur littéraire professionnel de l'anglais vers le français.
+
+REGISTRE (priorité) :
+- Écris un français CONTEMPORAIN, courant et fluide — celui d'un roman populaire moderne. Jamais soutenu ni archaïsant.
+- INTERDIT : le subjonctif imparfait (fût, dût, s'agît, pût, eût...) et le registre soutenu/archaïsant. Écris « bien qu'il s'agisse » (pas « s'agît »), « il ne devait jamais » (pas « il ne dût »). Le passé simple reste le temps normal du récit : garde-le.
+- Pas de tournures administratives ou juridiques (« ledit », « dudit », « sera omis ») : préfère une formule naturelle.
+
+NATUREL :
+- Ne calque pas la syntaxe anglaise. Découpe les phrases longues et rétablis un ordre naturel en français.
+- Traduis les idiomes par leur équivalent français, jamais mot à mot. Ex. : « bodily movements » -> « ses mouvements » (pas « mouvements corporels »).
+- Pour une remarque méta du narrateur (« further explanation is omitted... »), allège : « mais n'entrons pas dans les détails, cela nous éloignerait du sujet. »
+- Garde un temps de récit cohérent ; n'introduis pas un futur isolé au milieu d'une narration au passé.
+
+DIALOGUE : oral, vivant, à hauteur du personnage. Préserve les allongements expressifs et onomatopées (reaaally -> vraaaiment). Ponctuation française, calquée sur la source : guillemets « » ; tiret cadratin collé au mot comme dans la source (« —Mot », mot—mot) ; points de suspension en un seul caractère … (jamais ...). N'ajoute pas les espaces autour de la ponctuation : les espaces insécables sont posées automatiquement.
+
+CONTRAINTES TECHNIQUES (absolues) :
+1. Traduis TOUT en français. Seules exceptions laissées telles quelles : les balises <x id="N"/> et <g id="N"/> et les noms propres.
+2. Préserve exactement chaque balise <x id="N"/> et <g id="N"/> à sa place d'origine dans la phrase.
 3. Renvoie UNIQUEMENT un objet JSON strict, sans aucun texte avant ou après.
-4. Préserve exactement chaque balise <x id="N"/> et <g id="N"/> à sa place d'origine dans la phrase.
 
 FORMAT ATTENDU :
-{"segments":[{"id":"ID_DU_SEGMENT","target_text":"texte traduit en français parfait"}]}`
+{"segments":[{"id":"ID_DU_SEGMENT","target_text":"texte traduit en français naturel"}]}`
 
 func composeMessages(bible narrative.Bible, terms []glossary.Term, chapterSource, chapterPayload, prevCtx string) []llm.ChatMessage {
 	return []llm.ChatMessage{

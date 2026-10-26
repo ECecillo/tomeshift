@@ -11,4 +11,8 @@ var (
 	// not enough — rebuilding from a reordered pair produces valid-looking but
 	// wrong markup, silently.
 	ErrMisorderedPlaceholder = errors.New("segment: translated text returned placeholder tokens out of order")
+	// ErrUnknownSegment covers a re-application whose targets reference segment
+	// ids the document does not produce: a stale or mismatched translation set.
+	// The ids are listed in the wrapping message so the caller can act on them.
+	ErrUnknownSegment = errors.New("segment: target references unknown segment id(s)")
 )

@@ -19,7 +19,7 @@ import (
 // runEstimate parses+segments the book without translating and prints a cost
 // projection across NMT-only / hybrid / full-LLM strategies.
 func runEstimate(stdout, stderr io.Writer, cmd cli.EstimateCommand, cfg config.Config) int {
-	orch := &pipeline.Orchestrator{
+	stages := &pipeline.Stages{
 		Extractor: epub.ZipExtractor{},
 		Parser:    epub.OPFParser{},
 		Segmenter: segment.NewParagraphSegmenter(),
@@ -49,18 +49,18 @@ func runEstimate(stdout, stderr io.Writer, cmd cli.EstimateCommand, cfg config.C
 			return exitcode.InvalidInputConfig
 		}
 		defer func() { _ = store.Close() }()
-		orch.TM = store
+		stages.TM = store
 	}
 
 	// The same calibration a run applies, from the same ledger. `estimate` is
 	// the one place it is worth saying out loud: a projection that silently
 	// changed basis between two invocations would be worse than a wrong one.
 	var note string
-	if orch.TM != nil {
-		orch.CostModel, note = calibrateLLMTokens(ctx, orch.TM, cfg, orch.CostModel)
+	if stages.TM != nil {
+		stages.CostModel, note = calibrateLLMTokens(ctx, stages.TM, cfg, stages.CostModel)
 	}
 
-	plan, err := orch.Plan(ctx, pipeline.RunConfig{
+	plan, err := stages.Plan(ctx, pipeline.BookInput{
 		InputPath:  cmd.Input,
 		SourceLang: cmd.SourceLang,
 		TargetLang: cmd.TargetLang,

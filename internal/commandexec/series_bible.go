@@ -47,6 +47,23 @@ func runSeriesBible(stdout, stderr io.Writer, cmd cli.SeriesBibleCommand, cfg co
 		return exitcode.InvalidInputConfig
 	}
 
+	// Append mode (--from-volume N): keep only the volumes to add, so the style
+	// pass, the projection and the synopsis loop all work on the new tail rather
+	// than the whole series.
+	if cmd.FromVolume > 0 {
+		kept := make([]volumeSource, 0, len(volumes))
+		for _, v := range volumes {
+			if v.Number >= cmd.FromVolume {
+				kept = append(kept, v)
+			}
+		}
+		if len(kept) == 0 {
+			writef(stderr, "no volume >= %d found in %s\n", cmd.FromVolume, cmd.InputDir)
+			return exitcode.InvalidInputConfig
+		}
+		volumes = kept
+	}
+
 	baseCtx, stop := signalContext()
 	defer stop()
 	ctx, cancel := withRunTimeout(baseCtx, cfg.RunTimeoutSeconds)
@@ -76,6 +93,22 @@ func runSeriesBible(stdout, stderr io.Writer, cmd cli.SeriesBibleCommand, cfg co
 
 	profiler := narrative.Profiler{Chat: chat, Model: cfg.LLMModel}
 
+	// Append mode adds the new synopses to the existing bible's STORY_SO_FAR
+	// without a style pass and without regenerating the earlier volumes — the
+	// whole point of --from-volume.
+	if cmd.FromVolume > 0 {
+		synopses, err := buildSynopses(ctx, stdout, profiler, store, cmd.Series, volumes)
+		if err != nil {
+			writef(stderr, "%v\n", err)
+			return exitCodeForError(err)
+		}
+		if err := appendVolumeSynopses(ctx, stdout, stderr, store, cmd.Series, synopses); err != nil {
+			writef(stderr, "unable to append series synopses: %v\n", err)
+			return exitCodeForError(err)
+		}
+		return exitcode.Success
+	}
+
 	base, err := seedSeriesStyle(ctx, profiler, cmd, volumes)
 	if err != nil {
 		writef(stderr, "unable to seed series style: %v\n", err)
@@ -84,16 +117,10 @@ func runSeriesBible(stdout, stderr io.Writer, cmd cli.SeriesBibleCommand, cfg co
 	writef(stdout, "style pass: %d volumes, %d characters, %d address rules\n",
 		len(volumes), len(base.Characters), len(base.Address))
 
-	synopses := make([]narrative.Summary, 0, len(volumes))
-	for _, volume := range volumes {
-		synopsis, chapters, err := volumeSynopsis(ctx, stdout, profiler, store, cmd.Series, volume)
-		if err != nil {
-			writef(stderr, "unable to build synopsis for %s: %v\n", volume.ID, err)
-			return exitCodeForError(err)
-		}
-		writef(stdout, "volume %s: %d chapters summarised, synopsis %d runes\n",
-			volume.ID, chapters, len([]rune(synopsis)))
-		synopses = append(synopses, narrative.Summary{VolumeID: volume.ID, Summary: synopsis})
+	synopses, err := buildSynopses(ctx, stdout, profiler, store, cmd.Series, volumes)
+	if err != nil {
+		writef(stderr, "%v\n", err)
+		return exitCodeForError(err)
 	}
 
 	if err := saveScopedBibles(ctx, stdout, stderr, store, cmd, base, synopses, volumes); err != nil {
@@ -101,6 +128,65 @@ func runSeriesBible(stdout, stderr io.Writer, cmd cli.SeriesBibleCommand, cfg co
 		return exitCodeForError(err)
 	}
 	return exitcode.Success
+}
+
+// buildSynopses runs the map-reduce synopsis for each volume in order, logging
+// progress. It is shared by the full build and the --from-volume append path.
+func buildSynopses(
+	ctx context.Context, stdout io.Writer, profiler narrative.Profiler,
+	store narrative.Store, series string, volumes []volumeSource,
+) ([]narrative.Summary, error) {
+	synopses := make([]narrative.Summary, 0, len(volumes))
+	for _, volume := range volumes {
+		synopsis, chapters, err := volumeSynopsis(ctx, stdout, profiler, store, series, volume)
+		if err != nil {
+			return nil, fmt.Errorf("unable to build synopsis for %s, err: %w", volume.ID, err)
+		}
+		writef(stdout, "volume %s: %d chapters summarised, synopsis %d runes\n",
+			volume.ID, chapters, len([]rune(synopsis)))
+		synopses = append(synopses, narrative.Summary{VolumeID: volume.ID, Summary: synopsis})
+	}
+	return synopses, nil
+}
+
+// appendVolumeSynopses adds synopses to the EXISTING bible `series` without
+// touching the ones it already holds. MergeBibles appends summaries by
+// (volume, chapter) with the existing winning a conflict, so re-running is
+// idempotent and no earlier volume is rebuilt; the curated style guide, voices
+// and address rules are kept untouched (incoming carries summaries only). It is
+// the engine behind `--from-volume N`.
+func appendVolumeSynopses(
+	ctx context.Context, stdout, stderr io.Writer, store narrative.Store,
+	series string, synopses []narrative.Summary,
+) error {
+	existing, found, err := store.Load(ctx, series)
+	if err != nil {
+		return err
+	}
+	if !found {
+		return fmt.Errorf("unable to append to %q: no existing bible to extend (build it first), err: %w", series, narrative.ErrMissingBible)
+	}
+
+	merged, stats := narrative.MergeBibles(existing, narrative.Bible{SeriesID: series, Summaries: synopses})
+	merged.SeriesID = series
+	if err := narrative.ValidateBible(merged); err != nil {
+		return fmt.Errorf("unable to validate the extended bible %q, err: %w", series, err)
+	}
+	if err := store.Save(ctx, merged); err != nil {
+		return err
+	}
+
+	saved, _, err := store.Load(ctx, series)
+	if err != nil {
+		return err
+	}
+	writef(stdout, "bible %s extended: version %d, %d volume synopses (+%d appended)\n",
+		saved.SeriesID, saved.Version, len(saved.Summaries), len(saved.Summaries)-len(existing.Summaries))
+	if stats.Lossy() {
+		writef(stderr, "warning: %d incoming synopses were already present and kept from the existing bible\n",
+			stats.DroppedSummaries)
+	}
+	return nil
 }
 
 // seedSeriesStyle runs the single sampling pass that produces style, voices and

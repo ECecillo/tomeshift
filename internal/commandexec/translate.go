@@ -9,6 +9,8 @@ import (
 	"sort"
 	"time"
 
+	"go.uber.org/zap"
+
 	"github.com/ECecillo/tomeshift/internal/cli"
 	"github.com/ECecillo/tomeshift/internal/config"
 	"github.com/ECecillo/tomeshift/internal/epub"
@@ -46,17 +48,17 @@ func openTranslationInputs(cfg config.Config, glossaryPath string) (*tm.SQLiteSt
 	return store, gloss, nil
 }
 
-// newOrchestrator assembles a fully-wired orchestrator for mode: the NMT
+// newStages assembles the fully-wired stage collaborators for mode: the NMT
 // provider with its retries, the optional post-editor, the QA gate, the cost
 // guardrail, and — for literary mode only — the series bible and chat client.
 //
-// It is one step rather than two on purpose: a half-built orchestrator is a
+// It is one step rather than two on purpose: a half-built set of stages is a
 // shape no caller should be able to hold. The returned closer releases the
 // resources literary mode opens, and is a no-op for every other mode, so
 // callers never branch on it. `batch` passes an empty mode.
-func newOrchestrator(
+func newStages(
 	cfg config.Config, store tm.Store, gloss *glossary.Glossary, mode string,
-) (*pipeline.Orchestrator, func(), error) {
+) (*pipeline.Stages, func(), error) {
 	// Fail here rather than at the first segment: by then the book has been
 	// extracted, parsed, segmented and budgeted, and the error would read as a
 	// provider outage instead of a missing setting.
@@ -76,7 +78,7 @@ func newOrchestrator(
 		postEditor = llm.NewHTTPPostEditor(cfg.LLMEndpoint, cfg.LLMAPIKey)
 	}
 
-	orch := &pipeline.Orchestrator{
+	stages := &pipeline.Stages{
 		Extractor: epub.ZipExtractor{},
 		Parser:    epub.OPFParser{},
 		Segmenter: segment.NewParagraphSegmenter(),
@@ -100,7 +102,7 @@ func newOrchestrator(
 	}
 
 	if mode != pipeline.ModeLiterary {
-		return orch, func() {}, nil
+		return stages, func() {}, nil
 	}
 
 	bible, err := narrative.NewSQLiteStore(cfg.NarrativePath)
@@ -117,18 +119,18 @@ func newOrchestrator(
 	// keeps them so a measured token count stays reusable, and only the literary
 	// path sets them — the HTTP post-editor is picked by endpoint, not by model,
 	// and reports no usage to attribute anyway.
-	orch.LLMProvider = cfg.LLMChatProvider
-	orch.LLMModel = cfg.LLMModel
+	stages.LLMProvider = cfg.LLMChatProvider
+	stages.LLMModel = cfg.LLMModel
 
-	orch.NarrativeStore = bible
-	orch.NarrativeProfiler = &narrative.Profiler{Chat: chat, Model: cfg.LLMModel}
-	orch.LiteraryTranslator = &literary.Translator{
+	stages.NarrativeStore = bible
+	stages.NarrativeProfiler = &narrative.Profiler{Chat: chat, Model: cfg.LLMModel}
+	stages.LiteraryTranslator = &literary.Translator{
 		Chat:      chat,
 		Model:     cfg.LLMModel,
 		BatchSize: cfg.LLMBatchSize,
 		Glossary:  gloss,
 	}
-	return orch, func() { _ = closeCache(); _ = bible.Close() }, nil
+	return stages, func() { _ = closeCache(); _ = bible.Close() }, nil
 }
 
 // runPipeline assembles the orchestrator from runtime config and executes a
@@ -154,30 +156,36 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg config.Config
 	}
 	defer func() { _ = store.Close() }()
 
-	orch, closeOrch, err := newOrchestrator(cfg, store, gloss, cmd.Mode)
+	stages, closeStages, err := newStages(cfg, store, gloss, cmd.Mode)
 	if err != nil {
 		writef(stderr, "%v\n", err)
 		return exitcode.InvalidInputConfig
 	}
-	defer closeOrch()
-	orch.Logger = logger
-
-	// stderr, not stdout: the bar is for a human watching, and stdout stays the
-	// single parsable summary line.
-	orch.Progress = progress.New(stderr, !cmd.NoProgress && progress.IsTerminal(stderr), "")
+	defer closeStages()
+	stages.Logger = logger
 
 	baseCtx, stop := signalContext()
 	defer stop()
 	ctx, cancel := withRunTimeout(baseCtx, cfg.RunTimeoutSeconds)
 	defer cancel()
 
-	// Before Run, because Run projects the cost and enforces the cap on it.
+	// Before RunBook, because ProjectCost enforces the cap on the calibrated model.
 	var note string
-	if orch.CostModel, note = calibrateLLMTokens(ctx, store, cfg, orch.CostModel); note != "" {
+	if stages.CostModel, note = calibrateLLMTokens(ctx, store, cfg, stages.CostModel); note != "" {
 		logger.Info(note)
 	}
 
-	result, err := orch.Run(ctx, pipeline.RunConfig{
+	bar := newBarReporter(progress.New(stderr, !cmd.NoProgress && progress.IsTerminal(stderr), ""))
+	steps := &pipeline.InProcessSteps{Stages: stages, Ctx: ctx}
+	rt := &pipeline.InProcessRuntime{
+		Ctx:   ctx,
+		Steps: steps,
+		// stderr, not stdout: the bar is for a human watching, and stdout stays
+		// the single parsable summary line.
+		Progress: bar,
+	}
+
+	result, err := pipeline.RunBook(steps, rt, pipeline.BookInput{
 		InputPath:   cmd.Input,
 		OutputDir:   outputDir,
 		SourceLang:  cmd.SourceLang,
@@ -189,6 +197,9 @@ func runPipeline(stdout, stderr io.Writer, cmd cli.RunCommand, cfg config.Config
 		UpdateBible: cmd.UpdateBible,
 		Resume:      cmd.Resume,
 	})
+	// The line is closed before the caller writes its failure message to the
+	// same stream, so the error never lands inside the bar.
+	bar.Finish()
 	if err != nil {
 		writef(stderr, "run failed: %v\n", err)
 		return exitCodeForError(err)
@@ -222,70 +233,88 @@ func runBatch(stdout, stderr io.Writer, cmd cli.BatchCommand, cfg config.Config)
 	defer func() { _ = store.Close() }()
 
 	// Batch is NMT-only, so it needs none of the literary collaborators.
-	orch, closeOrch, err := newOrchestrator(cfg, store, gloss, pipeline.ModeNMT)
+	stages, closeStages, err := newStages(cfg, store, gloss, pipeline.ModeNMT)
 	if err != nil {
 		writef(stderr, "%v\n", err)
 		return exitcode.InvalidInputConfig
 	}
-	defer closeOrch()
+	defer closeStages()
 
 	baseCtx, stop := signalContext()
 	defer stop()
 
 	// Calibrated once for the whole batch: it describes the model, not the book.
-	orch.CostModel, _ = calibrateLLMTokens(baseCtx, store, cfg, orch.CostModel)
+	stages.CostModel, _ = calibrateLLMTokens(baseCtx, store, cfg, stages.CostModel)
 
 	// Resolved once: every book gets its own bar, all writing to the same line.
 	showProgress := !cmd.NoProgress && progress.IsTerminal(stderr)
 
-	outcomes := make([]pipeline.BookOutcome, 0, len(epubs))
-	var firstErr error
+	books := make([]pipeline.BookInput, 0, len(epubs))
 	for _, in := range epubs {
-		if baseCtx.Err() != nil {
-			writef(stderr, "batch interrupted; stopping before remaining books\n")
-			break
-		}
-
 		bookID := bookIDFromPath(in)
-		bookDir := filepath.Join(cmd.OutputDir, bookID)
-
-		logger, closeLog, lerr := pipeline.NewRunLogger(bookDir, cfg.LogLevel)
-		if lerr != nil {
-			outcomes = append(outcomes, pipeline.BookOutcome{BookID: bookID, RunID: bookID, OK: false, Error: lerr.Error()})
-			writef(stderr, "book %s: logger error: %v\n", bookID, lerr)
-			continue
-		}
-		orch.Logger = logger
-		orch.Progress = progress.New(stderr, showProgress, bookID)
-
-		ctx, cancel := withRunTimeout(baseCtx, cfg.RunTimeoutSeconds)
-		result, runErr := orch.Run(ctx, pipeline.RunConfig{
-			InputPath: in, OutputDir: bookDir,
+		books = append(books, pipeline.BookInput{
+			InputPath: in, OutputDir: filepath.Join(cmd.OutputDir, bookID),
 			SourceLang: cmd.SourceLang, TargetLang: cmd.TargetLang,
 			RunID: bookID, BookID: bookID,
 		})
-		cancel()
-		_ = closeLog()
-
-		outcome := pipeline.BookOutcome{BookID: bookID, RunID: bookID, OK: runErr == nil, Result: result}
-		if runErr != nil {
-			outcome.Error = runErr.Error()
-			if firstErr == nil {
-				firstErr = runErr
-			}
-			writef(stdout, "book %-20s FAILED: %v\n", bookID, runErr)
-		} else {
-			if score, ok := scoreAgainstReference(stderr, cmd.ReferenceDir, bookID, result.OutputEPUB); ok {
-				outcome.ChrF = &score
-			}
-			writef(stdout, "book %-20s ok: %d segments, %d tm hits, %d nmt, %d llm%s\n",
-				bookID, result.TotalSegments, result.TMHits, result.NMTSegments, result.LLMSegments,
-				chrFSuffix(outcome.ChrF))
-		}
-		outcomes = append(outcomes, outcome)
 	}
 
-	summary := pipeline.NewBatchSummary(outcomes)
+	steps := &pipeline.InProcessSteps{Stages: stages, Ctx: baseCtx}
+	rt := &pipeline.InProcessRuntime{Ctx: baseCtx, Steps: steps}
+
+	var firstErr error
+	var closeLog func() error
+	var cancel context.CancelFunc
+	var bar *barReporter
+	hooks := pipeline.SeriesHooks{
+		Prepare: func(in pipeline.BookInput) {
+			logger, cl, lerr := pipeline.NewRunLogger(in.OutputDir, cfg.LogLevel)
+			if lerr != nil {
+				writef(stderr, "book %s: logger error: %v\n", in.BookID, lerr)
+				logger, cl = zap.NewNop(), func() error { return nil }
+			}
+			closeLog = cl
+			stages.Logger = logger
+			bar = newBarReporter(progress.New(stderr, showProgress, in.BookID))
+			rt.Progress = bar
+			ctx, c := withRunTimeout(baseCtx, cfg.RunTimeoutSeconds)
+			cancel = c
+			steps.Ctx, rt.Ctx = ctx, ctx
+		},
+		Score: func(bookID, outputEPUB string) (float64, bool) {
+			return scoreAgainstReference(stderr, cmd.ReferenceDir, bookID, outputEPUB)
+		},
+		Done: func(in pipeline.BookInput, outcome pipeline.BookOutcome, runErr error) {
+			if cancel != nil {
+				cancel()
+			}
+			// Point the shared context back at the stable base before the next
+			// book. A per-book run timeout makes withRunTimeout return a
+			// cancellable child; leaving the just-cancelled child in place would
+			// make RunSeries' top-of-loop Cancelled() check fire on book 2 and
+			// silently skip the rest of the series.
+			steps.Ctx, rt.Ctx = baseCtx, baseCtx
+			if bar != nil {
+				bar.Finish()
+			}
+			if closeLog != nil {
+				_ = closeLog()
+			}
+			if runErr != nil {
+				if firstErr == nil {
+					firstErr = runErr
+				}
+				writef(stdout, "book %-20s FAILED: %v\n", in.BookID, runErr)
+				return
+			}
+			r := outcome.Result
+			writef(stdout, "book %-20s ok: %d segments, %d tm hits, %d nmt, %d llm%s\n",
+				in.BookID, r.TotalSegments, r.TMHits, r.NMTSegments, r.LLMSegments,
+				chrFSuffix(outcome.ChrF))
+		},
+	}
+
+	summary := pipeline.RunSeries(steps, rt, books, hooks)
 	if err := pipeline.WriteBatchReport(cmd.OutputDir, summary); err != nil {
 		writef(stderr, "unable to write batch report: %v\n", err)
 	}

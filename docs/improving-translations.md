@@ -133,6 +133,55 @@ before".
 > Check the state with `just bible <db> <series>` (summaries column) before
 > launching the next volume.
 
+## Importing an upstream translators' style guide
+
+When the source EPUB is itself a translation (e.g. a fan English translation of
+a Japanese web novel), its team usually keeps a manual of style: glossary,
+per-character speech quirks, punctuation rules. Each English quirk there is a
+deliberate encoding of a source-language trait (a sentence-final particle
+always rendered `, I suppose`, a character who never contracts, a mangled
+in-world word). Importing the manual means giving **one** French form to each
+of those markers, instead of letting the LLM translate them literally and
+differently every time.
+
+1. **Read the manual** section by section (glossary tables, character index).
+2. **Measure before deciding.** Over the runs already translated, count for
+   each marker which French renderings coexist; keep the majority when it is
+   correct, decide otherwise:
+   ```python
+   import json, glob, re, collections
+   segs = [(d["source_text"], d["target_text"])
+           for f in glob.glob("runs/*/segments.jsonl")
+           for d in map(json.loads, open(f)) if d.get("target_text")]
+   def variants(src, fr_patterns):
+       rows = [t for s, t in segs if re.search(src, s)]
+       return len(rows), collections.Counter(
+           p for t in rows for p in fr_patterns if re.search(p, t, re.I)).most_common()
+   variants(r"ground dragons?", [r"dragons? terrestres?", r"dragons? de terre"])
+   ```
+3. **Route each item to the right lever** — the glossary is mechanical, so it
+   only fits invariant names:
+
+   | Upstream item | Lever | Why |
+   |---|---|---|
+   | proper names the LLM could gallicize (Minerva, Pandora, Flanders), spelling fixes | glossary, `term_en == term_fr` or corrected spelling | `Protect`/`Apply` swap the exact, case-sensitive `\bterm\b` for `term_fr` verbatim: no plural, gender agreement or elision |
+   | translated common terms (titles, creatures, places with an article) | `style_guide` lexicon (`EN = FR`, to inflect normally) | they need agreement, which only the LLM can do |
+   | fixed catchphrases, verbal tics | `style_guide` "fixed formulas": exact EN sentence → exact FR sentence | consistency across volumes |
+   | voice, contraction level, nicknames, fixed colours | `characters_json`, French only, `sample_fr` drawn from good existing output | the prompt renders every character on every call |
+   | tu/vous | `address_json` | only the **last** history entry reaches the prompt |
+
+   Never lock a name that is also a common English word (Miles, Wolf, Null…):
+   every capitalized occurrence would be forced.
+4. **Write the bible** with a raw `UPDATE` (back the database up first). A raw
+   `UPDATE` does not go through `SaveAll`, so bump `version` yourself.
+   `series-bible --from-volume N` keeps a curated style guide and characters;
+   a full `series-bible`/`style-profile` without `--merge`, or `--update-bible`,
+   rewrites them.
+5. **Re-measure** on the next translated volume with the same script.
+
+Spacing and punctuation are not part of this import: French typography is
+normalized in code at commit time (see `segment.FrenchTypography`).
+
 ## Typical improvement workflow
 
 1. Translate a **chapter** ([`translation-guide.md`](translation-guide.md)).
