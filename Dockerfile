@@ -9,7 +9,7 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /out/tomeshift ./cmd/tomeshift
 
-FROM alpine:3.21
+FROM alpine:3.24
 RUN adduser -D -u 10001 appuser
 WORKDIR /app
 COPY --from=builder /out/tomeshift /usr/local/bin/tomeshift
